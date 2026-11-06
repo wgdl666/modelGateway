@@ -1,0 +1,7 @@
+.git
+.idea
+.env
+bootstrap.json
+bin
+work
+*.log

@@ -1,0 +1,4 @@
+{
+  "source": "appconfig",
+  "url": "http://127.0.0.1:2772/applications/modelGateway/environments/environment-name/configurations/gateway"
+}
