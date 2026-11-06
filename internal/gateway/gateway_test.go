@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,7 +17,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/wgdl666/modelGateway/ent/modelinstance"
 )
 
 const apiToken = "test-client-token-at-least-24-chars"
@@ -33,31 +33,28 @@ func stores(t *testing.T) (*Store, *Store) {
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL required for PostgreSQL integration tests")
 	}
-	config, e := pgxpool.ParseConfig(dsn)
+	config, e := pgx.ParseConfig(dsn)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if !strings.HasSuffix(config.ConnConfig.Database, "_test") {
+	if !strings.HasSuffix(config.Database, "_test") {
 		t.Fatal("test database name must end in _test")
 	}
-	a, e := pgxpool.NewWithConfig(context.Background(), config)
+	a, e := OpenDatabase(context.Background(), dsn, true)
 	if e != nil {
 		t.Fatal(e)
 	}
-	t.Cleanup(a.Close)
-	b, e := pgxpool.New(context.Background(), dsn)
+	t.Cleanup(func() { _ = a.Close() })
+	b, e := OpenDatabase(context.Background(), dsn, false)
 	if e != nil {
 		t.Fatal(e)
 	}
-	t.Cleanup(b.Close)
-	ddl, e := os.ReadFile(filepath.Join("..", "..", "migrations", "001_init.sql"))
-	if e != nil {
+	t.Cleanup(func() { _ = b.Close() })
+	// 仅清理显式测试库中的业务记录，表结构由 Ent 创建。
+	if _, e := a.Request.Delete().Exec(context.Background()); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = a.Exec(context.Background(), string(ddl)); e != nil {
-		t.Fatal(e)
-	}
-	if _, e = a.Exec(context.Background(), `TRUNCATE model_gateway.requests,model_gateway.model_instances`); e != nil {
+	if _, e := a.ModelInstance.Delete().Exec(context.Background()); e != nil {
 		t.Fatal(e)
 	}
 	return &Store{a, 30 * time.Second}, &Store{b, 30 * time.Second}
@@ -71,11 +68,11 @@ func submission(units int) Submission {
 func payload(s Submission) []byte { b, _ := json.Marshal(s); return b }
 func used(t *testing.T, s *Store, id string) int {
 	t.Helper()
-	var n int
-	if e := s.DB.QueryRow(context.Background(), `SELECT used_units FROM model_gateway.model_instances WHERE instance_id=$1`, id).Scan(&n); e != nil {
+	i, e := s.DB.ModelInstance.Get(context.Background(), id)
+	if e != nil {
 		t.Fatal(e)
 	}
-	return n
+	return i.UsedUnits
 }
 func register(t *testing.T, s *Store, i Instance) {
 	t.Helper()
@@ -186,6 +183,9 @@ func TestRegistrationDoesNotResetCapacityOrDrain(t *testing.T) {
 	if e := a.Drain(context.Background(), i.ID, true); e != nil {
 		t.Fatal(e)
 	}
+	if e := b.Heartbeat(context.Background(), i.ID, true); e != nil {
+		t.Fatal(e)
+	}
 	register(t, b, i)
 	if used(t, a, i.ID) != 2 {
 		t.Fatal("registration reset count")
@@ -202,6 +202,97 @@ func TestRegistrationDoesNotResetCapacityOrDrain(t *testing.T) {
 	i.ID = uuid.NewString()
 	if e := b.Register(context.Background(), i); !errors.Is(e, ErrConflict) {
 		t.Fatal("duplicate endpoint reset capacity")
+	}
+}
+
+func TestConcurrentRegistrationKeepsEndpointOwnership(t *testing.T) {
+	a, b := stores(t)
+	first := instance("http://127.0.0.1:8001", 4)
+	second := first
+	second.ID = uuid.NewString()
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for n, i := range []Instance{first, second} {
+		store := []*Store{a, b}[n]
+		go func() { <-start; results <- store.Register(context.Background(), i) }()
+	}
+	close(start)
+	winners := 0
+	for range 2 {
+		if err := <-results; err == nil {
+			winners++
+		} else if !errors.Is(err, ErrConflict) {
+			t.Fatal(err)
+		}
+	}
+	if winners != 1 {
+		t.Fatalf("expected one endpoint owner, got %d", winners)
+	}
+	active, err := a.DB.ModelInstance.Query().Where(modelinstance.ReadyEQ(true)).Count(context.Background())
+	if err != nil || active != 1 {
+		t.Fatal("duplicate endpoint registered", active, err)
+	}
+}
+
+func TestConcurrentRegistrationOfSameInstance(t *testing.T) {
+	a, b := stores(t)
+	i := instance("http://127.0.0.1:8001", 4)
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, store := range []*Store{a, b} {
+		go func() { <-start; results <- store.Register(context.Background(), i) }()
+	}
+	close(start)
+	for range 2 {
+		if err := <-results; err != nil {
+			t.Fatal("same-instance registration should be idempotent", err)
+		}
+	}
+}
+
+func TestReplicasClaimDistinctReconciliationBatches(t *testing.T) {
+	a, b := stores(t)
+	i := instance("http://127.0.0.1:8001", 4)
+	register(t, a, i)
+	for range 4 {
+		in := submission(1)
+		if _, _, _, err := a.Reserve(context.Background(), in, payload(in)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.Start(context.Background(), in.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := a.Apply(context.Background(), in.ID, BackendResponse{Status: "unknown"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := a.DB.Request.Update().SetUpdatedAt(time.Now().Add(-10 * time.Second)).Exec(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	results := make(chan []Pending, 2)
+	for _, store := range []*Store{a, b} {
+		go func() {
+			<-start
+			batch, err := store.Reconcile(context.Background(), 5*time.Second, time.Second)
+			if err != nil {
+				t.Error(err)
+			}
+			results <- batch
+		}()
+	}
+	close(start)
+	seen := map[string]bool{}
+	for range 2 {
+		for _, p := range <-results {
+			if seen[p.ID] || p.Endpoint != i.Endpoint {
+				t.Fatal("request claimed twice or routed to wrong endpoint", p)
+			}
+			seen[p.ID] = true
+		}
+	}
+	if len(seen) != 4 || used(t, a, i.ID) != 4 {
+		t.Fatal("claim lost requests or released unknown capacity", len(seen))
 	}
 }
 func TestUnknownRetainsCapacityAndOtherReplicaRecovers(t *testing.T) {
@@ -233,7 +324,9 @@ func TestReservedRecoveryAndExpiredInstance(t *testing.T) {
 	register(t, a, i)
 	in := submission(2)
 	a.Reserve(context.Background(), in, payload(in))
-	a.DB.Exec(context.Background(), `UPDATE model_gateway.requests SET updated_at=now()-interval '31 seconds'`)
+	if e := a.DB.Request.Update().SetUpdatedAt(time.Now().Add(-31 * time.Second)).Exec(context.Background()); e != nil {
+		t.Fatal(e)
+	}
 	if _, e := b.Reconcile(context.Background(), time.Second, time.Second); e != nil {
 		t.Fatal(e)
 	}
@@ -244,7 +337,9 @@ func TestReservedRecoveryAndExpiredInstance(t *testing.T) {
 	if started, _ := a.Start(context.Background(), in.ID); started {
 		t.Fatal("expired reservation dispatched")
 	}
-	a.DB.Exec(context.Background(), `UPDATE model_gateway.model_instances SET lease_expires_at=now()-interval '1 second'`)
+	if e := a.DB.ModelInstance.Update().SetLeaseExpiresAt(time.Now().Add(-time.Second)).Exec(context.Background()); e != nil {
+		t.Fatal(e)
+	}
 	in = submission(1)
 	if _, _, _, e = a.Reserve(context.Background(), in, payload(in)); !errors.Is(e, ErrBusy) {
 		t.Fatal("expired instance accepted")
@@ -263,15 +358,15 @@ func TestReservationRollback(t *testing.T) {
 	}
 }
 
-func httpApp(t *testing.T, s *Store, backend string, timeout time.Duration) (*Server, *httptest.Server) {
+func httpApp(t *testing.T, s *Store, backend string, timeout time.Duration) (*Server, string) {
 	t.Helper()
 	u, _ := url.Parse(backend)
 	app, e := NewServer(s, Config{APIToken: apiToken, WorkerToken: workerToken, AdminToken: adminToken, AllowedNetworks: []string{"127.0.0.0/8"}, AllowedPorts: []string{u.Port()}, BackendTimeout: timeout})
 	if e != nil {
 		t.Fatal(e)
 	}
-	server := httptest.NewServer(app)
-	t.Cleanup(func() { server.Close(); app.Close() })
+	t.Cleanup(app.Close)
+	server := startHTTPServer(t, app)
 	return app, server
 }
 func post(t *testing.T, endpoint, token string, body []byte) (int, []byte) {
@@ -306,9 +401,9 @@ func TestHTTPAsyncObjectResultAcrossReplicas(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			calls.Add(1)
-			writeJSON(w, 202, map[string]string{"status": "running", "backend_task_id": "backend-001"})
+			writeBackendJSON(w, 202, map[string]string{"status": "running", "backend_task_id": "backend-001"})
 		} else {
-			writeJSON(w, 200, BackendResponse{Status: "succeeded", Result: files})
+			writeBackendJSON(w, 200, BackendResponse{Status: "succeeded", Result: files})
 		}
 	}))
 	defer backend.Close()
@@ -316,21 +411,23 @@ func TestHTTPAsyncObjectResultAcrossReplicas(t *testing.T) {
 	twoApp, two := httpApp(t, b, backend.URL, time.Second)
 	i := instance(backend.URL, 4)
 	body, _ := json.Marshal(i)
-	if status, _ := post(t, one.URL+"/v1/instances/register", workerToken, body); status != 200 {
+	if status, _ := post(t, one+"/v1/instances/register", workerToken, body); status != 200 {
 		t.Fatal(status)
 	}
 	in := submission(2)
-	if status, _ := post(t, one.URL+"/v1/requests", apiToken, payload(in)); status != 202 {
+	if status, _ := post(t, one+"/v1/requests", apiToken, payload(in)); status != 202 {
 		t.Fatal(status)
 	}
 	waitState(t, a, in.ID, "running")
 	if used(t, a, i.ID) != 2 {
 		t.Fatal("async accepted released early")
 	}
-	if status, _ := post(t, two.URL+"/v1/requests", apiToken, payload(in)); status != 202 {
+	if status, _ := post(t, two+"/v1/requests", apiToken, payload(in)); status != 202 {
 		t.Fatal(status)
 	}
-	a.DB.Exec(context.Background(), `UPDATE model_gateway.requests SET updated_at=now()-interval '10 seconds' WHERE request_id=$1`, in.ID)
+	if e := a.DB.Request.UpdateOneID(in.ID).SetUpdatedAt(time.Now().Add(-10 * time.Second)).Exec(context.Background()); e != nil {
+		t.Fatal(e)
+	}
 	twoApp.ReconcileOnce(context.Background())
 	r := waitState(t, a, in.ID, "succeeded")
 	if calls.Load() != 1 || used(t, a, i.ID) != 0 || !bytes.Contains(r.Result, []byte("bucket")) {
@@ -341,17 +438,17 @@ func TestHTTPTimeoutUnknownAndAuthentication(t *testing.T) {
 	a, _ := stores(t)
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
-		writeJSON(w, 200, BackendResponse{Status: "succeeded", Result: files})
+		writeBackendJSON(w, 200, BackendResponse{Status: "succeeded", Result: files})
 	}))
 	defer backend.Close()
 	_, server := httpApp(t, a, backend.URL, 20*time.Millisecond)
 	i := instance(backend.URL, 2)
 	register(t, a, i)
 	in := submission(2)
-	if status, _ := post(t, server.URL+"/v1/requests", workerToken, payload(in)); status != 401 {
+	if status, _ := post(t, server+"/v1/requests", workerToken, payload(in)); status != 401 {
 		t.Fatal("worker token accepted as caller")
 	}
-	if status, _ := post(t, server.URL+"/v1/requests", apiToken, payload(in)); status != 202 {
+	if status, _ := post(t, server+"/v1/requests", apiToken, payload(in)); status != 202 {
 		t.Fatal(status)
 	}
 	waitState(t, a, in.ID, "unknown")
@@ -371,4 +468,11 @@ func TestObjectResultValidation(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+}
+
+// 模拟后端仍使用独立标准库服务，确保客户端测试经过实际 Hertz HTTP 协议栈。
+func writeBackendJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
 }

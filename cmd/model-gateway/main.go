@@ -7,21 +7,20 @@ import (
 	"flag"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/gateway"
 )
 
 func main() {
 	path := flag.String("config", "/etc/model-gateway/bootstrap.json", "configuration center bootstrap file")
-	migrate := flag.String("migrate", "", "explicit schema SQL file; run and exit")
+	migrate := flag.Bool("migrate", false, "initialize Ent schema explicitly and exit")
 	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -31,7 +30,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, path, migration string) error {
+func run(ctx context.Context, path string, migration bool) error {
 	loader := config.NewLoader(path)
 	defer loader.Close()
 	raw, err := loader.Load(ctx)
@@ -43,24 +42,19 @@ func run(ctx context.Context, path, migration string) error {
 		return err
 	}
 	dbCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	db, err := pgxpool.New(dbCtx, cfg.DatabaseURL)
-	if err == nil {
-		err = db.Ping(dbCtx)
-	}
+	db, err := gateway.OpenDatabase(dbCtx, cfg.DatabaseURL, migration)
 	cancel()
 	if err != nil {
-		if db != nil {
-			db.Close()
-		}
-		return errors.New("cannot connect to configured PostgreSQL")
+		return err
 	}
-	if migration != "" {
+	if migration {
 		defer db.Close()
-		return migrate(ctx, db, migration)
+		slog.Info("schema initialized with Ent")
+		return nil
 	}
 	app, err := gateway.NewServer(&gateway.Store{DB: db}, cfg)
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		return err
 	}
 	defer app.Close()
@@ -69,10 +63,10 @@ func run(ctx context.Context, path, migration string) error {
 		return errors.New("cannot listen on configured address")
 	}
 	failures := make(chan error, 1)
-	serve := func(listener net.Listener) *http.Server {
-		server := &http.Server{Handler: app, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	serve := func(listener net.Listener) *server.Hertz {
+		server := app.HTTPServer(listener)
 		go func() {
-			if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if err := server.Run(); err != nil {
 				select {
 				case failures <- errors.New("HTTP server stopped unexpectedly"):
 				default:
@@ -141,32 +135,10 @@ func run(ctx context.Context, path, migration string) error {
 	}
 }
 
-func shutdown(server *http.Server) {
+func shutdown(server *server.Hertz) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if server.Shutdown(ctx) != nil {
 		_ = server.Close()
 	}
-}
-
-func migrate(ctx context.Context, db *pgxpool.Pool, path string) error {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return errors.New("cannot read migration")
-	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	tx, err := db.Begin(ctx)
-	if err == nil {
-		defer tx.Rollback(ctx)
-		_, err = tx.Exec(ctx, string(content))
-		if err == nil {
-			err = tx.Commit(ctx)
-		}
-	}
-	if err != nil {
-		return errors.New("schema migration failed")
-	}
-	slog.Info("schema initialized")
-	return nil
 }

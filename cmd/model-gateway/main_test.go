@@ -15,8 +15,11 @@ import (
 	"testing"
 	"time"
 
+	"ariga.io/atlas/sql/postgres"
+	atlasschema "ariga.io/atlas/sql/schema"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/wgdl666/modelGateway/internal/gateway"
 )
 
 func TestConfigCenterReloadsRunningServer(t *testing.T) {
@@ -28,31 +31,32 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 	if err != nil || !strings.HasSuffix(u.Path, "_test") {
 		t.Fatal("TEST_DATABASE_URL must be a PostgreSQL URI for a _test database")
 	}
-	admin, err := pgxpool.New(context.Background(), dsn)
+	// 使用独立命名空间，避免与并行运行的容量和任务测试互相清理数据。
+	namespace := fmt.Sprintf("gateway_reload_%d", time.Now().UnixNano())
+	query := u.Query()
+	query.Set("search_path", namespace)
+	u.RawQuery = query.Encode()
+	db, err := gateway.OpenDatabase(context.Background(), u.String(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer admin.Close()
-	// 独立数据库避免与另一个包的容量和任务测试互相影响。
-	name := pgx.Identifier{fmt.Sprintf("gateway_reload_%d_test", time.Now().UnixNano())}.Sanitize()
-	if _, err = admin.Exec(context.Background(), "CREATE DATABASE "+name); err != nil {
-		t.Fatal(err)
-	}
+	_ = db.Close()
 	defer func() {
-		if _, err := admin.Exec(context.Background(), "DROP DATABASE "+name+" WITH (FORCE)"); err != nil {
+		cfg, err := pgx.ParseConfig(dsn)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		admin := stdlib.OpenDB(*cfg)
+		defer admin.Close()
+		driver, err := postgres.Open(admin)
+		if err == nil {
+			err = driver.ApplyChanges(context.Background(), []atlasschema.Change{&atlasschema.DropSchema{S: atlasschema.New(namespace), Extra: []atlasschema.Clause{&postgres.Cascade{}}}})
+		}
+		if err != nil {
 			t.Error(err)
 		}
 	}()
-	u.Path = "/" + strings.Trim(name, `"`)
-	db, err := pgxpool.New(context.Background(), u.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := migrate(context.Background(), db, "../../migrations/001_init.sql"); err != nil {
-		db.Close()
-		t.Fatal(err)
-	}
-	db.Close()
 	address := func() string {
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -75,7 +79,7 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 	}
 	ctx, stop := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- run(ctx, path, "") }()
+	go func() { done <- run(ctx, path, false) }()
 	defer func() {
 		stop()
 		if err := <-done; err != nil {

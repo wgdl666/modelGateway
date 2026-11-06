@@ -30,7 +30,7 @@ func TestHotReloadPreservesInFlightRequest(t *testing.T) {
 		if r.Method == "POST" && r.Header.Get("Authorization") == "Bearer updated-backend-token" {
 			time.Sleep(100 * time.Millisecond)
 		}
-		writeJSON(w, 200, BackendResponse{Status: "succeeded", Result: files})
+		writeBackendJSON(w, 200, BackendResponse{Status: "succeeded", Result: files})
 	}))
 	t.Cleanup(backend.Close)
 	u, _ := url.Parse(backend.URL)
@@ -39,15 +39,15 @@ func TestHotReloadPreservesInFlightRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(app)
-	t.Cleanup(func() { release.Do(func() { close(finish) }); server.Close(); app.Close() })
+	t.Cleanup(func() { release.Do(func() { close(finish) }); app.Close() })
+	server := startHTTPServer(t, app)
 	i := instance(backend.URL, 4)
 	body, _ := json.Marshal(i)
-	if status, _ := post(t, server.URL+"/v1/instances/register", workerToken, body); status != 200 {
+	if status, _ := post(t, server+"/v1/instances/register", workerToken, body); status != 200 {
 		t.Fatal(status)
 	}
 	first := submission(2)
-	if status, _ := post(t, server.URL+"/v1/requests", apiToken, payload(first)); status != 202 {
+	if status, _ := post(t, server+"/v1/requests", apiToken, payload(first)); status != 202 {
 		t.Fatal(status)
 	}
 	select {
@@ -69,38 +69,38 @@ func TestHotReloadPreservesInFlightRequest(t *testing.T) {
 	if err := app.Reload(context.Background(), cfg); err != nil {
 		t.Fatal(err)
 	}
-	if status, _ := post(t, server.URL+"/v1/requests", apiToken, payload(first)); status != 401 {
+	if status, _ := post(t, server+"/v1/requests", apiToken, payload(first)); status != 401 {
 		t.Fatal("old API token remains valid")
 	}
-	if status, _ := post(t, server.URL+"/v1/requests", cfg.APIToken, payload(first)); status != 400 {
+	if status, _ := post(t, server+"/v1/requests", cfg.APIToken, payload(first)); status != 400 {
 		t.Fatal("request body limit did not reload")
 	}
 	cfg.MaxBodyBytes = 1 << 20
 	if err := app.Reload(context.Background(), cfg); err != nil {
 		t.Fatal(err)
 	}
-	if status, _ := post(t, server.URL+"/v1/instances/register", workerToken, body); status != 401 {
+	if status, _ := post(t, server+"/v1/instances/register", workerToken, body); status != 401 {
 		t.Fatal("old worker token remains valid")
 	}
-	if status, data := post(t, server.URL+"/v1/instances/register", cfg.WorkerToken, body); status != 400 || string(data) != "{\"error_code\":\"endpoint_not_allowed\"}\n" {
+	if status, data := post(t, server+"/v1/instances/register", cfg.WorkerToken, body); status != 400 || string(data) != "{\"error_code\":\"endpoint_not_allowed\"}\n" {
 		t.Fatal("backend network permit did not reload", status, string(data))
 	}
 	cfg.AllowedNetworks = []string{"127.0.0.0/8"}
 	if err := app.Reload(context.Background(), cfg); err != nil {
 		t.Fatal(err)
 	}
-	if status, _ := post(t, server.URL+"/v1/instances/"+i.ID+"/heartbeat", cfg.WorkerToken, []byte(`{"ready":true}`)); status != 200 {
+	if status, _ := post(t, server+"/v1/instances/"+i.ID+"/heartbeat", cfg.WorkerToken, []byte(`{"ready":true}`)); status != 200 {
 		t.Fatal("updated worker token rejected")
 	}
-	var seconds float64
-	if err := observer.DB.QueryRow(context.Background(), `SELECT EXTRACT(EPOCH FROM (lease_expires_at-now())) FROM model_gateway.model_instances WHERE instance_id=$1`, i.ID).Scan(&seconds); err != nil || seconds < 40 {
-		t.Fatal("instance lease did not reload", seconds, err)
+	current, err := observer.DB.ModelInstance.Get(context.Background(), i.ID)
+	if err != nil || time.Until(current.LeaseExpiresAt) < 40*time.Second {
+		t.Fatal("instance lease did not reload", current, err)
 	}
-	if status, _ := post(t, server.URL+"/v1/instances/"+i.ID+"/drain", cfg.AdminToken, []byte(`{"draining":false}`)); status != 200 {
+	if status, _ := post(t, server+"/v1/instances/"+i.ID+"/drain", cfg.AdminToken, []byte(`{"draining":false}`)); status != 200 {
 		t.Fatal("updated admin token rejected")
 	}
 	second := submission(2)
-	if status, _ := post(t, server.URL+"/v1/requests", cfg.APIToken, payload(second)); status != 202 {
+	if status, _ := post(t, server+"/v1/requests", cfg.APIToken, payload(second)); status != 202 {
 		t.Fatal(status)
 	}
 	waitState(t, observer, second.ID, "unknown")
@@ -109,7 +109,7 @@ func TestHotReloadPreservesInFlightRequest(t *testing.T) {
 	if used(t, observer, i.ID) != 2 {
 		t.Fatal("in-flight completion or timeout lost capacity accounting")
 	}
-	_, err = observer.DB.Exec(context.Background(), `UPDATE model_gateway.requests SET updated_at=now()-interval '10 seconds' WHERE request_id=$1`, second.ID)
+	err = observer.DB.Request.UpdateOneID(second.ID).SetUpdatedAt(time.Now().Add(-10 * time.Second)).Exec(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestHotReloadPreservesInFlightRequest(t *testing.T) {
 	if err := app.Reload(context.Background(), bad); err == nil {
 		t.Fatal("invalid replacement accepted")
 	}
-	if status, _ := post(t, server.URL+"/v1/requests", cfg.APIToken, payload(second)); status != 200 {
+	if status, _ := post(t, server+"/v1/requests", cfg.APIToken, payload(second)); status != 200 {
 		t.Fatal("rejected replacement changed current configuration")
 	}
 }

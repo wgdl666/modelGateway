@@ -1,6 +1,6 @@
 # modelGateway
 
-Go 模型网关，一个服务可部署多个副本，共享 PostgreSQL。只使用 `model_instances` 和 `requests` 两张业务表。
+Go 模型网关，HTTP 服务使用 Hertz，数据库访问使用 Ent。一个服务可部署多个副本，共享 PostgreSQL。只使用 `model_instances` 和 `requests` 两张业务表。
 
 模型由人工指定机器和 GPU 后启动，向统一入口注册。网关按 `model_key` 选择实例，在 PG 事务内预留 N 个容量单位并保存原始请求，随后调用后端。模型服务负责上传生成文件，网关只保存和返回 OSS/S3 对象位置。
 
@@ -22,7 +22,7 @@ Go 模型网关，一个服务可部署多个副本，共享 PostgreSQL。只使
 
 `requests`：`request_id`、`model_key`、`request_payload`、`instance_id`、`backend_task_id`、`reserved_units`、`status`、`result`、创建和更新时间。
 
-完整 DDL 见 [migrations/001_init.sql](migrations/001_init.sql)。没有外键、结果过期时间或自动清理请求的任务。请求 JSONB 保留业务内容，不保证原 JSON 的空格、字段顺序。认证头不入库；输入应使用对象引用，不支持 multipart 文件上传。
+表结构定义见 [ent/schema](ent/schema)，客户端和迁移代码由 Ent 生成。表间使用业务 ID 关联，建表时关闭外键。没有结果过期时间或自动清理请求的任务。请求 JSONB 保留业务内容，不保证原 JSON 的空格、字段顺序。认证头不入库；输入应使用对象引用，不支持 multipart 文件上传。
 
 `model_key` 包含版本含义。机器和 GPU 清单仅用于展示；多个模型共享 GPU 时，本机调度器仍须限制实际合计并发。实例 ID 使用规范的小写带连字符 UUID，每次模型进程重启使用新 ID。模型与 endpoint 不允许原地替换，旧实例记录保留。
 
@@ -48,7 +48,7 @@ Go 模型网关，一个服务可部署多个副本，共享 PostgreSQL。只使
 ```sh
 go build -o bin/model-gateway ./cmd/model-gateway
 # 显式初始化新 schema；服务启动不执行 DDL。
-bin/model-gateway -config /etc/model-gateway/bootstrap.json -migrate migrations/001_init.sql
+bin/model-gateway -config /etc/model-gateway/bootstrap.json -migrate
 bin/model-gateway -config /etc/model-gateway/bootstrap.json
 ```
 
@@ -76,7 +76,7 @@ API、Worker 和 Admin 三种令牌分别对应可信调用方、模型注册和
 }
 ```
 
-`POST /v1/instances/{instance_id}/heartbeat`：`{"ready":true}`。建议每 10 秒发送一次，服务器使用 PG 时间续租，默认租约为 30 秒。重复注册和心跳不能清零占用或解除排空。相同模型和地址仍有活跃实例或未完成占用时，不能用新实例 ID 重新注册来绕过容量限制。
+`POST /v1/instances/{instance_id}/heartbeat`：`{"ready":true}`。建议每 10 秒发送一次，默认租约为 30 秒。网关使用服务端时间计算租约，各副本的系统时钟应保持同步。重复注册和心跳不能清零占用或解除排空。相同模型和地址仍有活跃实例或未完成占用时，不能用新实例 ID 重新注册来绕过容量限制。
 
 `POST /v1/instances/{instance_id}/drain`：`{"draining":true}`，使用 Admin 令牌。排空只停止新请求，不取消在途任务。
 
@@ -140,7 +140,7 @@ API、Worker 和 Admin 三种令牌分别对应可信调用方、模型注册和
 
 ## 故障处理
 
-没有全局单活锁。相同请求 ID 的短事务通过 PG 事务锁串行去重，实例行锁保护容量预留；锁不跨 HTTP 调用持有。重复完成通知只会释放一次容量。
+没有全局单活锁。请求唯一键保证跨副本去重，实例行锁保护容量预留。注册和心跳通过可串行化事务检查地址归属。业务读写均使用 Ent，容量比较和排序使用 Ent 查询构造器。事务在模型 HTTP 调用前提交，重复完成通知只会释放一次容量。
 
 状态为 reserved、dispatching、running、succeeded、failed、unknown。只有已确认的 succeeded / failed 释放容量。unknown 继续占用并查询原后端。
 
@@ -151,11 +151,13 @@ API、Worker 和 Admin 三种令牌分别对应可信调用方、模型注册和
 ## 本地验证
 
 ```sh
+# 修改 ent/schema 后重新生成客户端。
+go generate ./ent
 # 必须使用独立测试数据库，名称以 _test 结尾。
 TEST_DATABASE_URL=postgresql://postgres:local-test-only@127.0.0.1:55439/model_gateway_test go test -race ./... -count=1
 go vet ./...
 ```
 
-`TEST_DATABASE_URL` 仅供测试使用。测试会清空该测试库中这两张表，配置热加载测试还会创建并清理独立临时测试库。CI 使用临时 PG 18；没有 TEST_DATABASE_URL 时集成测试会跳过，不代表 PG 验收通过。
+`TEST_DATABASE_URL` 仅供测试使用。测试会清空该测试库中这两张表，配置热加载测试还会创建并清理独立临时命名空间。CI 使用临时 PG 18；没有 TEST_DATABASE_URL 时集成测试会跳过，不代表 PG 验收通过。
 
 此仓库本轮只实现和本地验证新网关。旧服务、线上数据库和流量入口均不改动。旧数据转换、真实模型协议适配及部署必须在后续单独验收。

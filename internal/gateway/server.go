@@ -16,7 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/wgdl666/modelGateway/ent"
 )
 
 type Server struct {
@@ -28,7 +30,6 @@ type Server struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
-	mux           *http.ServeMux
 }
 
 func NewServer(store *Store, c Config) (*Server, error) {
@@ -39,95 +40,113 @@ func NewServer(store *Store, c Config) (*Server, error) {
 	state.db = &database{pool: store.DB}
 	state.store = &Store{DB: store.DB, Lease: state.InstanceLease}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Server{current: state, configChanged: make(chan struct{}, 1), ctx: ctx, cancel: cancel, mux: http.NewServeMux()}
+	s := &Server{current: state, configChanged: make(chan struct{}, 1), ctx: ctx, cancel: cancel}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	s.client = &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	s.mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]bool{"live": true}) })
-	s.mux.HandleFunc("GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-		defer cancel()
-		if e := requestConfig(r.Context()).store.DB.Ping(ctx); e != nil {
-			writeError(w, 503, "database_unavailable")
-			return
-		}
-		writeJSON(w, 200, map[string]bool{"ready": true})
-	})
-	s.mux.HandleFunc("POST /v1/instances/register", s.auth("worker", s.register))
-	s.mux.HandleFunc("POST /v1/instances/{id}/heartbeat", s.auth("worker", s.heartbeat))
-	s.mux.HandleFunc("POST /v1/instances/{id}/drain", s.auth("admin", s.drain))
-	s.mux.HandleFunc("POST /v1/requests", s.auth("api", s.submit))
-	s.mux.HandleFunc("GET /v1/requests/{id}", s.auth("api", s.get))
 	return s, nil
 }
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	state, release := s.acquire()
-	defer release()
-	// 同一请求的鉴权、地址许可和数据库操作使用同一快照，避免中途混用两版配置。
-	s.mux.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), runtimeKey{}, state)))
-}
-func (s *Server) auth(role string, next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		c := requestConfig(r.Context()).Config
-		token := c.APIToken
-		switch role {
-		case "worker":
-			token = c.WorkerToken
-		case "admin":
-			token = c.AdminToken
-		}
-		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) != 1 {
-			writeError(w, 401, "unauthorized")
+
+// 每个监听器使用独立 Hertz 引擎，共享业务状态，使地址热更新不会终止已受理的模型任务。
+func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
+	h := server.Default(server.WithListener(listener), server.WithReadTimeout(30*time.Second),
+		server.WithWriteTimeout(30*time.Second), server.WithIdleTimeout(60*time.Second), server.WithExitWaitTime(30*time.Second),
+		server.WithHandleMethodNotAllowed(true), server.WithRedirectTrailingSlash(false), server.WithStreamBody(true),
+		server.WithMaxRequestBodySize(4096), server.WithDisablePreParseMultipartForm(true), server.WithSenseClientDisconnection(true))
+	h.Use(func(ctx context.Context, c *app.RequestContext) {
+		state, release := s.acquire()
+		defer release()
+		// 鉴权、请求体上限与数据库操作共用请求开始时的快照，避免热加载中途混用配置。
+		c.Next(context.WithValue(ctx, runtimeKey{}, state))
+	})
+	live := func(ctx context.Context, c *app.RequestContext) { writeJSON(c, 200, map[string]bool{"live": true}) }
+	ready := func(ctx context.Context, c *app.RequestContext) {
+		ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		if _, err := requestConfig(ctx).store.DB.ModelInstance.Query().Exist(ctx); err != nil {
+			writeError(c, 503, "database_unavailable")
 			return
 		}
-		next(w, r)
+		writeJSON(c, 200, map[string]bool{"ready": true})
+	}
+	h.GET("/health/live", live)
+	h.HEAD("/health/live", live)
+	h.GET("/health/ready", ready)
+	h.HEAD("/health/ready", ready)
+	h.POST("/v1/instances/register", s.auth("worker", s.register))
+	h.POST("/v1/instances/:id/heartbeat", s.auth("worker", s.heartbeat))
+	h.POST("/v1/instances/:id/drain", s.auth("admin", s.drain))
+	h.POST("/v1/requests", s.auth("api", s.submit))
+	h.GET("/v1/requests/:id", s.auth("api", s.get))
+	h.HEAD("/v1/requests/:id", s.auth("api", s.get))
+	return h
+}
+
+func (s *Server) auth(role string, next app.HandlerFunc) app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		cfg := requestConfig(ctx).Config
+		token := cfg.APIToken
+		switch role {
+		case "worker":
+			token = cfg.WorkerToken
+		case "admin":
+			token = cfg.AdminToken
+		}
+		if subtle.ConstantTimeCompare(c.GetHeader("Authorization"), []byte("Bearer "+token)) != 1 {
+			writeError(c, 401, "unauthorized")
+			return
+		}
+		next(ctx, c)
 	}
 }
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+func writeJSON(c *app.RequestContext, status int, value any) {
+	c.Header("Content-Type", "application/json")
+	c.SetStatusCode(status)
+	_ = json.NewEncoder(c).Encode(value)
 }
-func writeError(w http.ResponseWriter, status int, code string) {
-	writeJSON(w, status, map[string]string{"error_code": code})
+func writeError(c *app.RequestContext, status int, code string) {
+	writeJSON(c, status, map[string]string{"error_code": code})
 }
-func (s *Server) body(w http.ResponseWriter, r *http.Request, out any) ([]byte, error) {
-	raw, e := io.ReadAll(http.MaxBytesReader(w, r.Body, requestConfig(r.Context()).MaxBodyBytes))
-	if e != nil {
-		return nil, e
+func (s *Server) body(ctx context.Context, c *app.RequestContext, out any) ([]byte, error) {
+	limit := requestConfig(ctx).MaxBodyBytes
+	// 流式读取按当前快照限长；独立分配的原文可交给后台任务，避免引用 Hertz 回收的请求缓冲。
+	raw, err := io.ReadAll(io.LimitReader(c.Request.BodyStream(), limit+1))
+	if err != nil || int64(len(raw)) > limit {
+		c.SetConnectionClose()
+		return nil, errors.New("invalid request body size")
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()
-	if e = d.Decode(out); e != nil {
-		return nil, e
+	if err := d.Decode(out); err != nil {
+		return nil, err
 	}
-	if e = d.Decode(new(any)); e != io.EOF {
+	if err := d.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("expected one JSON value")
 	}
 	return raw, nil
 }
-func storeError(w http.ResponseWriter, e error) {
+func storeError(c *app.RequestContext, e error) {
 	switch {
-	case errors.Is(e, pgx.ErrNoRows):
-		writeError(w, 404, "not_found")
+	case ent.IsNotFound(e):
+		writeError(c, 404, "not_found")
 	case errors.Is(e, ErrConflict):
-		writeError(w, 409, "instance_conflict")
+		writeError(c, 409, "instance_conflict")
 	case errors.Is(e, ErrBusy):
-		writeError(w, 503, "capacity_unavailable")
+		writeError(c, 503, "capacity_unavailable")
 	default:
 		slog.Error("database operation failed", "error_type", fmt.Sprintf("%T", e))
-		writeError(w, 503, "database_unavailable")
+		writeError(c, 503, "database_unavailable")
 	}
 }
-func (s *Server) register(w http.ResponseWriter, r *http.Request) {
+func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 	var i Instance
-	if _, e := s.body(w, r, &i); e != nil || !validID(i.ID) || i.ModelKey == "" || len(i.ModelKey) > 128 || i.Capacity <= 0 || i.Capacity > 65536 {
-		writeError(w, 400, "invalid_registration")
+	if _, e := s.body(ctx, c, &i); e != nil || !validID(i.ID) || i.ModelKey == "" || len(i.ModelKey) > 128 || i.Capacity <= 0 || i.Capacity > 65536 {
+		writeError(c, 400, "invalid_registration")
 		return
 	}
-	state := requestConfig(r.Context())
+	state := requestConfig(ctx)
 	if e := validateEndpoint(i.Endpoint, state.networks, state.ports); e != nil {
-		writeError(w, 400, "endpoint_not_allowed")
+		writeError(c, 400, "endpoint_not_allowed")
 		return
 	}
 	i.Endpoint = strings.TrimRight(i.Endpoint, "/")
@@ -137,69 +156,69 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	seen := map[int]bool{}
 	for _, gpu := range i.GPUDevices {
 		if gpu < 0 || seen[gpu] {
-			writeError(w, 400, "invalid_gpu_devices")
+			writeError(c, 400, "invalid_gpu_devices")
 			return
 		}
 		seen[gpu] = true
 	}
-	if e := state.store.Register(r.Context(), i); e != nil {
-		storeError(w, e)
+	if e := state.store.Register(ctx, i); e != nil {
+		storeError(c, e)
 		return
 	}
-	writeJSON(w, 200, map[string]bool{"registered": true})
+	writeJSON(c, 200, map[string]bool{"registered": true})
 }
-func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request) {
+func (s *Server) heartbeat(ctx context.Context, c *app.RequestContext) {
 	var body struct {
 		Ready *bool `json:"ready"`
 	}
-	if _, e := s.body(w, r, &body); e != nil || body.Ready == nil {
-		writeError(w, 400, "ready_required")
+	if _, e := s.body(ctx, c, &body); e != nil || body.Ready == nil {
+		writeError(c, 400, "ready_required")
 		return
 	}
-	if e := requestConfig(r.Context()).store.Heartbeat(r.Context(), r.PathValue("id"), *body.Ready); e != nil {
-		storeError(w, e)
+	if e := requestConfig(ctx).store.Heartbeat(ctx, c.Param("id"), *body.Ready); e != nil {
+		storeError(c, e)
 		return
 	}
-	writeJSON(w, 200, map[string]bool{"renewed": true})
+	writeJSON(c, 200, map[string]bool{"renewed": true})
 }
-func (s *Server) drain(w http.ResponseWriter, r *http.Request) {
+func (s *Server) drain(ctx context.Context, c *app.RequestContext) {
 	var body struct {
 		Draining *bool `json:"draining"`
 	}
-	if _, e := s.body(w, r, &body); e != nil || body.Draining == nil {
-		writeError(w, 400, "draining_required")
+	if _, e := s.body(ctx, c, &body); e != nil || body.Draining == nil {
+		writeError(c, 400, "draining_required")
 		return
 	}
-	if e := requestConfig(r.Context()).store.Drain(r.Context(), r.PathValue("id"), *body.Draining); e != nil {
-		storeError(w, e)
+	if e := requestConfig(ctx).store.Drain(ctx, c.Param("id"), *body.Draining); e != nil {
+		storeError(c, e)
 		return
 	}
-	writeJSON(w, 200, map[string]bool{"updated": true})
+	writeJSON(c, 200, map[string]bool{"updated": true})
 }
-func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
+func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 	var in Submission
-	raw, e := s.body(w, r, &in)
+	raw, e := s.body(ctx, c, &in)
 	if e != nil || !validID(in.ID) || in.ModelKey == "" || len(in.ModelKey) > 128 || in.Units < 1 || in.Units > 65536 || len(in.Input) == 0 {
-		writeError(w, 400, "invalid_request")
+		writeError(c, 400, "invalid_request")
 		return
 	}
 	var request Request
 	var endpoint string
 	var created bool
-	state := requestConfig(r.Context())
+	state := requestConfig(ctx)
 	for attempt := 0; attempt < 3; attempt++ {
-		request, endpoint, created, e = state.store.Reserve(r.Context(), in, raw)
+		request, endpoint, created, e = state.store.Reserve(ctx, in, raw)
 		if !errors.Is(e, ErrBusy) {
 			break
 		}
 		select {
-		case <-r.Context().Done():
+		case <-ctx.Done():
 			return
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
 	if e != nil {
-		storeError(w, e)
+		storeError(c, e)
 		return
 	}
 	if created {
@@ -216,19 +235,19 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	if terminal(request.Status) {
 		status = 200
 	}
-	writeJSON(w, status, request)
+	writeJSON(c, status, request)
 }
-func (s *Server) get(w http.ResponseWriter, r *http.Request) {
-	if !validID(r.PathValue("id")) {
-		writeError(w, 400, "invalid_request_id")
+func (s *Server) get(ctx context.Context, c *app.RequestContext) {
+	if !validID(c.Param("id")) {
+		writeError(c, 400, "invalid_request_id")
 		return
 	}
-	request, e := requestConfig(r.Context()).store.Get(r.Context(), r.PathValue("id"))
+	request, e := requestConfig(ctx).store.Get(ctx, c.Param("id"))
 	if e != nil {
-		storeError(w, e)
+		storeError(c, e)
 		return
 	}
-	writeJSON(w, 200, request)
+	writeJSON(c, 200, request)
 }
 
 func (s *Server) call(ctx context.Context, state *runtimeConfig, method, endpoint string, body []byte) (BackendResponse, error) {
@@ -349,6 +368,6 @@ func (s *Server) Close() {
 	s.wg.Wait()
 	s.retired.Wait()
 	s.current.db.users.Wait()
-	s.current.db.pool.Close()
+	_ = s.current.db.pool.Close()
 	s.client.CloseIdleConnections()
 }

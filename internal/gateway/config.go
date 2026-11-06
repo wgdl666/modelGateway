@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/wgdl666/modelGateway/ent"
 )
 
 type Config struct {
@@ -57,7 +57,7 @@ func ParseConfig(raw []byte) (Config, error) {
 }
 
 type database struct {
-	pool  *pgxpool.Pool
+	pool  *ent.Client
 	users sync.WaitGroup
 }
 
@@ -127,14 +127,8 @@ func (s *Server) Reload(ctx context.Context, c Config) error {
 	s.mu.RUnlock()
 	next.db = old.db
 	if c.DatabaseURL != old.DatabaseURL {
-		pool, err := pgxpool.New(ctx, c.DatabaseURL)
-		if err == nil {
-			err = pool.Ping(ctx)
-		}
+		pool, err := OpenDatabase(ctx, c.DatabaseURL, false)
 		if err != nil {
-			if pool != nil {
-				pool.Close()
-			}
 			return errors.New("cannot connect to configured PostgreSQL")
 		}
 		next.db = &database{pool: pool}
@@ -148,7 +142,7 @@ func (s *Server) Reload(ctx context.Context, c Config) error {
 		go func() {
 			defer s.retired.Done()
 			old.db.users.Wait()
-			old.db.pool.Close()
+			_ = old.db.pool.Close()
 		}()
 	}
 	select {
