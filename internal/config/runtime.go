@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"maps"
 	"net"
 	"net/url"
 	"os"
@@ -26,15 +27,20 @@ type Config struct {
 	MaxWaiting        int            `json:"max_waiting"`
 	MaxWaitingBytes   int64          `json:"max_waiting_bytes"`
 	UnitsByCapability map[string]int `json:"units_by_capability"`
+
+	NativeBackends         map[string]NativeBackend `json:"native_backends"`
+	NativeResults          NativeResults            `json:"native_results"`
+	NativeExecutionTimeout time.Duration            `json:"-"`
 }
 
-// 排队和首次模型调用共用 backend_timeout，入队后截止时间固定。
+// 入队固定上游等待截止时间，原生模型的执行预算从领取任务时起算。
 func Parse(raw []byte) (Config, error) {
 	var c Config
 	wire := struct {
 		*Config
-		BackendTimeout string `json:"backend_timeout"`
-		PollInterval   string `json:"poll_interval"`
+		BackendTimeout         string `json:"backend_timeout"`
+		NativeExecutionTimeout string `json:"native_execution_timeout"`
+		PollInterval           string `json:"poll_interval"`
 	}{Config: &c}
 	if err := json.Unmarshal(raw, &wire); err != nil {
 		return c, errors.New("invalid gateway configuration JSON")
@@ -50,7 +56,10 @@ func Parse(raw []byte) (Config, error) {
 			*field = value
 		}
 	}
-	for target, value := range map[*time.Duration]string{&c.BackendTimeout: wire.BackendTimeout, &c.PollInterval: wire.PollInterval} {
+	for target, value := range map[*time.Duration]string{
+		&c.BackendTimeout: wire.BackendTimeout, &c.NativeExecutionTimeout: wire.NativeExecutionTimeout,
+		&c.PollInterval: wire.PollInterval,
+	} {
 		if value != "" {
 			duration, err := time.ParseDuration(value)
 			if err != nil || duration <= 0 {
@@ -81,6 +90,12 @@ func prepareConfig(c Config) (*Snapshot, error) {
 	}
 	if c.BackendTimeout == 0 {
 		c.BackendTimeout = 120 * time.Second
+	}
+	if c.NativeExecutionTimeout == 0 {
+		c.NativeExecutionTimeout = 180 * time.Second
+	}
+	if c.NativeExecutionTimeout < 0 {
+		return nil, errors.New("native_execution_timeout must be positive")
 	}
 	if c.PollInterval == 0 {
 		c.PollInterval = time.Second
@@ -116,6 +131,9 @@ func prepareConfig(c Config) (*Snapshot, error) {
 	if len(state.networks) == 0 || len(state.ports) == 0 {
 		return nil, errors.New("explicit backend network and port allowlists required")
 	}
+	if err := state.validateNative(); err != nil {
+		return nil, err
+	}
 	return state, nil
 }
 
@@ -149,6 +167,10 @@ func (r *Runtime) Reload(c Config) error {
 	defer r.mu.Unlock()
 	if next.DatabaseURL != r.current.DatabaseURL {
 		return errors.New("changing database_url requires draining and restarting the gateway")
+	}
+	// 已派发的请求按原地址回查，协议、视频目标和结果桶都归本次部署所有。
+	if !maps.Equal(next.NativeBackends, r.current.NativeBackends) || next.NativeResults != r.current.NativeResults {
+		return errors.New("changing native backends or result storage requires draining and restarting the gateway")
 	}
 	r.current = next
 	return nil

@@ -17,7 +17,7 @@
 
 图片持久入队后同步等待结果。视频持久入队后立即返回 202 和 `request_id`、`state`。使用相同请求头调用 `GET /v1/gateway/requests` 查询。成功响应为 `result.files[]`，每项只有 `provider`、`region`、`bucket` 和 `key`。在排队时可用 `POST /v1/gateway/requests/cancel` 取消，已经派发返回 409。
 
-队列按模型限等待条数和字节数，默认 64 条、128 MiB。队列满返回 429。没有健康实例或 PG 不可用返回 503。排队与首次模型调用共用默认 120 秒。
+队列按模型限等待条数和字节数，默认 64 条、128 MiB。队列满返回 429。没有健康实例或 PG 不可用返回 503。`backend_timeout` 默认 120 秒，用于排队和上游等待。使用 Worker 协议的实例也用这份预算完成首次模型调用。
 
 ## 实例管理
 
@@ -45,7 +45,7 @@ Ops 使用管理凭据访问 `GET /v1/admin/requests` 和 `GET /v1/admin/request
 
 `requests` 保存原始业务 JSON、四态、截止时间、实际派发实例和制品、容量预留、后端任务及对象结果。实例和组占用从仍预留槽位的请求汇总。并发受理与派发使用可串行化事务。消费者在持有任务行锁时提交归属和容量，再调用模型。
 
-派发使用 `POST {endpoint}/requests`。模型端接收 `request_id`、`model_key`、`capability`、`input` 和 `metadata`。返回同一 `request_id`，状态为 `processing`、`succeeded` 或 `failed`。未受理的输入校验和鉴权错误使用 HTTP 400、413、415、401 或 403。已经受理的任务通过 `GET {endpoint}/requests/{request_id}` 查询，完成状态必须提供对象结果或结构化错误。
+使用 Worker 协议的实例通过 `POST {endpoint}/requests` 接收派发。模型端接收 `request_id`、`model_key`、`capability`、`input` 和 `metadata`。返回同一 `request_id`，状态为 `processing`、`succeeded` 或 `failed`。未受理的输入校验和鉴权错误使用 HTTP 400、413、415、401 或 403。已经受理的任务通过 `GET {endpoint}/requests/{request_id}` 查询，完成状态必须提供对象结果或结构化错误。
 
 网关的状态为 `queued`、`processing`、`succeeded`、`failed`。副本退出后其他副本接管队列和状态查询。派发结果未知时保留槽位，查询原实例，禁止重发生成。确认终态后原子释放，迟到的确认不会改写已经对外失败的状态。
 
@@ -59,6 +59,31 @@ Ops 使用管理凭据访问 `GET /v1/admin/requests` 和 `GET /v1/admin/request
 python -m pip install -r worker_adapter/requirements.txt
 python -m uvicorn app:app --app-dir worker_adapter --host 127.0.0.1 --port 8001
 ```
+
+## Go 网关直连
+
+将原生地址加入 `native_backends`，再以相同的 `endpoint` 登记实例。健康地址和执行地址使用同一个协议、IP 和端口，端口加入 `backend_ports`。常规 VMind-Image 使用空对象。国内 FLUX 换装使用 `vton_edits` 选择 `/v1/images/edits`。LTX 的 `target_instance` 取自原生健康接口，并与登记的 GPU 分组对应。切换地址、协议或结果桶前先排空受影响的实例，再更新配置并重启网关。
+
+```json
+{
+  "native_backends": {
+    "http://10.0.1.10:9001": {"vton_edits": true},
+    "http://10.0.1.11:9002": {"target_instance": "ltx-gpu0"}
+  },
+  "native_results": {
+    "provider": "oss",
+    "region": "cn-shenzhen",
+    "bucket": "vmind-results",
+    "endpoint": "https://oss-cn-shenzhen-internal.aliyuncs.com"
+  }
+}
+```
+
+VMind-Image 和 LTX 的原生鉴权分别使用 `MODEL_GATEWAY_NATIVE_IMAGE_*` 和 `MODEL_GATEWAY_NATIVE_VIDEO_*`。Basic Auth 注入 `USERNAME`、`PASSWORD`，`X-Token` 注入 `TOKEN`。OSS 从 `OSS_ACCESS_KEY_ID` 和 `OSS_ACCESS_KEY_SECRET` 取凭据。S3 使用 AWS 凭据链，`endpoint` 可省略。
+
+直连视频通过 `/vton` 提交，按已记录的 `job_id` 查询 `/jobs/{job_id}`。网关把图片或视频写到 `outputs/<request_id>/`，通过 `result.files` 返回对象引用。图片响应体上限为 64 MiB，视频成品上限为 200 MiB。图片调用断线且终态未知时保留 GPU 槽位，等待核对原执行。
+
+`native_execution_timeout` 默认 180 秒，从领取任务时起算，用于原生模型的首次调用和图片成品发布。上游等待超时后，已派发的任务继续等原生响应。网关记录终态时释放 GPU 槽位，调用方可以用原 `request_id` 查询结果。
 
 ## 网关启动
 

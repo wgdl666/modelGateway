@@ -174,7 +174,7 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	var wg sync.WaitGroup
 	for n := range 20 {
 		wg.Go(func() {
-			task, err := []*store.Store{a, b}[n%2].Claim(t.Context())
+			task, err := []*store.Store{a, b}[n%2].Claim(t.Context(), testConfig())
 			if err != nil {
 				t.Errorf("claim: %v", err)
 			}
@@ -192,7 +192,7 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	if err := a.DispatchFailure(t.Context(), first, 504, "backend_timeout", "unknown", true); err != nil {
 		t.Fatal(err)
 	}
-	if next, err := b.Claim(t.Context()); next != nil || err != nil {
+	if next, err := b.Claim(t.Context(), testConfig()); next != nil || err != nil {
 		t.Fatalf("unknown task released capacity: %v %v", next, err)
 	}
 	poll, err := b.ClaimPoll(t.Context())
@@ -209,7 +209,7 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	if err != nil || task.State != request.StateFailed || task.SlotReserved {
 		t.Fatalf("late completion rewrote failed state or leaked capacity: %v %v", task, err)
 	}
-	next, err := b.Claim(t.Context())
+	next, err := b.Claim(t.Context(), testConfig())
 	if err != nil || next == nil || next.ID == first || next.Units != 2 {
 		t.Fatalf("queued task was not dispatched after slot release: %v %v", next, err)
 	}

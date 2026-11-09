@@ -12,6 +12,9 @@ import (
 	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
+// ExecutionWriteTimeout 给执行终态写入预留时间，避免结果回查提前接管。
+const ExecutionWriteTimeout = 3 * time.Second
+
 // ClaimPoll 领取结果回查，派发与容量归还仍由请求账本里的状态决定。
 func (s *Store) ClaimPoll(ctx context.Context) (*ent.Request, error) {
 	tx, err := s.db.Tx(ctx)
@@ -22,7 +25,7 @@ func (s *Store) ClaimPoll(ctx context.Context) (*ent.Request, error) {
 	now := time.Now().UTC()
 	task, err := tx.Request.Query().Where(request.SlotReservedEQ(true), request.NextPollAtLTE(now)).
 		Order(ent.Asc(request.FieldNextPollAt, request.FieldID)).ForUpdate(sql.WithLockAction(sql.SkipLocked)).
-		Select(request.FieldID, request.FieldEndpoint).First(ctx)
+		Select(request.FieldID, request.FieldEndpoint, request.FieldCapability, request.FieldBackendTaskID).First(ctx)
 	if ent.IsNotFound(err) {
 		return nil, nil
 	}
@@ -35,6 +38,13 @@ func (s *Store) ClaimPoll(ctx context.Context) (*ent.Request, error) {
 		return nil, err
 	}
 	return task, tx.Commit()
+}
+
+// ExtendPoll 给视频发布延长领取期限，仅当前持有者能开始下载和上传。
+func (s *Store) ExtendPoll(ctx context.Context, id, claim string, until time.Time) (bool, error) {
+	count, err := s.db.Request.Update().Where(request.IDEQ(id), request.SlotReservedEQ(true), request.PollClaimEQ(claim)).
+		SetNextPollAt(until).Save(ctx)
+	return count == 1, err
 }
 
 func (s *Store) updateExecution(ctx context.Context, id, claim string, apply func(*ent.Request, *ent.RequestUpdateOne) error) error {

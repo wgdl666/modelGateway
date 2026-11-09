@@ -160,28 +160,39 @@ func Capabilities(model string) []string {
 	}
 }
 
+type InputImage struct {
+	MIMEType string `json:"mime_type"`
+	Data     []byte `json:"data"`
+}
+
+// 受理和原生派发使用同一种图片格式，避免已有队列记录被不同的规则拒绝。
+func DecodeInput(input json.RawMessage) (map[string]json.RawMessage, []InputImage, error) {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(input, &fields) != nil || fields == nil {
+		return nil, nil, errors.New("input must be a JSON object")
+	}
+	var images []InputImage
+	if err := DecodeJSON(fields["images"], &images); err != nil {
+		return nil, nil, errors.New("images must contain mime_type and base64 data")
+	}
+	for _, image := range images {
+		if !imageMIME.MatchString(image.MIMEType) || len(image.Data) == 0 {
+			return nil, nil, errors.New("invalid image")
+		}
+	}
+	delete(fields, "images")
+	return fields, images, nil
+}
+
 // 模型标识和业务输入决定能力，客户端不能提交模型地址、内部路径或执行容量。
 func Route(model string, input json.RawMessage) (string, error) {
 	if len(Capabilities(model)) == 0 {
 		return "", errors.New("unknown model")
 	}
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(input, &fields) != nil || fields == nil {
-		return "", errors.New("input must be a JSON object")
+	fields, images, err := DecodeInput(input)
+	if err != nil {
+		return "", err
 	}
-	var images []struct {
-		MIMEType string `json:"mime_type"`
-		Data     []byte `json:"data"`
-	}
-	if err := DecodeJSON(fields["images"], &images); err != nil {
-		return "", errors.New("images must contain mime_type and base64 data")
-	}
-	for _, image := range images {
-		if !imageMIME.MatchString(image.MIMEType) || len(image.Data) == 0 {
-			return "", errors.New("invalid image")
-		}
-	}
-	delete(fields, "images")
 	capability := Capabilities(model)[0]
 	minImages, maxImages := 1, 1
 	var allowed []string

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,15 +33,37 @@ type Reconciler struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
+
+	nativeImageAuth nativeAuth
+	nativeVideoAuth nativeAuth
+	results         *resultUploader
 }
 
-func New(tasks *store.Store, runtime *config.Runtime) *Reconciler {
-	ctx, cancel := context.WithCancel(context.Background())
+func New(tasks *store.Store, runtime *config.Runtime) (*Reconciler, error) {
+	w := &Reconciler{store: tasks, runtime: runtime}
+	cfg := runtime.Current()
+	// 原生路由和结果桶属于部署配置，客户端与执行器共享同一份固定配置。
+	if len(cfg.NativeBackends) != 0 {
+		var err error
+		w.nativeImageAuth, err = readNativeAuth("MODEL_GATEWAY_NATIVE_IMAGE")
+		if err != nil {
+			return nil, err
+		}
+		w.nativeVideoAuth, err = readNativeAuth("MODEL_GATEWAY_NATIVE_VIDEO")
+		if err != nil {
+			return nil, err
+		}
+		w.results, err = newResultUploader(cfg.NativeResults)
+		if err != nil {
+			return nil, err
+		}
+	}
+	w.ctx, w.cancel = context.WithCancel(context.Background())
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	transport.DialContext = (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext
-	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	return &Reconciler{store: tasks, runtime: runtime, ctx: ctx, cancel: cancel, client: client}
+	w.client = &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	return w, nil
 }
 
 func (w *Reconciler) Close() {
@@ -67,16 +90,43 @@ func (w *Reconciler) modelCall(ctx context.Context, cfg *config.Snapshot, method
 	if cfg.BackendToken != "" {
 		req.Header.Set("Authorization", "Bearer "+cfg.BackendToken)
 	}
-	resp, err := w.client.Do(req)
+	resp, err := w.modelHTTP(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	raw, err := readModelBody(resp.Body, workerResponseLimit)
+	if err != nil {
+		return nil, errors.New("invalid model response body")
+	}
+	return raw, nil
+}
+
+func (w *Reconciler) modelHTTP(req *http.Request) (*http.Response, error) {
+	resp, err := w.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		// 国内 FLUX 的路由未命中用纯文本 404 表示，能确认模型尚未接单。
+		if req.Method == http.MethodPost && req.URL.Path == fluxEditsPath &&
+			resp.StatusCode == http.StatusNotFound && strings.HasPrefix(resp.Header.Get("Content-Type"), "text/plain") {
+			if raw, err := readModelBody(resp.Body, 64); err == nil && strings.EqualFold(strings.TrimSpace(string(raw)), "not found") {
+				return nil, errNativeRouteUnavailable
+			}
+		}
 		return nil, modelStatusError(resp.StatusCode)
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, workerResponseLimit+1))
-	if err != nil || len(raw) > workerResponseLimit {
+	return resp, nil
+}
+
+func readModelBody(body io.Reader, limit int64) ([]byte, error) {
+	raw, err := io.ReadAll(io.LimitReader(body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > limit {
 		return nil, errors.New("invalid model response body")
 	}
 	return raw, nil
@@ -87,9 +137,14 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 	if err := json.Unmarshal(task.RequestPayload, &payload); err != nil {
 		return w.failDispatch(task.ID, 500, "invalid_saved_request", "saved request is invalid", false)
 	}
-	raw, err := json.Marshal(protocol.ModelRequest{RequestID: task.ID, ModelKey: task.ModelKey, Capability: task.Capability, Submission: payload})
-	if err != nil {
-		return w.failDispatch(task.ID, 500, "invalid_saved_request", "saved request is invalid", false)
+	backend, direct := cfg.NativeBackends[task.Endpoint]
+	var raw []byte
+	if !direct {
+		var err error
+		raw, err = json.Marshal(protocol.ModelRequest{RequestID: task.ID, ModelKey: task.ModelKey, Capability: task.Capability, Submission: payload})
+		if err != nil {
+			return w.failDispatch(task.ID, 500, "invalid_saved_request", "saved request is invalid", false)
+		}
 	}
 	if !time.Now().Before(task.DeadlineAt) {
 		return w.failDispatch(task.ID, 504, "queue_timeout", "request expired before dispatch", false)
@@ -97,44 +152,63 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 	if cfg.ValidateEndpoint(task.Endpoint, false) != nil {
 		return w.failDispatch(task.ID, 503, "backend_unavailable", "selected model address is unavailable", false)
 	}
-	ctx, cancel := context.WithDeadline(w.ctx, task.DeadlineAt)
+	deadline := task.DeadlineAt
+	if direct {
+		// 上游先等超时也要继续接原生响应，拿到真实终态后才能释放 GPU。
+		deadline = task.StartedAt.Add(cfg.NativeExecutionTimeout)
+	}
+	ctx, cancel := context.WithDeadline(w.ctx, deadline)
 	defer cancel()
+	if direct {
+		return w.executeNative(ctx, cfg, task, payload, backend)
+	}
 	response, err := w.modelCall(ctx, cfg, http.MethodPost, task.Endpoint, "/requests", raw)
 	if err != nil {
-		var status modelStatusError
-		if errors.As(err, &status) {
-			// 执行端约定这些错误在落受理记录前返回，可以确认 GPU 尚未接单。
-			switch status {
-			case 400, 413, 415:
-				return w.failDispatch(task.ID, 400, "model_rejected", "model rejected the request before admission", false)
-			case 401, 403:
-				return w.failDispatch(task.ID, 502, "model_authentication_failed", "model rejected the gateway credential", false)
-			}
-		}
-		var op *net.OpError
-		if errors.As(err, &op) && op.Op == "dial" {
-			return w.failDispatch(task.ID, 503, "backend_unreachable", "model connection was not established", false)
-		}
-		// 发出之后的超时与断线无法证明模型已释放 GPU，改用原 ID 查询。
-		if errors.Is(err, context.DeadlineExceeded) {
-			return w.failDispatch(task.ID, 504, "backend_timeout", "model execution outcome is unknown", true)
-		}
-		return w.failDispatch(task.ID, 502, "backend_outcome_unknown", "model execution outcome is unknown", true)
+		return w.dispatchError(task.ID, err)
 	}
 	return w.recordModelResponse(cfg, task, response, false)
 }
 
+func (w *Reconciler) dispatchError(id string, err error) error {
+	var status modelStatusError
+	if errors.As(err, &status) {
+		// 执行端约定这些错误在受理前返回，可以确认 GPU 尚未接单。
+		switch status {
+		case 400, 413, 415:
+			return w.failDispatch(id, 400, "model_rejected", "model rejected the request before admission", false)
+		case 401, 403:
+			return w.failDispatch(id, 502, "model_authentication_failed", "model rejected the gateway credential", false)
+		}
+	}
+	var op *net.OpError
+	if errors.As(err, &op) && op.Op == "dial" {
+		return w.failDispatch(id, 503, "backend_unreachable", "model connection was not established", false)
+	}
+	// 发出之后的超时与断线无法证明模型已释放 GPU，保留槽位等待终态。
+	if errors.Is(err, context.DeadlineExceeded) {
+		return w.failDispatch(id, 504, "backend_timeout", "model execution outcome is unknown", true)
+	}
+	return w.failDispatch(id, 502, "backend_outcome_unknown", "model execution outcome is unknown", true)
+}
+
 func (w *Reconciler) failDispatch(id string, status int, code, message string, hold bool) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), store.ExecutionWriteTimeout)
 	defer cancel()
 	return w.store.DispatchFailure(ctx, id, status, code, message, hold)
 }
 
 func (w *Reconciler) recordModelResponse(cfg *config.Snapshot, task *ent.Request, raw []byte, polling bool) error {
 	var response protocol.ModelResponse
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	if err := protocol.DecodeJSON(raw, &response); err != nil {
+		response = protocol.ModelResponse{}
+	}
+	return w.saveModelResponse(cfg, task, response, polling)
+}
+
+func (w *Reconciler) saveModelResponse(cfg *config.Snapshot, task *ent.Request, response protocol.ModelResponse, polling bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), store.ExecutionWriteTimeout)
 	defer cancel()
-	if err := protocol.DecodeJSON(raw, &response); err != nil || response.Validate(task.ID) != nil {
+	if response.Validate(task.ID) != nil {
 		if polling {
 			return w.store.PollUnavailable(ctx, task.ID, task.PollClaim, cfg.PollInterval)
 		}
@@ -144,15 +218,22 @@ func (w *Reconciler) recordModelResponse(cfg *config.Snapshot, task *ent.Request
 }
 
 func (w *Reconciler) pollModel(cfg *config.Snapshot, task *ent.Request) error {
+	if backend, direct := cfg.NativeBackends[task.Endpoint]; direct {
+		return w.pollNative(cfg, task, backend)
+	}
 	ctx, cancel := context.WithTimeout(w.ctx, 3*time.Second)
 	defer cancel()
 	raw, err := w.modelCall(ctx, cfg, http.MethodGet, task.Endpoint, "/requests/"+task.ID, nil)
 	if err == nil {
 		return w.recordModelResponse(cfg, task, raw, true)
 	}
-	writeCtx, stop := context.WithTimeout(context.Background(), 3*time.Second)
-	defer stop()
-	return w.store.PollUnavailable(writeCtx, task.ID, task.PollClaim, cfg.PollInterval)
+	return w.pollUnavailable(cfg, task)
+}
+
+func (w *Reconciler) pollUnavailable(cfg *config.Snapshot, task *ent.Request) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return w.store.PollUnavailable(ctx, task.ID, task.PollClaim, cfg.PollInterval)
 }
 
 func (w *Reconciler) probe(cfg *config.Snapshot) error {
@@ -167,11 +248,16 @@ func (w *Reconciler) probe(cfg *config.Snapshot) error {
 			checked := time.Now().UTC()
 			ctx, cancel := context.WithTimeout(w.ctx, 3*time.Second)
 			defer cancel()
-			raw, callErr := w.modelCall(ctx, cfg, http.MethodGet, row.HealthURL, "", nil)
-			var health struct {
-				Ready bool `json:"ready"`
+			var ready bool
+			if backend, direct := cfg.NativeBackends[row.Endpoint]; direct {
+				ready = w.nativeReady(ctx, cfg, row, backend)
+			} else {
+				raw, callErr := w.modelCall(ctx, cfg, http.MethodGet, row.HealthURL, "", nil)
+				var health struct {
+					Ready bool `json:"ready"`
+				}
+				ready = callErr == nil && json.Unmarshal(raw, &health) == nil && health.Ready
 			}
-			ready := callErr == nil && json.Unmarshal(raw, &health) == nil && health.Ready
 			if err := w.store.RecordProbe(w.ctx, row.ID, checked, ready); err != nil && w.ctx.Err() == nil {
 				slog.Error("model health update failed", "error_type", fmt.Sprintf("%T", err))
 			}
@@ -204,11 +290,13 @@ func (w *Reconciler) Start() {
 	w.runWorker("queue expiry failed", 200*time.Millisecond, func() error { return w.store.Expire(w.ctx) })
 	for range 4 {
 		w.runWorker("queue dispatch failed", 80*time.Millisecond, func() error {
-			task, err := w.store.Claim(w.ctx)
+			// 领取和派发使用同一份预算，配置热更新只影响后续领取。
+			cfg := w.runtime.Current()
+			task, err := w.store.Claim(w.ctx, cfg.Config)
 			if err != nil || task == nil {
 				return err
 			}
-			return w.execute(w.runtime.Current(), task)
+			return w.execute(cfg, task)
 		})
 		w.runWorker("model reconciliation failed", 125*time.Millisecond, func() error {
 			task, err := w.store.ClaimPoll(w.ctx)

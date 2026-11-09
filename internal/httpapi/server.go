@@ -169,6 +169,11 @@ func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_instance", "invalid model instance specification", "")
 		return
 	}
+	// 原生凭据按执行地址选取，登记的探针也只能访问该地址。
+	if backend, direct := cfg.NativeBackends[spec.Endpoint]; direct && !backend.Accepts(spec.Capability, spec.Endpoint, spec.HealthURL) {
+		writeError(c, 400, "invalid_instance", "native backend capability or health URL does not match", "")
+		return
+	}
 	if err := s.store.Register(ctx, spec); err != nil {
 		storeError(c, err, "")
 		return

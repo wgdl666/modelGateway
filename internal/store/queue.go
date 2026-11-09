@@ -11,6 +11,7 @@ import (
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/predicate"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
@@ -101,7 +102,7 @@ func reserved(ctx context.Context, client *ent.RequestClient) ([]reservation, er
 	return occupied, err
 }
 
-func (s *Store) Claim(ctx context.Context) (*ent.Request, error) {
+func (s *Store) Claim(ctx context.Context, cfg config.Config) (*ent.Request, error) {
 	var task *ent.Request
 	err := s.serialize(ctx, func(tx *ent.Tx) error {
 		task = nil
@@ -150,9 +151,14 @@ func (s *Store) Claim(ctx context.Context) (*ent.Request, error) {
 			if _, err := tx.ModelInstance.Query().Where(modelinstance.IDEQ(i.ID)).ForUpdate().Only(ctx); err != nil {
 				return err
 			}
+			nextPoll := next.DeadlineAt.Add(2 * time.Second)
+			if _, direct := cfg.NativeBackends[i.Endpoint]; direct {
+				// 原生调用可晚于上游返回，给原派发者留足执行和写终态的时间。
+				nextPoll = now.Add(cfg.NativeExecutionTimeout).Add(ExecutionWriteTimeout)
+			}
 			task, err = tx.Request.UpdateOneID(next.ID).SetState(request.StateProcessing).SetSlotReserved(true).
 				SetInstanceID(i.ID).SetResourceGroup(i.ResourceGroup).SetEndpoint(i.Endpoint).SetArtifactDigest(i.ArtifactDigest).
-				SetStartedAt(now).SetNextPollAt(next.DeadlineAt.Add(2 * time.Second)).Save(ctx)
+				SetStartedAt(now).SetNextPollAt(nextPoll).Save(ctx)
 			return err
 		}
 		return nil
