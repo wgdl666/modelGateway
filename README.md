@@ -119,6 +119,8 @@ VMind-Image 和 LTX 的原生鉴权分别使用 `MODEL_GATEWAY_NATIVE_IMAGE_*` �
 
 启动网关时必须设置 `XX_WG_REGION`。`CN` 用 `nacos_url` 连接 Nacos。`SG` 和 `US` 用 `appconfig_url` 连接 AppConfig Agent。在 `bootstrap.json` 中填入对应环境的地址。参见 [Nacos 引导示例](config/bootstrap.aliyun.example.json)和 [AppConfig 引导示例](config/bootstrap.aws.example.json)。
 
+启动后，CN 通过 Nacos SDK 监听文档变更，SG 和 US 每 45 秒读取一次本机 AppConfig Agent。新配置校验或绑定新监听地址失败时继续使用上一份配置。
+
 配置正文见 [gateway.example.json](config/gateway.example.json)。同一环境的副本共享 PG schema 和 RabbitMQ 队列，不同环境使用独立队列。网关会声明持久队列，需要配置、写入和读取权限。更换数据库或队列前先排空任务并重启。
 
 ```sh

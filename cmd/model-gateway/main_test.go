@@ -111,9 +111,9 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 		defer response.Body.Close()
 		return response.StatusCode
 	}
-	wait := func(check func() bool) {
+	wait := func(timeout time.Duration, check func() bool) {
 		t.Helper()
-		deadline := time.Now().Add(8 * time.Second)
+		deadline := time.Now().Add(timeout)
 		for time.Now().Before(deadline) {
 			if check() {
 				return
@@ -122,11 +122,12 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 		}
 		t.Fatal("running server did not apply configuration")
 	}
-	wait(func() bool { return status(first, "/_gateway/ready", "") == 200 })
+	wait(8*time.Second, func() bool { return status(first, "/_gateway/ready", "") == 200 })
 	oldToken := values["api_token"].(string)
 	values["listen"], values["api_token"] = second, oldToken+"-new"
 	setContent()
-	wait(func() bool {
+	// 通过真实启动入口验证 AppConfig 的 45 秒刷新周期和监听切换。
+	wait(60*time.Second, func() bool {
 		return status(second, "/v1/gateway/requests", oldToken+"-new") == 400 && status(first, "/_gateway/ready", "") == 0
 	})
 	if status(second, "/v1/gateway/requests", oldToken) != 401 {

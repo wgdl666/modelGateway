@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -37,14 +36,11 @@ func run(ctx context.Context, path string) error {
 		return err
 	}
 	defer loader.Close()
-	raw, err := loader.Load(ctx)
+	runtime, err := loader.Load(ctx)
 	if err != nil {
 		return err
 	}
-	cfg, err := config.Parse(raw)
-	if err != nil {
-		return err
-	}
+	cfg := runtime.Current()
 	dbCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	db, err := store.OpenDatabase(dbCtx, cfg.DatabaseURL)
 	cancel()
@@ -52,10 +48,6 @@ func run(ctx context.Context, path string) error {
 		return err
 	}
 	defer db.Close()
-	runtime, err := config.NewRuntime(cfg)
-	if err != nil {
-		return err
-	}
 	ledger := store.New(db)
 	app := httpapi.New(ledger, runtime)
 	reconciler, err := worker.New(ledger, runtime)
@@ -88,54 +80,22 @@ func run(ctx context.Context, path string) error {
 		shutdown(server)
 		retiring.Wait()
 	}()
-	// 从选定的配置中心读取整份 JSON，应用失败时保留上一份可用配置。日志只记录结果。
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case err := <-failures:
-			return err
-		case <-ticker.C:
-			nextRaw, err := loader.Load(ctx)
-			if err != nil {
-				if ctx.Err() == nil {
-					slog.Error("configuration reload failed", "reason", err.Error())
-				}
-				continue
-			}
-			if bytes.Equal(raw, nextRaw) {
-				continue
-			}
-			next, err := config.Parse(nextRaw)
-			var nextListener net.Listener
-			if err == nil && next.Listen != cfg.Listen {
-				nextListener, err = net.Listen("tcp", next.Listen)
-				if err != nil {
-					err = errors.New("cannot listen on configured address")
-				}
-			}
-			if err == nil {
-				err = runtime.Reload(next)
-			}
-			if err != nil {
-				if nextListener != nil {
-					_ = nextListener.Close()
-				}
-				slog.Error("configuration reload failed", "reason", err.Error())
-				continue
-			}
-			if nextListener != nil {
-				old := server
-				server = serve(nextListener)
-				// 新地址先接流量，旧监听只排空 HTTP；后台已受理任务仍由同一网关执行。
-				retiring.Add(1)
-				go func() { defer retiring.Done(); shutdown(old) }()
-			}
-			cfg, raw = next, nextRaw
-			slog.Info("configuration reloaded")
-		}
+	stopListening, err := loader.Listen(ctx, runtime, func(listener net.Listener) {
+		old := server
+		server = serve(listener)
+		// 旧监听只排空 HTTP，后台已受理任务继续由同一网关执行。
+		retiring.Add(1)
+		go func() { defer retiring.Done(); shutdown(old) }()
+	})
+	if err != nil {
+		return err
+	}
+	defer stopListening()
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-failures:
+		return err
 	}
 }
 
