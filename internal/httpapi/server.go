@@ -257,7 +257,8 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		storeError(c, err, id)
 		return
 	}
-	if model == protocol.VideoModel {
+	// 视频调用方通过查询接口取终态，提交请求无需保持连接。
+	if capability == "video" {
 		writeJSON(c, 202, protocol.Response{RequestID: id, ModelKey: model, State: string(task.State)})
 		return
 	}
