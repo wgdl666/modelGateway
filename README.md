@@ -71,13 +71,14 @@ python -m uvicorn app:app --app-dir worker_adapter --host 127.0.0.1 --port 8001
 
 ## Go 网关直连
 
-将原生地址加入 `native_backends`，再以相同的 `endpoint` 登记实例。健康地址和执行地址使用同一个协议、IP 和端口。将端口加入 `backend_ports`。常规 VMind-Image 使用空对象。国内 FLUX 换装使用 `vton_edits` 选择 `/v1/images/edits`。LTX 地址设置 `video: true`，以使用视频协议和凭据。切换地址、协议或结果桶前先排空受影响的实例，再更新配置并重启网关。
+将原生地址加入 `native_backends`，再以相同的 `endpoint` 登记实例。将端口加入 `backend_ports`。常规 VMind-Image 使用空对象。国内 FLUX 换装使用 `vton_edits` 选择 `/v1/images/edits`。LTX 地址带 `/gpuN` 前缀，设置 `video: true` 以使用视频协议和凭据。切换地址、协议或结果桶前先排空受影响的实例，再更新配置并重启网关。
 
 ```json
 {
   "native_backends": {
     "http://10.0.1.10:9001": {"vton_edits": true},
-    "http://10.0.1.11:9002": {"video": true}
+    "http://10.0.1.11:9002/gpu0": {"video": true},
+    "http://10.0.1.11:9002/gpu1": {"video": true}
   },
   "native_results": {
     "provider": "oss",
@@ -88,24 +89,17 @@ python -m uvicorn app:app --app-dir worker_adapter --host 127.0.0.1 --port 8001
 }
 ```
 
-登记原生视频实例时，在 `POST /v1/instances/register` 中同时填写 `resource_group` 和 `target_instance`。目标名取自 LTX 健康响应的 `instances[].name`，应对应所登记的 GPU 分组。网关按登记的目标探活并派发。可以用 `GET /v1/instances` 回读这两个字段。
-
-已有直连视频实例按以下顺序迁移。
-
-1. 执行[原生视频目标迁移](deploy/migrations/native-video-target.sql)，为实例表添加目标列。
-2. 先记录旧配置中的 LTX 目标名。排空旧实例，等 `reserved_requests` 归零。
-3. 将 LTX 地址在 `native_backends` 中的配置改成 `{"video": true}`，更新网关的所有副本。
-4. 用新的 `instance_id` 登记。填写原来的 GPU 分组和 LTX 目标名，等待实例就绪。
+每张卡登记一个原生视频实例。例如 GPU 0 的 `endpoint` 为 `http://10.0.1.11:9002/gpu0`，`health_url` 为同一地址加 `/healthz`。将 `resource_group` 设为对应的 GPU 分组，每卡一个并发时实例和组的容量都填 1。LTX 按路径选择 worker，网关核对探活返回的 GPU 编号。
 
 VMind-Image 和 LTX 的原生鉴权分别使用 `MODEL_GATEWAY_NATIVE_IMAGE_*` 和 `MODEL_GATEWAY_NATIVE_VIDEO_*`。Basic Auth 注入 `USERNAME`、`PASSWORD`，`X-Token` 注入 `TOKEN`。OSS 从 `OSS_ACCESS_KEY_ID` 和 `OSS_ACCESS_KEY_SECRET` 取凭据。S3 使用 AWS 凭据链，`endpoint` 可省略。
 
-直连视频通过 `/vton` 提交，按已记录的 `job_id` 查询 `/jobs/{job_id}`。网关把图片或视频写到 `outputs/<request_id>/`，通过 `result.files` 返回对象引用。图片响应体上限为 64 MiB，视频成品上限为 200 MiB。图片调用断线且终态未知时保留 GPU 槽位，等待核对原执行。
+直连视频在登记的单卡地址下调用 `/vton`、`/jobs/{job_id}` 和 `/jobs/{job_id}/video`。网关把图片或视频写到 `outputs/<request_id>/`，通过 `result.files` 返回对象引用。图片响应体上限为 64 MiB，视频成品上限为 200 MiB。图片调用断线且终态未知时保留 GPU 槽位，等待核对原执行。
 
 `native_execution_timeout` 默认 180 秒，从领取任务时起算，用于原生模型的首次调用和图片成品发布。上游等待超时后，已派发的任务继续等原生响应。网关记录终态时释放 GPU 槽位，调用方可以用原 `request_id` 查询结果。
 
 ## 已有环境切换到模型键
 
-在同一个维护窗口升级网关、使用 Worker 协议的适配器和调用方。每个环境独立切换。数据库脚本需要实例软删除、RabbitMQ 投递和原生视频目标三次迁移已经完成。
+在同一个维护窗口升级网关、使用 Worker 协议的适配器和调用方。每个环境独立切换。先确认实例软删除和 RabbitMQ 投递的迁移已经完成。
 
 1. 暂停新提交。记录各实例的接单状态，再暂停接单，防止维护期间发起新的首次调用。让旧进程完成正在执行的首次调用和结果写入。回读 `requests` 中的 `slot_reserved`、原实例、端点和 `backend_task_id`。有持久后端任务 ID 的视频和可按请求 ID 查询的 Worker 任务可继续回查。原生图片缺少按 ID 查询能力，停止网关前须确认这些执行已结束。旧商品图登记或其他不匹配组合仍有占槽时，先按原账本核实终态。
 2. 停止所有旧网关副本和受影响的旧适配器。备份数据库和配置，保留 RabbitMQ 队列、Worker 状态目录和对象账本。用数据库发布账号执行 [模型键迁移](deploy/migrations/model-key-only.sql)，并启用 `ON_ERROR_STOP`。脚本发现历史组合还占槽时会回滚，供旧版继续核对。

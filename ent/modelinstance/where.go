@@ -89,11 +89,6 @@ func ResourceGroup(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldResourceGroup, v))
 }
 
-// TargetInstance applies equality check predicate on the "target_instance" field. It's identical to TargetInstanceEQ.
-func TargetInstance(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEQ(FieldTargetInstance, v))
-}
-
 // GroupCapacityUnits applies equality check predicate on the "group_capacity_units" field. It's identical to GroupCapacityUnitsEQ.
 func GroupCapacityUnits(v int) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldGroupCapacityUnits, v))
@@ -462,71 +457,6 @@ func ResourceGroupEqualFold(v string) predicate.ModelInstance {
 // ResourceGroupContainsFold applies the ContainsFold predicate on the "resource_group" field.
 func ResourceGroupContainsFold(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldContainsFold(FieldResourceGroup, v))
-}
-
-// TargetInstanceEQ applies the EQ predicate on the "target_instance" field.
-func TargetInstanceEQ(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEQ(FieldTargetInstance, v))
-}
-
-// TargetInstanceNEQ applies the NEQ predicate on the "target_instance" field.
-func TargetInstanceNEQ(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldNEQ(FieldTargetInstance, v))
-}
-
-// TargetInstanceIn applies the In predicate on the "target_instance" field.
-func TargetInstanceIn(vs ...string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldIn(FieldTargetInstance, vs...))
-}
-
-// TargetInstanceNotIn applies the NotIn predicate on the "target_instance" field.
-func TargetInstanceNotIn(vs ...string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldNotIn(FieldTargetInstance, vs...))
-}
-
-// TargetInstanceGT applies the GT predicate on the "target_instance" field.
-func TargetInstanceGT(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldGT(FieldTargetInstance, v))
-}
-
-// TargetInstanceGTE applies the GTE predicate on the "target_instance" field.
-func TargetInstanceGTE(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldGTE(FieldTargetInstance, v))
-}
-
-// TargetInstanceLT applies the LT predicate on the "target_instance" field.
-func TargetInstanceLT(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldLT(FieldTargetInstance, v))
-}
-
-// TargetInstanceLTE applies the LTE predicate on the "target_instance" field.
-func TargetInstanceLTE(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldLTE(FieldTargetInstance, v))
-}
-
-// TargetInstanceContains applies the Contains predicate on the "target_instance" field.
-func TargetInstanceContains(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldContains(FieldTargetInstance, v))
-}
-
-// TargetInstanceHasPrefix applies the HasPrefix predicate on the "target_instance" field.
-func TargetInstanceHasPrefix(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldHasPrefix(FieldTargetInstance, v))
-}
-
-// TargetInstanceHasSuffix applies the HasSuffix predicate on the "target_instance" field.
-func TargetInstanceHasSuffix(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldHasSuffix(FieldTargetInstance, v))
-}
-
-// TargetInstanceEqualFold applies the EqualFold predicate on the "target_instance" field.
-func TargetInstanceEqualFold(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEqualFold(FieldTargetInstance, v))
-}
-
-// TargetInstanceContainsFold applies the ContainsFold predicate on the "target_instance" field.
-func TargetInstanceContainsFold(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldContainsFold(FieldTargetInstance, v))
 }
 
 // GroupCapacityUnitsEQ applies the EQ predicate on the "group_capacity_units" field.

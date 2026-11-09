@@ -40,13 +40,16 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			t.Setenv("MODEL_GATEWAY_NATIVE_VIDEO_PASSWORD", "")
 			t.Setenv("MODEL_GATEWAY_NATIVE_VIDEO_TOKEN", "video-token")
 
-			const bucket, target, jobID = "test-results", "ltx-gpu1", "ltx-job-1"
-			var targetAdvertised atomic.Bool
-			targetAdvertised.Store(provider != "oss")
+			const bucket = "test-results"
+			var matchingProbe atomic.Bool
+			matchingProbe.Store(provider != "oss")
 			png := []byte("\x89PNG\r\n\x1a\nimage")
-			video := []byte("video fixture")
-			imageID, videoID := uuid.NewString(), uuid.NewString()
-			var imageCalls, videoPolls atomic.Int32
+			videos := [2][]byte{[]byte("video from gpu0"), []byte("video from gpu1")}
+			imageID := uuid.NewString()
+			videoIDs := [2]string{uuid.NewString(), uuid.NewString()}
+			jobIDs := [2]string{"ltx-job-0", "ltx-job-1"}
+			var imageCalls atomic.Int32
+			var videoAccepted [2]atomic.Bool
 			imageModel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				user, password, ok := r.BasicAuth()
 				if !ok || user != "image-user" || password != "image-password" {
@@ -93,29 +96,41 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 					w.WriteHeader(http.StatusUnauthorized)
 					return
 				}
-				switch r.Method + " " + r.URL.Path {
-				case "GET /health":
-					if !targetAdvertised.Load() {
-						_, _ = io.WriteString(w, `{"ready":true,"instances":[{"name":"ltx-gpu0"}]}`)
-						return
+				prefix, route, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
+				gpu, ok := map[string]int{"gpu0": 0, "gpu1": 1}[prefix]
+				if !ok {
+					t.Errorf("video request lost its GPU prefix: %s", r.URL.Path)
+					http.NotFound(w, r)
+					return
+				}
+				switch r.Method + " /" + route {
+				case "GET /healthz":
+					reportedGPU := gpu
+					if gpu == 1 && !matchingProbe.Load() {
+						reportedGPU = 0
 					}
-					_, _ = fmt.Fprintf(w, `{"ready":true,"instances":[{"name":%q}]}`, target)
+					_, _ = fmt.Fprintf(w, `{"ready":true,"instances":[{"name":"ltx-gpu%d","gpus":[%d]}]}`, reportedGPU, reportedGPU)
 				case "POST /vton":
-					if r.FormValue("target_instance") != target || r.FormValue("motion_tips") != "turn" ||
-						r.Header.Get("X-Gateway-Request-ID") != videoID || r.Header.Get("X-Gateway-Dispatch") != "immediate" {
-						t.Error("video request lost target or model fields")
+					if r.FormValue("motion_tips") != "turn" || r.Header.Get("X-Gateway-Request-ID") != videoIDs[gpu] ||
+						r.Header.Get("X-Gateway-Dispatch") != "immediate" {
+						t.Errorf("video request was dispatched to the wrong GPU or lost its business fields: %s", r.URL.Path)
 					}
 					checkNativeTestFile(t, r, "image", "first frame")
+					if _, sent := r.MultipartForm.Value["target_instance"]; sent {
+						t.Error("GPU selection must come from the address")
+					}
+					videoAccepted[gpu].Store(true)
 					w.WriteHeader(http.StatusAccepted)
-					_ = json.NewEncoder(w).Encode(map[string]string{"job_id": jobID})
-				case "GET /jobs/" + jobID:
+					_ = json.NewEncoder(w).Encode(map[string]string{"job_id": jobIDs[gpu]})
+				case "GET /jobs/" + jobIDs[gpu]:
 					status := "processing"
-					if videoPolls.Add(1) > 1 {
+					// 保持 GPU 0 的任务占槽，确认第二个任务派到同地址的 GPU 1 路径。
+					if videoAccepted[0].Load() && videoAccepted[1].Load() {
 						status = "done"
 					}
-					_ = json.NewEncoder(w).Encode(map[string]string{"job_id": jobID, "status": status})
-				case "GET /jobs/" + jobID + "/video":
-					_, _ = w.Write(video)
+					_ = json.NewEncoder(w).Encode(map[string]string{"job_id": jobIDs[gpu], "status": status})
+				case "GET /jobs/" + jobIDs[gpu] + "/video":
+					_, _ = w.Write(videos[gpu])
 				default:
 					t.Errorf("unexpected video call %s %s", r.Method, r.URL.Path)
 					http.NotFound(w, r)
@@ -135,9 +150,14 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 					if !bytes.Equal(body, png) || r.Header.Get("Content-Type") != "image/png" {
 						t.Error("uploaded image did not match model output")
 					}
-				case "/" + bucket + "/outputs/" + videoID + "/0.mp4":
-					if !bytes.Equal(body, video) || r.Header.Get("Content-Type") != "video/mp4" {
-						t.Error("uploaded video did not match model output")
+				case "/" + bucket + "/outputs/" + videoIDs[0] + "/0.mp4",
+					"/" + bucket + "/outputs/" + videoIDs[1] + "/0.mp4":
+					gpu := 0
+					if strings.Contains(r.URL.Path, videoIDs[1]) {
+						gpu = 1
+					}
+					if !bytes.Equal(body, videos[gpu]) || r.Header.Get("Content-Type") != "video/mp4" {
+						t.Error("uploaded video did not come from the reserved GPU")
 					}
 				default:
 					t.Errorf("unexpected object key %s", r.URL.Path)
@@ -154,7 +174,17 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			cfg.RabbitMQURL, cfg.RabbitMQQueue, _ = testsupport.RabbitQueue(t)
 			cfg.BackendToken = "legacy-token"
 			cfg.PollInterval = 25 * time.Millisecond
-			cfg.NativeBackends = map[string]config.NativeBackend{imageModel.URL: {}, videoModelServer.URL: {Video: true}}
+			imageSpec := testInstance(protocol.OutfitModel, imageModel.URL, 1)
+			videoSpecs := [2]protocol.Instance{}
+			cfg.NativeBackends = map[string]config.NativeBackend{imageSpec.Endpoint: {}}
+			for gpu := range videoSpecs {
+				s := testInstance(protocol.VideoModel, fmt.Sprintf("%s/gpu%d", videoModelServer.URL, gpu), 1)
+				s.ID = fmt.Sprintf("native-gpu%d", gpu)
+				s.HealthURL = s.Endpoint + "/healthz"
+				s.ResourceGroup = fmt.Sprintf("host/gpu%d", gpu)
+				videoSpecs[gpu] = s
+				cfg.NativeBackends[s.Endpoint] = config.NativeBackend{Video: true}
+			}
 			cfg.NativeResults = config.NativeResults{Provider: provider, Region: "us-east-2", Bucket: bucket, Endpoint: objects.URL}
 			for endpoint := range cfg.NativeBackends {
 				u, _ := url.Parse(endpoint)
@@ -192,42 +222,40 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 				}
 				return response
 			}
-			imageSpec := testInstance(protocol.OutfitModel, imageModel.URL, 1)
-			videoSpec := testInstance(protocol.VideoModel, videoModelServer.URL, 1)
-			videoSpec.ResourceGroup = "host/gpu1"
 			if provider == "oss" {
-				raw, _ := json.Marshal(videoSpec)
+				wrong := videoSpecs[0]
+				wrong.HealthURL = videoSpecs[1].HealthURL
+				raw, _ := json.Marshal(wrong)
 				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 400)
 			}
-			videoSpec.TargetInstance = target
-			for _, spec := range []protocol.Instance{imageSpec, videoSpec} {
+			for _, spec := range []protocol.Instance{imageSpec, videoSpecs[0], videoSpecs[1]} {
 				raw, _ := json.Marshal(spec)
 				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 200)
 			}
 			if provider == "oss" {
-				// 同一个登记 ID 不能把已经绑定的 GPU 目标改到另一卡。
-				changed := videoSpec
-				changed.TargetInstance = "ltx-gpu0"
+				// 同一个登记 ID 不能把已绑定的地址改到另一卡。
+				changed := videoSpecs[1]
+				changed.Endpoint, changed.HealthURL = videoSpecs[0].Endpoint, videoSpecs[0].HealthURL
 				raw, _ := json.Marshal(changed)
 				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 409)
 			}
 			reconciler.Start()
 			if provider == "oss" {
-				waitForNativeTest(t, "probe of the unadvertised video target", func() bool {
-					row, err := db.ModelInstance.Get(t.Context(), videoSpec.ID)
+				waitForNativeTest(t, "probe reporting the wrong GPU", func() bool {
+					row, err := db.ModelInstance.Get(t.Context(), videoSpecs[1].ID)
 					if err != nil || row.HealthCheckedAt.Unix() == 0 {
 						return false
 					}
 					if row.Ready {
-						t.Fatal("probe marked the registration ready with only another LTX target advertised")
+						t.Fatal("probe marked the registration ready for another GPU")
 					}
 					return true
 				})
-				targetAdvertised.Store(true)
+				matchingProbe.Store(true)
 			}
 			waitForNativeTest(t, "model readiness", func() bool {
 				count, err := db.ModelInstance.Query().Where(modelinstance.ReadyEQ(true)).Count(t.Context())
-				return err == nil && count == 2
+				return err == nil && count == 3
 			})
 
 			assertResult := func(response protocol.Response, id, filename string) {
@@ -242,17 +270,28 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			imagePath := "/v1/gateway/requests/" + protocol.OutfitModel
 			assertResult(call(http.MethodPost, imagePath, apiToken, imageID, imageBody, 200), imageID, "0.png")
 			videoBody := `{"input":{"motion_tips":"turn","images":[{"mime_type":"image/png","data":"Zmlyc3QgZnJhbWU="}]}}`
-			call(http.MethodPost, "/v1/gateway/requests/"+protocol.VideoModel, apiToken, videoID, videoBody, 202)
-			var response protocol.Response
-			waitForNativeTest(t, "video terminal response", func() bool {
-				response = call(http.MethodGet, "/v1/gateway/requests", apiToken, videoID, "", 200)
-				return response.State == "succeeded" || response.State == "failed"
+			videoPath := "/v1/gateway/requests/" + protocol.VideoModel
+			call(http.MethodPost, videoPath, apiToken, videoIDs[0], videoBody, 202)
+			waitForNativeTest(t, "first GPU reservation", func() bool {
+				row, err := db.Request.Get(t.Context(), videoIDs[0])
+				return err == nil && row.InstanceID == videoSpecs[0].ID && row.BackendTaskID == jobIDs[0]
 			})
-			assertResult(response, videoID, "0.mp4")
-			row, err := db.Request.Get(t.Context(), videoID)
-			if err != nil || row.InstanceID != videoSpec.ID || row.ResourceGroup != videoSpec.ResourceGroup ||
-				row.BackendTaskID != jobID || row.SlotReserved || len(uploads) != 2 {
-				t.Fatalf("unexpected video record or upload count: row=%+v uploads=%d error=%v", row, len(uploads), err)
+			call(http.MethodPost, videoPath, apiToken, videoIDs[1], videoBody, 202)
+			for gpu, id := range videoIDs {
+				var response protocol.Response
+				waitForNativeTest(t, "video terminal response", func() bool {
+					response = call(http.MethodGet, "/v1/gateway/requests", apiToken, id, "", 200)
+					return response.State == "succeeded" || response.State == "failed"
+				})
+				assertResult(response, id, "0.mp4")
+				row, err := db.Request.Get(t.Context(), id)
+				if err != nil || row.InstanceID != videoSpecs[gpu].ID || row.ResourceGroup != videoSpecs[gpu].ResourceGroup ||
+					row.Endpoint != videoSpecs[gpu].Endpoint || row.BackendTaskID != jobIDs[gpu] || row.SlotReserved {
+					t.Fatalf("video did not keep its reserved GPU through completion: row=%+v error=%v", row, err)
+				}
+			}
+			if len(uploads) != 3 {
+				t.Fatalf("expected one image and two video uploads, got %d", len(uploads))
 			}
 
 			if provider == "oss" {
@@ -285,14 +324,14 @@ func TestSlowNativeVideoUploadsDoNotBlockPolling(t *testing.T) {
 	uploadsStarted := make(chan struct{}, videoCount)
 	var downloadsWhileBlocked atomic.Int32
 	native := http.NewServeMux()
-	native.HandleFunc("GET /jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
+	native.HandleFunc("GET /gpu0/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, status := r.PathValue("id"), "done"
 		if id == checkJob {
 			status = "error"
 		}
 		_, _ = fmt.Fprintf(w, `{"job_id":%q,"status":%q}`, id, status)
 	})
-	native.HandleFunc("GET /jobs/{id}/video", func(w http.ResponseWriter, r *http.Request) {
+	native.HandleFunc("GET /gpu0/jobs/{id}/video", func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-allowUploads:
 		default:
@@ -304,6 +343,7 @@ func TestSlowNativeVideoUploadsDoNotBlockPolling(t *testing.T) {
 	})
 	model := httptest.NewServer(native)
 	defer model.Close()
+	endpoint := model.URL + "/gpu0"
 	objects := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, err := io.Copy(io.Discard, r.Body); err != nil {
 			t.Error(err)
@@ -327,7 +367,7 @@ func TestSlowNativeVideoUploadsDoNotBlockPolling(t *testing.T) {
 	cfg.RabbitMQURL, cfg.RabbitMQQueue, _ = testsupport.RabbitQueue(t)
 	cfg.BackendTimeout = 30 * time.Second
 	cfg.PollInterval = 50 * time.Millisecond
-	cfg.NativeBackends = map[string]config.NativeBackend{model.URL: {Video: true}}
+	cfg.NativeBackends = map[string]config.NativeBackend{endpoint: {Video: true}}
 	cfg.NativeResults = config.NativeResults{Provider: "s3", Region: "us-east-2", Bucket: "test-results", Endpoint: objects.URL}
 	address, _ := url.Parse(model.URL)
 	cfg.AllowedPorts = append(cfg.AllowedPorts, address.Port())
@@ -349,7 +389,7 @@ func TestSlowNativeVideoUploadsDoNotBlockPolling(t *testing.T) {
 		err := db.Request.Create().SetID(id).SetModelKey(protocol.VideoModel).
 			SetRequestPayload(json.RawMessage(`{}`)).SetPayloadBytes(2).SetUnits(1).
 			SetState(request.StateProcessing).SetSlotReserved(true).SetInstanceID("ltx-test").SetResourceGroup("test/gpu").
-			SetEndpoint(model.URL).SetBackendTaskID(jobID).SetDeadlineAt(now.Add(time.Minute)).SetNextPollAt(now).Exec(t.Context())
+			SetEndpoint(endpoint).SetBackendTaskID(jobID).SetDeadlineAt(now.Add(time.Minute)).SetNextPollAt(now).Exec(t.Context())
 		if err != nil {
 			t.Fatal(err)
 		}

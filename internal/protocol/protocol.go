@@ -27,19 +27,18 @@ var (
 )
 
 // Instance 记录部署身份和同卡分组。是否可派由主动探针及排空状态决定。
-// 原生视频同时登记该分组对应的 LTX 目标。
+// 原生视频用地址中的单卡路径绑定 GPU。
 type Instance struct {
-	ID             string `json:"instance_id"`
-	ModelKey       string `json:"model_key"`
-	Endpoint       string `json:"endpoint"`
-	HealthURL      string `json:"health_url"`
-	Artifact       string `json:"artifact_digest"`
-	ResourceGroup  string `json:"resource_group"`
-	TargetInstance string `json:"target_instance,omitempty"`
-	GroupCapacity  int    `json:"group_capacity_units"`
-	Capacity       int    `json:"capacity_units"`
-	MachineID      string `json:"machine_id,omitempty"`
-	GPUDevices     []int  `json:"gpu_devices,omitempty"`
+	ID            string `json:"instance_id"`
+	ModelKey      string `json:"model_key"`
+	Endpoint      string `json:"endpoint"`
+	HealthURL     string `json:"health_url"`
+	Artifact      string `json:"artifact_digest"`
+	ResourceGroup string `json:"resource_group"`
+	GroupCapacity int    `json:"group_capacity_units"`
+	Capacity      int    `json:"capacity_units"`
+	MachineID     string `json:"machine_id,omitempty"`
+	GPUDevices    []int  `json:"gpu_devices,omitempty"`
 }
 
 // Valid 检查部署身份和容量。地址还需按当前配置的出站白名单验证。

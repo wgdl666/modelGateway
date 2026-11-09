@@ -58,7 +58,6 @@ func TestModelKeyMigrationKeepsExecutionOwnership(t *testing.T) {
 	wardrobe := testInstance(protocol.WardrobeModel, "http://127.0.0.1:8002", 2)
 	wardrobe.ID = "b-wardrobe"
 	video := testInstance(protocol.VideoModel, "http://127.0.0.1:8002", 2)
-	video.TargetInstance = "ltx-gpu0"
 	for _, spec := range []protocol.Instance{old, wardrobe, video} {
 		registerReady(t, a, spec)
 	}
@@ -140,12 +139,12 @@ func TestModelKeyMigrationKeepsExecutionOwnership(t *testing.T) {
 		row.ErrorCode != "model_retired" || row.QueuePublishAt != nil || row.ModelKey != old.ModelKey {
 		t.Fatalf("legacy queue entry was reinterpreted or lost: %v %v", row, err)
 	}
-	if task, _, err := b.Claim(ctx, testConfig(), legacyQueued.ID); err != nil || task != nil {
+	if task, err := b.Claim(ctx, testConfig(), legacyQueued.ID); err != nil || task != nil {
 		t.Fatalf("redelivery dispatched a retired request: %v %v", task, err)
 	}
-	if task, selected, err := b.Claim(ctx, testConfig(), queued.ID); err != nil || task == nil ||
-		selected == nil || selected.ID != wardrobe.ID || !task.SlotReserved {
-		t.Fatalf("current queued request was not assigned to the matching registration: %v %v %v", task, selected, err)
+	if task, err := b.Claim(ctx, testConfig(), queued.ID); err != nil || task == nil ||
+		task.InstanceID != wardrobe.ID || !task.SlotReserved {
+		t.Fatalf("current queued request was not assigned to the matching registration: %v %v", task, err)
 	}
 	if row, err := migrated.Request.Get(ctx, running.ID); err != nil || !row.SlotReserved || row.Units != running.Units ||
 		row.InstanceID != video.ID || row.ResourceGroup != video.ResourceGroup || row.ArtifactDigest != video.Artifact {

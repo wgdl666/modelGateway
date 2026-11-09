@@ -66,8 +66,8 @@ var nativeRoutes = map[string]struct {
 	protocol.VideoModel:    {"/vton", []string{"image"}},
 }
 
-// 视频目标来自本次占槽的实例登记，原生服务据此使用对应的 GPU。
-func nativeMultipart(task *ent.Request, input protocol.Submission, backend config.NativeBackend, targetInstance string) (string, *bytes.Buffer, http.Header, error) {
+// 视频 worker 由执行地址的单卡路径选定，表单只转发业务输入。
+func nativeMultipart(task *ent.Request, input protocol.Submission, backend config.NativeBackend) (string, *bytes.Buffer, http.Header, error) {
 	route, ok := nativeRoutes[task.ModelKey]
 	if !ok || !backend.Matches(task.ModelKey) {
 		return "", nil, nil, errors.New("model key does not match native backend")
@@ -113,9 +113,6 @@ func nativeMultipart(task *ent.Request, input protocol.Submission, backend confi
 	}
 	if user := input.Metadata.UserID; user != "" {
 		headers.Set("X-User-ID", user)
-	}
-	if backend.Video {
-		form["target_instance"] = targetInstance
 	}
 	for key, value := range form {
 		if err := writer.WriteField(key, value); err != nil {
@@ -179,8 +176,7 @@ func (w *Reconciler) nativeJSON(ctx context.Context, auth nativeAuth, url string
 }
 
 func (w *Reconciler) nativeReady(ctx context.Context, cfg *config.Snapshot, row *ent.ModelInstance, backend config.NativeBackend) bool {
-	if !backend.Accepts(row.ModelKey, row.Endpoint, row.HealthURL, row.TargetInstance) ||
-		cfg.ValidateEndpoint(row.HealthURL, true) != nil {
+	if cfg.ValidateEndpoint(row.HealthURL, true) != nil {
 		return false
 	}
 	type workerHealth struct {
@@ -192,6 +188,7 @@ func (w *Reconciler) nativeReady(ctx context.Context, cfg *config.Snapshot, row 
 		Status    string `json:"status"`
 		Instances []struct {
 			Name string `json:"name"`
+			GPUs []int  `json:"gpus"`
 		} `json:"instances"`
 		Workers []workerHealth `json:"workers"`
 	}
@@ -205,12 +202,14 @@ func (w *Reconciler) nativeReady(ctx context.Context, cfg *config.Snapshot, row 
 	if !ready {
 		return false
 	}
-	if backend.Video && !slices.ContainsFunc(health.Instances, func(i struct {
-		Name string `json:"name"`
-	}) bool {
-		return i.Name == row.TargetInstance
-	}) {
-		return false
+	if backend.Video {
+		// 代理误把单卡探针转到整个实例池或其他 GPU 时，该登记不能接单。
+		if len(health.Instances) != 1 {
+			return false
+		}
+		instance := health.Instances[0]
+		return instance.Name != "" && len(instance.GPUs) == 1 &&
+			strings.HasSuffix(row.Endpoint, fmt.Sprintf("/gpu%d", instance.GPUs[0]))
 	}
 	// 国内 FLUX 用 ready 表示可接单，旧实例的同一信号由 healthy 提供。
 	return health.Workers == nil || slices.ContainsFunc(health.Workers, func(w workerHealth) bool {
@@ -228,8 +227,8 @@ type nativeJob struct {
 	Status string `json:"status"`
 }
 
-func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, task *ent.Request, input protocol.Submission, backend config.NativeBackend, targetInstance string) error {
-	path, body, headers, err := nativeMultipart(task, input, backend, targetInstance)
+func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, task *ent.Request, input protocol.Submission, backend config.NativeBackend) error {
+	path, body, headers, err := nativeMultipart(task, input, backend)
 	if err != nil {
 		return w.failDispatch(task.ID, 500, "invalid_saved_request", "saved request cannot be dispatched to the native model", false)
 	}

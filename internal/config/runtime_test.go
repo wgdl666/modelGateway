@@ -1,6 +1,30 @@
 package config
 
-import "testing"
+import (
+	"net"
+	"testing"
+)
+
+func TestSingleGPUEndpointRejectsPathAliases(t *testing.T) {
+	_, network, _ := net.ParseCIDR("127.0.0.0/8")
+	snapshot := Snapshot{networks: []*net.IPNet{network}, ports: map[string]bool{"8002": true}}
+	origin := "http://127.0.0.1:8002"
+	if err := snapshot.ValidateEndpoint(origin+"/gpu0", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := snapshot.ValidateEndpoint(origin+"/gpu0/healthz", true); err != nil {
+		t.Fatal(err)
+	}
+	// 探针和派发都不能用代理可能重写到其他卡的路径。
+	for _, invalid := range []string{"/gpu00", "/%67pu0", "/gpu0/../gpu1", "/gpu0%2fgpu1"} {
+		if err := snapshot.ValidateEndpoint(origin+invalid, false); err == nil {
+			t.Errorf("accepted GPU endpoint alias %q", invalid)
+		}
+	}
+	if err := snapshot.ValidateEndpoint(origin+"/gpu0/../gpu1/healthz", true); err == nil {
+		t.Fatal("accepted a probe traversing another GPU path")
+	}
+}
 
 func TestParseModelKeyCapacity(t *testing.T) {
 	cfg, err := Parse([]byte(`{"database_url":"postgres://fixture/db","units_by_model_key":{"Vmind_outfit_v1.0":3}}`))

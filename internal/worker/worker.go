@@ -142,7 +142,7 @@ func readModelBody(body io.Reader, limit int64) ([]byte, error) {
 	return raw, nil
 }
 
-func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request, targetInstance string) error {
+func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 	var payload protocol.Submission
 	if err := json.Unmarshal(task.RequestPayload, &payload); err != nil {
 		return w.failDispatch(task.ID, 500, "invalid_saved_request", "saved request is invalid", false)
@@ -170,7 +170,7 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request, targetInst
 	ctx, cancel := context.WithDeadline(w.ctx, deadline)
 	defer cancel()
 	if direct {
-		return w.executeNative(ctx, cfg, task, payload, backend, targetInstance)
+		return w.executeNative(ctx, cfg, task, payload, backend)
 	}
 	response, err := w.modelCall(ctx, cfg, http.MethodPost, task.Endpoint, "/requests", raw)
 	if err != nil {
@@ -259,14 +259,16 @@ func (w *Reconciler) probe(cfg *config.Snapshot) error {
 			ctx, cancel := context.WithTimeout(w.ctx, 3*time.Second)
 			defer cancel()
 			var ready bool
-			if backend, direct := cfg.NativeBackends[row.Endpoint]; direct {
-				ready = w.nativeReady(ctx, cfg, row, backend)
-			} else {
-				raw, callErr := w.modelCall(ctx, cfg, http.MethodGet, row.HealthURL, "", nil)
-				var health struct {
-					Ready bool `json:"ready"`
+			if cfg.AcceptsInstanceAddress(row.ModelKey, row.Endpoint, row.HealthURL) {
+				if backend, direct := cfg.NativeBackends[row.Endpoint]; direct {
+					ready = w.nativeReady(ctx, cfg, row, backend)
+				} else {
+					raw, callErr := w.modelCall(ctx, cfg, http.MethodGet, row.HealthURL, "", nil)
+					var health struct {
+						Ready bool `json:"ready"`
+					}
+					ready = callErr == nil && json.Unmarshal(raw, &health) == nil && health.Ready
 				}
-				ready = callErr == nil && json.Unmarshal(raw, &health) == nil && health.Ready
 			}
 			if err := w.store.RecordProbe(w.ctx, row.ID, checked, ready); err != nil && w.ctx.Err() == nil {
 				slog.Error("model health update failed", "error_type", fmt.Sprintf("%T", err))

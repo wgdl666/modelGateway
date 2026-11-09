@@ -170,14 +170,9 @@ func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_instance", "invalid model instance specification", "")
 		return
 	}
-	// 只有运维配置的原生视频地址可以登记 LTX 目标。
-	if backend, direct := cfg.NativeBackends[spec.Endpoint]; direct {
-		if !backend.Accepts(spec.ModelKey, spec.Endpoint, spec.HealthURL, spec.TargetInstance) {
-			writeError(c, 400, "invalid_instance", "native backend does not match model_key, health URL or target_instance", "")
-			return
-		}
-	} else if spec.TargetInstance != "" {
-		writeError(c, 400, "invalid_instance", "target_instance requires a native video endpoint", "")
+	// 单卡探针跟派发地址一起登记，不能用另一张卡的探针替代。
+	if !cfg.AcceptsInstanceAddress(spec.ModelKey, spec.Endpoint, spec.HealthURL) {
+		writeError(c, 400, "invalid_instance", "endpoint, health URL or model_key does not match the backend configuration", "")
 		return
 	}
 	if err := s.store.Register(ctx, spec); err != nil {
