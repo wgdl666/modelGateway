@@ -20,17 +20,16 @@ import (
 
 func main() {
 	path := flag.String("config", "/etc/model-gateway/bootstrap.json", "configuration center bootstrap file")
-	migrate := flag.Bool("migrate", false, "initialize Ent schema explicitly and exit")
 	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
-	if err := run(ctx, *path, *migrate); err != nil {
+	if err := run(ctx, *path); err != nil {
 		slog.Error(err.Error())
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, path string, migration bool) error {
+func run(ctx context.Context, path string) error {
 	loader, err := config.NewLoader(path)
 	if err != nil {
 		return err
@@ -44,21 +43,11 @@ func run(ctx context.Context, path string, migration bool) error {
 	if err != nil {
 		return err
 	}
-	dbTimeout := 10 * time.Second
-	if migration {
-		// 首次发布可能等待另一轮迁移释放锁，仍由 Job 限制总时长。
-		dbTimeout = 90 * time.Second
-	}
-	dbCtx, cancel := context.WithTimeout(ctx, dbTimeout)
-	db, err := gateway.OpenDatabase(dbCtx, cfg.DatabaseURL, migration)
+	dbCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	db, err := gateway.OpenDatabase(dbCtx, cfg.DatabaseURL)
 	cancel()
 	if err != nil {
 		return err
-	}
-	if migration {
-		defer db.Close()
-		slog.Info("schema initialized with Ent")
-		return nil
 	}
 	app, err := gateway.NewServer(&gateway.Store{DB: db}, cfg)
 	if err != nil {

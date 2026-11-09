@@ -11,8 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"ariga.io/atlas/sql/postgres"
+	atlasschema "ariga.io/atlas/sql/schema"
+	entschema "entgo.io/ent/dialect/sql/schema"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/wgdl666/modelGateway/ent/request"
 )
 
@@ -32,12 +36,33 @@ func stores(t *testing.T) (*Store, *Store) {
 	if err != nil || !strings.HasSuffix(config.Database, "_test") {
 		t.Fatal("TEST_DATABASE_URL must point to a _test database")
 	}
-	a, err := OpenDatabase(t.Context(), dsn, true)
+	// 预建 schema 的测试账号只需在该 schema 内建表，无需数据库级 CREATE 权限。
+	namespace := config.RuntimeParams["search_path"]
+	if namespace == "" {
+		namespace = "model_gateway"
+	}
+	admin := stdlib.OpenDB(*config)
+	defer admin.Close()
+	driver, err := postgres.Open(admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = driver.InspectSchema(t.Context(), namespace, &atlasschema.InspectOptions{Mode: atlasschema.InspectSchemas})
+	if atlasschema.IsNotExistError(err) {
+		err = driver.ApplyChanges(t.Context(), []atlasschema.Change{&atlasschema.AddSchema{S: atlasschema.New(namespace)}})
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := OpenDatabase(t.Context(), dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = a.Close() })
-	b, err := OpenDatabase(t.Context(), dsn, false)
+	if err := a.Schema.Create(t.Context(), entschema.WithSchemaName(namespace), entschema.WithForeignKeys(false)); err != nil {
+		t.Fatal(err)
+	}
+	b, err := OpenDatabase(t.Context(), dsn)
 	if err != nil {
 		t.Fatal(err)
 	}

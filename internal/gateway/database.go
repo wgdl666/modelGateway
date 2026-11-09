@@ -5,26 +5,22 @@ import (
 	"errors"
 	"runtime"
 
-	"ariga.io/atlas/sql/postgres"
-	atlasschema "ariga.io/atlas/sql/schema"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
-	entschema "entgo.io/ent/dialect/sql/schema"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/wgdl666/modelGateway/ent"
 )
 
-// OpenDatabase 统一创建 Ent 客户端；仅显式初始化时建表，普通启动和热加载不执行 DDL。
-func OpenDatabase(ctx context.Context, dsn string, initialize bool) (*ent.Client, error) {
+// OpenDatabase 连接 PostgreSQL，库表由数据库发布流程提前准备。
+func OpenDatabase(ctx context.Context, dsn string) (*ent.Client, error) {
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
 		return nil, errors.New("invalid PostgreSQL configuration")
 	}
-	namespace := cfg.RuntimeParams["search_path"]
-	if namespace == "" {
-		namespace = "model_gateway"
-		cfg.RuntimeParams["search_path"] = namespace
+	if cfg.RuntimeParams["search_path"] == "" {
+		// 国内 ACK 共用 wghub 数据库，通过独立 schema 定位网关业务表。
+		cfg.RuntimeParams["search_path"] = "model_gateway"
 	}
 	db := stdlib.OpenDB(*cfg)
 	// 延续原 pgxpool 的连接上限，避免换为 Ent 后由标准连接池无限扩张连接数。
@@ -33,45 +29,6 @@ func OpenDatabase(ctx context.Context, dsn string, initialize bool) (*ent.Client
 	if err := db.PingContext(ctx); err != nil {
 		_ = client.Close()
 		return nil, errors.New("cannot connect to configured PostgreSQL")
-	}
-	if initialize {
-		// 同一 schema 的两个发布 Job 可能重叠，事务锁覆盖 schema 创建和 Ent 建表。
-		lock, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			_ = client.Close()
-			return nil, err
-		}
-		defer lock.Rollback()
-		if _, err := lock.ExecContext(ctx, "SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", "model-gateway:"+namespace); err != nil {
-			_ = lock.Rollback()
-			_ = client.Close()
-			return nil, err
-		}
-		// 共享库预建 schema 后，应用只需该 schema 的权限，不授予库级 CREATE。
-		var exists bool
-		err = lock.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = $1)", namespace).Scan(&exists)
-		if err == nil && !exists {
-			driver, openErr := postgres.Open(db)
-			if openErr == nil {
-				err = driver.ApplyChanges(ctx, []atlasschema.Change{&atlasschema.AddSchema{
-					S: atlasschema.New(namespace), Extra: []atlasschema.Clause{&atlasschema.IfNotExists{}},
-				}})
-			} else {
-				err = openErr
-			}
-		}
-		if err == nil {
-			err = client.Schema.Create(ctx, entschema.WithSchemaName(namespace), entschema.WithForeignKeys(false))
-		}
-		if err != nil {
-			_ = lock.Rollback()
-			_ = client.Close()
-			return nil, err
-		}
-		if err := lock.Commit(); err != nil {
-			_ = client.Close()
-			return nil, err
-		}
 	}
 	return client, nil
 }

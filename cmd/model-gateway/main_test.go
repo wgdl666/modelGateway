@@ -17,6 +17,7 @@ import (
 
 	"ariga.io/atlas/sql/postgres"
 	atlasschema "ariga.io/atlas/sql/schema"
+	entschema "entgo.io/ent/dialect/sql/schema"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/wgdl666/modelGateway/internal/gateway"
@@ -37,27 +38,34 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 	query := u.Query()
 	query.Set("search_path", namespace)
 	u.RawQuery = query.Encode()
-	db, err := gateway.OpenDatabase(context.Background(), u.String(), true)
+	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = db.Close()
+	admin := stdlib.OpenDB(*cfg)
+	defer admin.Close()
+	driver, err := postgres.Open(admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 模拟数据库发布先准备库表，再启动网关验证就绪和热加载。
+	schema := atlasschema.New(namespace)
+	if err := driver.ApplyChanges(t.Context(), []atlasschema.Change{&atlasschema.AddSchema{S: schema}}); err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
-		cfg, err := pgx.ParseConfig(dsn)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		admin := stdlib.OpenDB(*cfg)
-		defer admin.Close()
-		driver, err := postgres.Open(admin)
-		if err == nil {
-			err = driver.ApplyChanges(context.Background(), []atlasschema.Change{&atlasschema.DropSchema{S: atlasschema.New(namespace), Extra: []atlasschema.Clause{&postgres.Cascade{}}}})
-		}
-		if err != nil {
+		if err := driver.ApplyChanges(context.Background(), []atlasschema.Change{&atlasschema.DropSchema{S: schema, Extra: []atlasschema.Clause{&postgres.Cascade{}}}}); err != nil {
 			t.Error(err)
 		}
 	}()
+	db, err := gateway.OpenDatabase(t.Context(), u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Schema.Create(t.Context(), entschema.WithSchemaName(namespace), entschema.WithForeignKeys(false)); err != nil {
+		t.Fatal(err)
+	}
 	address := func() string {
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -80,7 +88,7 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 	}
 	ctx, stop := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- run(ctx, path, false) }()
+	go func() { done <- run(ctx, path) }()
 	defer func() {
 		stop()
 		if err := <-done; err != nil {
