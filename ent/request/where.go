@@ -89,6 +89,11 @@ func Units(v int) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldUnits, v))
 }
 
+// QueuePublishAt applies equality check predicate on the "queue_publish_at" field. It's identical to QueuePublishAtEQ.
+func QueuePublishAt(v time.Time) predicate.Request {
+	return predicate.Request(sql.FieldEQ(FieldQueuePublishAt, v))
+}
+
 // SlotReserved applies equality check predicate on the "slot_reserved" field. It's identical to SlotReservedEQ.
 func SlotReserved(v bool) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldSlotReserved, v))
@@ -462,6 +467,56 @@ func StateIn(vs ...State) predicate.Request {
 // StateNotIn applies the NotIn predicate on the "state" field.
 func StateNotIn(vs ...State) predicate.Request {
 	return predicate.Request(sql.FieldNotIn(FieldState, vs...))
+}
+
+// QueuePublishAtEQ applies the EQ predicate on the "queue_publish_at" field.
+func QueuePublishAtEQ(v time.Time) predicate.Request {
+	return predicate.Request(sql.FieldEQ(FieldQueuePublishAt, v))
+}
+
+// QueuePublishAtNEQ applies the NEQ predicate on the "queue_publish_at" field.
+func QueuePublishAtNEQ(v time.Time) predicate.Request {
+	return predicate.Request(sql.FieldNEQ(FieldQueuePublishAt, v))
+}
+
+// QueuePublishAtIn applies the In predicate on the "queue_publish_at" field.
+func QueuePublishAtIn(vs ...time.Time) predicate.Request {
+	return predicate.Request(sql.FieldIn(FieldQueuePublishAt, vs...))
+}
+
+// QueuePublishAtNotIn applies the NotIn predicate on the "queue_publish_at" field.
+func QueuePublishAtNotIn(vs ...time.Time) predicate.Request {
+	return predicate.Request(sql.FieldNotIn(FieldQueuePublishAt, vs...))
+}
+
+// QueuePublishAtGT applies the GT predicate on the "queue_publish_at" field.
+func QueuePublishAtGT(v time.Time) predicate.Request {
+	return predicate.Request(sql.FieldGT(FieldQueuePublishAt, v))
+}
+
+// QueuePublishAtGTE applies the GTE predicate on the "queue_publish_at" field.
+func QueuePublishAtGTE(v time.Time) predicate.Request {
+	return predicate.Request(sql.FieldGTE(FieldQueuePublishAt, v))
+}
+
+// QueuePublishAtLT applies the LT predicate on the "queue_publish_at" field.
+func QueuePublishAtLT(v time.Time) predicate.Request {
+	return predicate.Request(sql.FieldLT(FieldQueuePublishAt, v))
+}
+
+// QueuePublishAtLTE applies the LTE predicate on the "queue_publish_at" field.
+func QueuePublishAtLTE(v time.Time) predicate.Request {
+	return predicate.Request(sql.FieldLTE(FieldQueuePublishAt, v))
+}
+
+// QueuePublishAtIsNil applies the IsNil predicate on the "queue_publish_at" field.
+func QueuePublishAtIsNil() predicate.Request {
+	return predicate.Request(sql.FieldIsNull(FieldQueuePublishAt))
+}
+
+// QueuePublishAtNotNil applies the NotNil predicate on the "queue_publish_at" field.
+func QueuePublishAtNotNil() predicate.Request {
+	return predicate.Request(sql.FieldNotNull(FieldQueuePublishAt))
 }
 
 // SlotReservedEQ applies the EQ predicate on the "slot_reserved" field.

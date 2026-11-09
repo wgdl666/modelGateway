@@ -1242,6 +1242,7 @@ type RequestMutation struct {
 	units                 *int
 	addunits              *int
 	state                 *request.State
+	queue_publish_at      *time.Time
 	slot_reserved         *bool
 	instance_id           *string
 	resource_group        *string
@@ -1676,6 +1677,55 @@ func (m *RequestMutation) OldState(ctx context.Context) (v request.State, err er
 // ResetState resets all changes to the "state" field.
 func (m *RequestMutation) ResetState() {
 	m.state = nil
+}
+
+// SetQueuePublishAt sets the "queue_publish_at" field.
+func (m *RequestMutation) SetQueuePublishAt(t time.Time) {
+	m.queue_publish_at = &t
+}
+
+// QueuePublishAt returns the value of the "queue_publish_at" field in the mutation.
+func (m *RequestMutation) QueuePublishAt() (r time.Time, exists bool) {
+	v := m.queue_publish_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQueuePublishAt returns the old "queue_publish_at" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldQueuePublishAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQueuePublishAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQueuePublishAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQueuePublishAt: %w", err)
+	}
+	return oldValue.QueuePublishAt, nil
+}
+
+// ClearQueuePublishAt clears the value of the "queue_publish_at" field.
+func (m *RequestMutation) ClearQueuePublishAt() {
+	m.queue_publish_at = nil
+	m.clearedFields[request.FieldQueuePublishAt] = struct{}{}
+}
+
+// QueuePublishAtCleared returns if the "queue_publish_at" field was cleared in this mutation.
+func (m *RequestMutation) QueuePublishAtCleared() bool {
+	_, ok := m.clearedFields[request.FieldQueuePublishAt]
+	return ok
+}
+
+// ResetQueuePublishAt resets all changes to the "queue_publish_at" field.
+func (m *RequestMutation) ResetQueuePublishAt() {
+	m.queue_publish_at = nil
+	delete(m.clearedFields, request.FieldQueuePublishAt)
 }
 
 // SetSlotReserved sets the "slot_reserved" field.
@@ -2412,7 +2462,7 @@ func (m *RequestMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RequestMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+	fields := make([]string, 0, 25)
 	if m.model_key != nil {
 		fields = append(fields, request.FieldModelKey)
 	}
@@ -2433,6 +2483,9 @@ func (m *RequestMutation) Fields() []string {
 	}
 	if m.state != nil {
 		fields = append(fields, request.FieldState)
+	}
+	if m.queue_publish_at != nil {
+		fields = append(fields, request.FieldQueuePublishAt)
 	}
 	if m.slot_reserved != nil {
 		fields = append(fields, request.FieldSlotReserved)
@@ -2507,6 +2560,8 @@ func (m *RequestMutation) Field(name string) (ent.Value, bool) {
 		return m.Units()
 	case request.FieldState:
 		return m.State()
+	case request.FieldQueuePublishAt:
+		return m.QueuePublishAt()
 	case request.FieldSlotReserved:
 		return m.SlotReserved()
 	case request.FieldInstanceID:
@@ -2564,6 +2619,8 @@ func (m *RequestMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldUnits(ctx)
 	case request.FieldState:
 		return m.OldState(ctx)
+	case request.FieldQueuePublishAt:
+		return m.OldQueuePublishAt(ctx)
 	case request.FieldSlotReserved:
 		return m.OldSlotReserved(ctx)
 	case request.FieldInstanceID:
@@ -2655,6 +2712,13 @@ func (m *RequestMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetState(v)
+		return nil
+	case request.FieldQueuePublishAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQueuePublishAt(v)
 		return nil
 	case request.FieldSlotReserved:
 		v, ok := value.(bool)
@@ -2844,6 +2908,9 @@ func (m *RequestMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *RequestMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(request.FieldQueuePublishAt) {
+		fields = append(fields, request.FieldQueuePublishAt)
+	}
 	if m.FieldCleared(request.FieldStartedAt) {
 		fields = append(fields, request.FieldStartedAt)
 	}
@@ -2870,6 +2937,9 @@ func (m *RequestMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *RequestMutation) ClearField(name string) error {
 	switch name {
+	case request.FieldQueuePublishAt:
+		m.ClearQueuePublishAt()
+		return nil
 	case request.FieldStartedAt:
 		m.ClearStartedAt()
 		return nil
@@ -2910,6 +2980,9 @@ func (m *RequestMutation) ResetField(name string) error {
 		return nil
 	case request.FieldState:
 		m.ResetState()
+		return nil
+	case request.FieldQueuePublishAt:
+		m.ResetQueuePublishAt()
 		return nil
 	case request.FieldSlotReserved:
 		m.ResetSlotReserved()

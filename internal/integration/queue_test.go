@@ -164,8 +164,9 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	video := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8002", 2)
 	registerReady(t, a, image)
 	registerReady(t, b, video)
-	for _, instance := range []protocol.Instance{image, video} {
-		if _, err := a.Admit(t.Context(), testAdmission(instance, uuid.NewString(), 2)); err != nil {
+	ids := []string{uuid.NewString(), uuid.NewString()}
+	for n, instance := range []protocol.Instance{image, video} {
+		if _, err := a.Admit(t.Context(), testAdmission(instance, ids[n], 2)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -174,7 +175,7 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	var wg sync.WaitGroup
 	for n := range 20 {
 		wg.Go(func() {
-			task, err := []*store.Store{a, b}[n%2].Claim(t.Context(), testConfig())
+			task, err := []*store.Store{a, b}[(n/2)%2].Claim(t.Context(), testConfig(), ids[n%2])
 			if err != nil {
 				t.Errorf("claim: %v", err)
 			}
@@ -189,10 +190,14 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 		t.Fatalf("shared GPU admitted %d tasks", won.Load())
 	}
 	first := <-claims
+	waiting := ids[0]
+	if waiting == first {
+		waiting = ids[1]
+	}
 	if err := a.DispatchFailure(t.Context(), first, 504, "backend_timeout", "unknown", true); err != nil {
 		t.Fatal(err)
 	}
-	if next, err := b.Claim(t.Context(), testConfig()); next != nil || err != nil {
+	if next, err := b.Claim(t.Context(), testConfig(), waiting); next != nil || err != nil {
 		t.Fatalf("unknown task released capacity: %v %v", next, err)
 	}
 	poll, err := b.ClaimPoll(t.Context())
@@ -209,14 +214,14 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	if err != nil || task.State != request.StateFailed || task.SlotReserved {
 		t.Fatalf("late completion rewrote failed state or leaked capacity: %v %v", task, err)
 	}
-	next, err := b.Claim(t.Context(), testConfig())
-	if err != nil || next == nil || next.ID == first || next.Units != 2 {
+	next, err := b.Claim(t.Context(), testConfig(), waiting)
+	if err != nil || next == nil || next.ID != waiting || next.Units != 2 {
 		t.Fatalf("queued task was not dispatched after slot release: %v %v", next, err)
 	}
 }
 
 func TestQueuedUntilMatchingInstanceHasFreshProbe(t *testing.T) {
-	a, b, _ := stores(t)
+	a, b, db := stores(t)
 	matching := testInstance("Vmind_wardrobe_v1.0", "garment_extraction", "http://127.0.0.1:8001", 1)
 	in := testAdmission(matching, uuid.NewString(), 1)
 	if task, err := a.Admit(t.Context(), in); err != nil || task.State != request.StateQueued {
@@ -231,16 +236,26 @@ func TestQueuedUntilMatchingInstanceHasFreshProbe(t *testing.T) {
 	if err := a.RecordProbe(t.Context(), matching.ID, time.Now().Add(-time.Minute), true); err != nil {
 		t.Fatal(err)
 	}
-	if task, err := b.Claim(t.Context(), testConfig()); err != nil || task != nil {
+	pending, err := a.PendingPublications(t.Context())
+	if err != nil || len(pending) != 1 || pending[0].ID != in.ID {
+		t.Fatalf("admitted request missing durable publication: %v %v", pending, err)
+	}
+	if task, err := b.Claim(t.Context(), testConfig(), in.ID); err != nil || task != nil {
 		t.Fatalf("claimed with wrong capability or stale probe: task=%v err=%v", task, err)
 	}
-	if task, err := b.Get(t.Context(), in.ID); err != nil || task.State != request.StateQueued {
+	// 模拟消费先延期、发布确认后写回，防止旧确认清掉新投递时间。
+	if err := a.MarkPublished(t.Context(), in.ID, *pending[0].QueuePublishAt); err != nil {
+		t.Fatal(err)
+	}
+	if task, err := db.Request.Get(t.Context(), in.ID); err != nil || task.State != request.StateQueued {
 		t.Fatalf("task no longer queued: task=%v err=%v", task, err)
+	} else if task.QueuePublishAt == nil || !task.QueuePublishAt.After(*pending[0].QueuePublishAt) {
+		t.Fatal("late publication confirmation lost the scheduled retry")
 	}
 	if err := a.RecordProbe(t.Context(), matching.ID, time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
-	if task, err := b.Claim(t.Context(), testConfig()); err != nil || task == nil || task.ID != in.ID || task.InstanceID != matching.ID || task.State != request.StateProcessing {
+	if task, err := b.Claim(t.Context(), testConfig(), in.ID); err != nil || task == nil || task.ID != in.ID || task.InstanceID != matching.ID || task.State != request.StateProcessing {
 		t.Fatalf("claim after fresh probe: task=%v err=%v", task, err)
 	}
 }

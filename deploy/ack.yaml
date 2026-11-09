@@ -4,7 +4,7 @@ metadata:
   name: model-gateway
   namespace: default
 spec:
-  # 副本只通过 PG 领取工作，同一副本退出时由另一个继续处理。
+  # 每副本启动两个 RabbitMQ 消费者，跨副本的任务归属与容量由 PG 协调。
   replicas: 2
   strategy:
     type: RollingUpdate

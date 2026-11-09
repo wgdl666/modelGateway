@@ -72,7 +72,7 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 	if _, err := a.Admit(t.Context(), submission); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.Claim(t.Context(), testConfig()); err != nil {
+	if _, err := a.Claim(t.Context(), testConfig(), id); err != nil {
 		t.Fatal(err)
 	}
 	runtime, err := config.NewRuntime(testConfig())

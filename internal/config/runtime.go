@@ -15,6 +15,8 @@ import (
 
 type Config struct {
 	DatabaseURL       string         `json:"database_url"`
+	RabbitMQURL       string         `json:"-"`
+	RabbitMQQueue     string         `json:"rabbitmq_queue"`
 	Listen            string         `json:"listen"`
 	APIToken          string         `json:"api_token"`
 	AdminToken        string         `json:"admin_token"`
@@ -45,9 +47,10 @@ func Parse(raw []byte) (Config, error) {
 	if err := json.Unmarshal(raw, &wire); err != nil {
 		return c, errors.New("invalid gateway configuration JSON")
 	}
-	// ACK 用专用 Secret 注入连接凭据，Nacos 只承载可热更新的非密钥设置。
+	// 数据库和 MQ 凭据由 Secret 注入，配置中心只保存队列名等非密钥设置。
 	for key, field := range map[string]*string{
 		"MODEL_GATEWAY_DATABASE_URL":  &c.DatabaseURL,
+		"MODEL_GATEWAY_RABBITMQ_URL":  &c.RabbitMQURL,
 		"MODEL_GATEWAY_API_TOKEN":     &c.APIToken,
 		"MODEL_GATEWAY_ADMIN_TOKEN":   &c.AdminToken,
 		"MODEL_GATEWAY_BACKEND_TOKEN": &c.BackendToken,
@@ -167,6 +170,10 @@ func (r *Runtime) Reload(c Config) error {
 	defer r.mu.Unlock()
 	if next.DatabaseURL != r.current.DatabaseURL {
 		return errors.New("changing database_url requires draining and restarting the gateway")
+	}
+	// 发布与消费必须指向同一队列，切换队列要先处理完旧队列的任务。
+	if next.RabbitMQURL != r.current.RabbitMQURL || next.RabbitMQQueue != r.current.RabbitMQQueue {
+		return errors.New("changing RabbitMQ requires draining and restarting the gateway")
 	}
 	// 已派发的请求按原地址回查，协议、视频目标和结果桶都归本次部署所有。
 	if !maps.Equal(next.NativeBackends, r.current.NativeBackends) || next.NativeResults != r.current.NativeResults {

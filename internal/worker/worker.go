@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rabbitmq/amqp091-go"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/protocol"
@@ -42,6 +43,13 @@ type Reconciler struct {
 func New(tasks *store.Store, runtime *config.Runtime) (*Reconciler, error) {
 	w := &Reconciler{store: tasks, runtime: runtime}
 	cfg := runtime.Current()
+	// 连接暂时失败由投递循环重试，缺失启动配置会使已受理任务一直留在账本。
+	if cfg.RabbitMQURL == "" || cfg.RabbitMQQueue == "" {
+		return nil, errors.New("MODEL_GATEWAY_RABBITMQ_URL and rabbitmq_queue are required")
+	}
+	if _, err := amqp091.ParseURI(cfg.RabbitMQURL); err != nil {
+		return nil, errors.New("invalid RabbitMQ connection configuration")
+	}
 	// 原生路由和结果桶属于部署配置，客户端与执行器共享同一份固定配置。
 	if len(cfg.NativeBackends) != 0 {
 		var err error
@@ -284,20 +292,15 @@ func (w *Reconciler) runWorker(label string, interval time.Duration, work func()
 	})
 }
 
-// 派发、终态查询和排队过期分开，长视频不能占满等待队列的消费协程。
+// 派发与终态回查分开，等待模型响应的消费者不会占用回查协程。
 func (w *Reconciler) Start() {
 	w.runWorker("model health probe failed", probeInterval, func() error { return w.probe(w.runtime.Current()) })
 	w.runWorker("queue expiry failed", 200*time.Millisecond, func() error { return w.store.Expire(w.ctx) })
+	w.runRabbit("queue publication failed", w.publishQueued)
+	for range 2 {
+		w.runRabbit("queue dispatch failed", w.consumeQueued)
+	}
 	for range 4 {
-		w.runWorker("queue dispatch failed", 80*time.Millisecond, func() error {
-			// 领取和派发使用同一份预算，配置热更新只影响后续领取。
-			cfg := w.runtime.Current()
-			task, err := w.store.Claim(w.ctx, cfg.Config)
-			if err != nil || task == nil {
-				return err
-			}
-			return w.execute(cfg, task)
-		})
 		w.runWorker("model reconciliation failed", 125*time.Millisecond, func() error {
 			task, err := w.store.ClaimPoll(w.ctx)
 			if err != nil || task == nil {

@@ -79,6 +79,20 @@ func (_c *RequestCreate) SetNillableState(v *request.State) *RequestCreate {
 	return _c
 }
 
+// SetQueuePublishAt sets the "queue_publish_at" field.
+func (_c *RequestCreate) SetQueuePublishAt(v time.Time) *RequestCreate {
+	_c.mutation.SetQueuePublishAt(v)
+	return _c
+}
+
+// SetNillableQueuePublishAt sets the "queue_publish_at" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableQueuePublishAt(v *time.Time) *RequestCreate {
+	if v != nil {
+		_c.SetQueuePublishAt(*v)
+	}
+	return _c
+}
+
 // SetSlotReserved sets the "slot_reserved" field.
 func (_c *RequestCreate) SetSlotReserved(v bool) *RequestCreate {
 	_c.mutation.SetSlotReserved(v)
@@ -539,6 +553,10 @@ func (_c *RequestCreate) createSpec() (*Request, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.State(); ok {
 		_spec.SetField(request.FieldState, field.TypeEnum, value)
 		_node.State = value
+	}
+	if value, ok := _c.mutation.QueuePublishAt(); ok {
+		_spec.SetField(request.FieldQueuePublishAt, field.TypeTime, value)
+		_node.QueuePublishAt = &value
 	}
 	if value, ok := _c.mutation.SlotReserved(); ok {
 		_spec.SetField(request.FieldSlotReserved, field.TypeBool, value)

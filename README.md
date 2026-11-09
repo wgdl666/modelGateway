@@ -1,6 +1,6 @@
 # modelGateway
 
-一个模型网关可运行多个 Go 副本，共享 PostgreSQL。Hertz 处理 HTTP，Ent 定义两张业务表 `model_instances` 和 `requests`。网关持有队列和容量，模型执行端确认终态并上传成品，ModelHub 使用 OSS/S3 对象引用读取。
+一个模型网关可运行多个 Go 副本，共享 PostgreSQL 和 RabbitMQ。Hertz 处理 HTTP，Ent 定义 `model_instances` 和 `requests`。每个副本启动两个 RabbitMQ 消费者。模型执行端确认终态并上传成品，ModelHub 使用 OSS/S3 对象引用读取。
 
 ## 调用协议
 
@@ -21,7 +21,7 @@
 图片持久入队后同步等待结果。视频持久入队后立即返回 202 和 `request_id`、`state`。使用相同请求头调用 `GET /v1/gateway/requests` 查询。成功响应为 `result.files[]`，每项只有 `provider`、`region`、`bucket` 和 `key`。在排队时可用 `POST /v1/gateway/requests/cancel` 取消，已经派发返回 409。
 
 队列按模型限制等待条数和字节数，默认 64 条、128 MiB。队列满返回 429，PostgreSQL 不可用返回 503。
-派发时检查能力、探活和容量。暂时没有可用实例时，任务保持 `queued`。`backend_timeout` 默认 120 秒，用于排队和上游等待。使用 Worker 协议的实例也用这份预算完成首次模型调用。截止时仍在队列的任务进入 `failed`，错误码为 `queue_timeout`。
+派发时检查能力、探活和容量。暂时没有可用实例时，任务保持 `queued`，记录下次投递时间，消费者可以继续处理其他任务。`backend_timeout` 默认 120 秒，用于排队和上游等待。使用 Worker 协议的实例也用这份预算完成首次模型调用。截止时仍在队列的任务进入 `failed`，错误码为 `queue_timeout`。
 
 ## 实例管理
 
@@ -49,7 +49,7 @@
 
 Ops 使用管理凭据访问 `GET /v1/admin/requests` 和 `GET /v1/admin/requests/{request_id}`。列表支持请求 ID、Trace ID、模型或能力、实例、制品摘要、状态和时间过滤，`limit` 最大 100。详情返回对象引用和终态错误。两者都省略原始输入图片。实例查询分别返回 `reserved_requests` 和 `reserved_units`，健康与排空独立展示。
 
-`requests` 保存原始业务 JSON、四态、截止时间、实际派发实例和制品、容量预留、后端任务及对象结果。实例和组占用从仍预留槽位的请求汇总。并发受理与派发使用可串行化事务。消费者在持有任务行锁时提交归属和容量，再调用模型。
+`requests` 保存原始业务 JSON、四态、截止时间、实际派发实例和制品、容量预留、后端任务及对象结果。受理时同一事务记录待投递时间，RabbitMQ 确认持久消息后才清除。消息只包含请求 ID，Broker 暂时不可用时由网关继续补投。消费者按 ID 加锁检查状态，提交归属和容量后再调用模型。已领取、已取消或已过期的任务收到重复消息时会直接确认。每个消费者预取一条，GPU 容量仍从已预留请求汇总。
 
 使用 Worker 协议的实例通过 `POST {endpoint}/requests` 接收派发。模型端接收 `request_id`、`model_key`、`capability`、`input` 和 `metadata`。返回同一 `request_id`，状态为 `processing`、`succeeded` 或 `failed`。未受理的输入校验和鉴权错误使用 HTTP 400、413、415、401 或 403。已经受理的任务通过 `GET {endpoint}/requests/{request_id}` 查询，完成状态必须提供对象结果或结构化错误。
 
@@ -93,9 +93,9 @@ VMind-Image 和 LTX 的原生鉴权分别使用 `MODEL_GATEWAY_NATIVE_IMAGE_*` �
 
 ## 网关启动
 
-部署前，数据库侧根据 [Ent 模型定义](ent/schema) 准备 `model_gateway` schema、业务表和索引。国内 ACK 使用 `wghub` 数据库。网关运行账号需要该 schema 的访问权限和业务表的读写权限。
+部署前，数据库侧根据 [Ent 模型定义](ent/schema) 准备 `model_gateway` schema、业务表和索引。已有数据库以自动提交方式执行 [RabbitMQ 迁移](deploy/migrations/rabbitmq-dispatch.sql)，并发索引需要独立提交。国内 ACK 使用 `wghub` 数据库。网关运行账号需要该 schema 的访问权限和业务表的读写权限。
 
-国内 ACK 通过 workspace 的 `server_release.py release --service model-gateway --branch dev` 发布两个副本和内网 Service。镜像使用私有不可变仓库 `wg/model-gateway`。首次部署需要 [启动配置清单](deploy/ack-bootstrap.yaml) 和 Kubernetes Secret `model-gateway-runtime`。Nacos `wg.mirror.modelGateway` 保存监听、后端白名单、队列和容量设置。Secret 提供 `MODEL_GATEWAY_DATABASE_URL` 和 `MODEL_GATEWAY_{API,ADMIN,BACKEND}_TOKEN`。
+国内 ACK 通过 workspace 的 `server_release.py release --service model-gateway --branch dev` 发布两个副本和内网 Service。镜像使用私有不可变仓库 `wg/model-gateway`。首次部署需要 [启动配置清单](deploy/ack-bootstrap.yaml) 和 Kubernetes Secret `model-gateway-runtime`。Nacos `wg.mirror.modelGateway` 保存监听、后端白名单、`rabbitmq_queue` 和容量设置。Secret 提供 `MODEL_GATEWAY_DATABASE_URL`、`MODEL_GATEWAY_RABBITMQ_URL` 和 `MODEL_GATEWAY_{API,ADMIN,BACKEND}_TOKEN`。
 
 国内视频 Worker 设置 `VMIND_NATIVE_VIDEO_PROTOCOL=jobs` 和 `VMIND_NATIVE_VIDEO_TARGET`。目标实例名必须来自原生 `/healthz`，并与网关登记的 GPU 分组对应。提交原生 `/vton` 后持久化后端分配的 job_id，再查询 `/jobs/{job_id}`。原生服务未提供按外部 UUID 查询，受理响应丢失时保留槽位，待核实原执行。图片上游需要 Basic Auth 时，由模型部署提供 `VMIND_NATIVE_USERNAME` 和 `VMIND_NATIVE_PASSWORD`。
 
@@ -105,7 +105,7 @@ VMind-Image 和 LTX 的原生鉴权分别使用 `MODEL_GATEWAY_NATIVE_IMAGE_*` �
 
 启动网关时必须设置 `XX_WG_REGION`。`CN` 用 `nacos_url` 连接 Nacos。`SG` 和 `US` 用 `appconfig_url` 连接 AppConfig Agent。在 `bootstrap.json` 中填入对应环境的地址。参见 [Nacos 引导示例](config/bootstrap.aliyun.example.json)和 [AppConfig 引导示例](config/bootstrap.aws.example.json)。
 
-配置正文见 [gateway.example.json](config/gateway.example.json)。多个副本使用同一份 PG schema。换库前需要排空任务并重启。
+配置正文见 [gateway.example.json](config/gateway.example.json)。同一环境的副本共享 PG schema 和 RabbitMQ 队列，不同环境使用独立队列。网关会声明持久队列，需要配置、写入和读取权限。更换数据库或队列前先排空任务并重启。
 
 ```sh
 go build -o bin/model-gateway ./cmd/model-gateway
@@ -113,8 +113,8 @@ export XX_WG_REGION=CN
 bin/model-gateway -config /etc/model-gateway/bootstrap.json
 ```
 
-`/_gateway/live` 检查进程，`/_gateway/ready` 检查 PG 表。使用名称以 `_test` 结尾的独立 PostgreSQL 运行集成测试。
+`/_gateway/live` 检查进程，`/_gateway/ready` 检查请求账本。集成测试使用名称以 `_test` 结尾的独立 PostgreSQL 数据库和测试 RabbitMQ。
 
 ```sh
-TEST_DATABASE_URL=<test-dsn> go test -race ./...
+TEST_DATABASE_URL=<test-dsn> TEST_RABBITMQ_URL=<test-amqp-uri> go test -race ./...
 ```

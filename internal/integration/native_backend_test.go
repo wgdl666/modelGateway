@@ -18,6 +18,7 @@ import (
 	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/httpapi"
 	"github.com/wgdl666/modelGateway/internal/protocol"
+	"github.com/wgdl666/modelGateway/internal/testsupport"
 	"github.com/wgdl666/modelGateway/internal/worker"
 )
 
@@ -142,6 +143,7 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			defer objects.Close()
 
 			cfg := testConfig()
+			cfg.RabbitMQURL, cfg.RabbitMQQueue, _ = testsupport.RabbitQueue(t)
 			cfg.BackendToken = "legacy-token"
 			cfg.PollInterval = 25 * time.Millisecond
 			cfg.NativeBackends = map[string]config.NativeBackend{imageModel.URL: {}, videoModelServer.URL: {TargetInstance: target}}
@@ -288,6 +290,7 @@ func TestNativeImageWaitTimeoutReleasesSlotAfterExecution(t *testing.T) {
 	defer model.Close()
 
 	cfg := testConfig()
+	cfg.RabbitMQURL, cfg.RabbitMQQueue, _ = testsupport.RabbitQueue(t)
 	cfg.BackendTimeout = time.Second
 	cfg.NativeExecutionTimeout = 8 * time.Second
 	cfg.NativeBackends = map[string]config.NativeBackend{model.URL: {VTONEdits: true}}

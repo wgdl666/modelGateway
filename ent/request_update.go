@@ -44,6 +44,26 @@ func (_u *RequestUpdate) SetNillableState(v *request.State) *RequestUpdate {
 	return _u
 }
 
+// SetQueuePublishAt sets the "queue_publish_at" field.
+func (_u *RequestUpdate) SetQueuePublishAt(v time.Time) *RequestUpdate {
+	_u.mutation.SetQueuePublishAt(v)
+	return _u
+}
+
+// SetNillableQueuePublishAt sets the "queue_publish_at" field if the given value is not nil.
+func (_u *RequestUpdate) SetNillableQueuePublishAt(v *time.Time) *RequestUpdate {
+	if v != nil {
+		_u.SetQueuePublishAt(*v)
+	}
+	return _u
+}
+
+// ClearQueuePublishAt clears the value of the "queue_publish_at" field.
+func (_u *RequestUpdate) ClearQueuePublishAt() *RequestUpdate {
+	_u.mutation.ClearQueuePublishAt()
+	return _u
+}
+
 // SetSlotReserved sets the "slot_reserved" field.
 func (_u *RequestUpdate) SetSlotReserved(v bool) *RequestUpdate {
 	_u.mutation.SetSlotReserved(v)
@@ -341,6 +361,12 @@ func (_u *RequestUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.State(); ok {
 		_spec.SetField(request.FieldState, field.TypeEnum, value)
 	}
+	if value, ok := _u.mutation.QueuePublishAt(); ok {
+		_spec.SetField(request.FieldQueuePublishAt, field.TypeTime, value)
+	}
+	if _u.mutation.QueuePublishAtCleared() {
+		_spec.ClearField(request.FieldQueuePublishAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.SlotReserved(); ok {
 		_spec.SetField(request.FieldSlotReserved, field.TypeBool, value)
 	}
@@ -437,6 +463,26 @@ func (_u *RequestUpdateOne) SetNillableState(v *request.State) *RequestUpdateOne
 	if v != nil {
 		_u.SetState(*v)
 	}
+	return _u
+}
+
+// SetQueuePublishAt sets the "queue_publish_at" field.
+func (_u *RequestUpdateOne) SetQueuePublishAt(v time.Time) *RequestUpdateOne {
+	_u.mutation.SetQueuePublishAt(v)
+	return _u
+}
+
+// SetNillableQueuePublishAt sets the "queue_publish_at" field if the given value is not nil.
+func (_u *RequestUpdateOne) SetNillableQueuePublishAt(v *time.Time) *RequestUpdateOne {
+	if v != nil {
+		_u.SetQueuePublishAt(*v)
+	}
+	return _u
+}
+
+// ClearQueuePublishAt clears the value of the "queue_publish_at" field.
+func (_u *RequestUpdateOne) ClearQueuePublishAt() *RequestUpdateOne {
+	_u.mutation.ClearQueuePublishAt()
 	return _u
 }
 
@@ -766,6 +812,12 @@ func (_u *RequestUpdateOne) sqlSave(ctx context.Context) (_node *Request, err er
 	}
 	if value, ok := _u.mutation.State(); ok {
 		_spec.SetField(request.FieldState, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.QueuePublishAt(); ok {
+		_spec.SetField(request.FieldQueuePublishAt, field.TypeTime, value)
+	}
+	if _u.mutation.QueuePublishAtCleared() {
+		_spec.ClearField(request.FieldQueuePublishAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.SlotReserved(); ok {
 		_spec.SetField(request.FieldSlotReserved, field.TypeBool, value)

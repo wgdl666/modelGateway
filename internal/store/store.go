@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/wgdl666/modelGateway/ent"
+	"github.com/wgdl666/modelGateway/ent/request"
 )
 
 var (
@@ -26,7 +27,8 @@ func (s *Store) CheckReady(ctx context.Context) error {
 	if _, err := s.db.ModelInstance.Query().Exist(ctx); err != nil {
 		return err
 	}
-	_, err := s.db.Request.Query().Exist(ctx)
+	// 核对待投递字段已经迁移，避免就绪检查放过旧表结构。
+	_, err := s.db.Request.Query().Select(request.FieldQueuePublishAt).Limit(1).All(ctx)
 	return err
 }
 

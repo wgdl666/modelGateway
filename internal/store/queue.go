@@ -6,10 +6,8 @@ import (
 	"reflect"
 	"time"
 
-	"entgo.io/ent/dialect/sql"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
-	"github.com/wgdl666/modelGateway/ent/predicate"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/protocol"
@@ -69,10 +67,23 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 		}
 		task, err = tx.Request.Create().SetID(in.ID).SetModelKey(in.ModelKey).SetCapability(in.Capability).
 			SetTraceID(in.TraceID).SetRequestPayload(in.Payload).SetPayloadBytes(int64(len(in.Payload))).SetUnits(in.Units).
-			SetCreatedAt(now).SetDeadlineAt(now.Add(in.BackendTimeout)).Save(ctx)
+			SetCreatedAt(now).SetDeadlineAt(now.Add(in.BackendTimeout)).SetQueuePublishAt(now).Save(ctx)
 		return err
 	})
 	return task, err
+}
+
+func (s *Store) PendingPublications(ctx context.Context) ([]*ent.Request, error) {
+	now := time.Now().UTC()
+	return s.db.Request.Query().Where(request.StateEQ(request.StateQueued), request.QueuePublishAtLTE(now), request.DeadlineAtGT(now)).
+		Order(ent.Asc(request.FieldQueuePublishAt, request.FieldID)).Limit(32).
+		Select(request.FieldID, request.FieldQueuePublishAt, request.FieldDeadlineAt).All(ctx)
+}
+
+func (s *Store) MarkPublished(ctx context.Context, id string, due time.Time) error {
+	// 消费者可能已把同一请求改为稍后再投，迟到的发布确认不能清掉新的投递时间。
+	_, err := s.db.Request.Update().Where(request.IDEQ(id), request.QueuePublishAtEQ(due)).ClearQueuePublishAt().Save(ctx)
+	return err
 }
 
 type reservation struct {
@@ -91,15 +102,30 @@ func reserved(ctx context.Context, client *ent.RequestClient) ([]reservation, er
 	return occupied, err
 }
 
-func (s *Store) Claim(ctx context.Context, cfg config.Config) (*ent.Request, error) {
+func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.Request, error) {
 	var task *ent.Request
 	err := s.serialize(ctx, func(tx *ent.Tx) error {
 		task = nil
 		now := time.Now().UTC()
-		instances, err := tx.ModelInstance.Query().Where(modelinstance.ReadyEQ(true), modelinstance.DrainingEQ(false),
-			modelinstance.HealthCheckedAtGT(now.Add(-probeMaxAge))).Order(ent.Asc(modelinstance.FieldID)).All(ctx)
-		if err != nil || len(instances) == 0 {
+		// 同一消息可能重投。按 ID 等待行锁，锁竞争不能被误当成已处理而确认消息。
+		next, err := tx.Request.Query().Where(request.IDEQ(id), request.StateEQ(request.StateQueued), request.DeadlineAtGT(now)).
+			Select(request.FieldID, request.FieldModelKey, request.FieldCapability, request.FieldUnits, request.FieldDeadlineAt, request.FieldQueuePublishAt).
+			ForUpdate().Only(ctx)
+		if ent.IsNotFound(err) {
+			return nil
+		}
+		if err != nil {
 			return err
+		}
+		instances, err := tx.ModelInstance.Query().Where(
+			modelinstance.ModelKeyEQ(next.ModelKey), modelinstance.CapabilityEQ(next.Capability),
+			modelinstance.ReadyEQ(true), modelinstance.DrainingEQ(false), modelinstance.HealthCheckedAtGT(now.Add(-probeMaxAge)),
+		).Order(ent.Asc(modelinstance.FieldID)).All(ctx)
+		if err != nil {
+			return err
+		}
+		if len(instances) == 0 {
+			return deferPublication(ctx, tx, next)
 		}
 		occupied, err := reserved(ctx, tx.Request)
 		if err != nil {
@@ -110,30 +136,9 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config) (*ent.Request, err
 			byInstance[hold.InstanceID] += hold.Units
 			byGroup[hold.ResourceGroup] += hold.Units
 		}
-		// 过滤当前无法派发的能力，避免同卡队首阻塞别的资源组。
-		var runnable []predicate.Request
-		available := make(map[string]int, len(instances))
 		for _, i := range instances {
 			free := min(i.CapacityUnits-byInstance[i.ID], i.GroupCapacityUnits-byGroup[i.ResourceGroup])
-			if free > 0 {
-				available[i.ID] = free
-				runnable = append(runnable, request.And(request.ModelKeyEQ(i.ModelKey), request.CapabilityEQ(i.Capability), request.UnitsLTE(free)))
-			}
-		}
-		if len(runnable) == 0 {
-			return nil
-		}
-		next, err := tx.Request.Query().Where(request.StateEQ(request.StateQueued), request.DeadlineAtGT(now),
-			request.Or(runnable...)).Order(ent.Asc(request.FieldCreatedAt, request.FieldID)).
-			ForUpdate(sql.WithLockAction(sql.SkipLocked)).First(ctx)
-		if ent.IsNotFound(err) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		for _, i := range instances {
-			if i.ModelKey != next.ModelKey || i.Capability != next.Capability || available[i.ID] < next.Units {
+			if free < next.Units {
 				continue
 			}
 			// 与排空串行化，提交后请求身份和物理槽位才对其他副本可见。
@@ -145,14 +150,25 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config) (*ent.Request, err
 				// 原生调用可晚于上游返回，给原派发者留足执行和写终态的时间。
 				nextPoll = now.Add(cfg.NativeExecutionTimeout).Add(ExecutionWriteTimeout)
 			}
-			task, err = tx.Request.UpdateOneID(next.ID).SetState(request.StateProcessing).SetSlotReserved(true).
+			task, err = tx.Request.UpdateOneID(id).SetState(request.StateProcessing).SetSlotReserved(true).ClearQueuePublishAt().
 				SetInstanceID(i.ID).SetResourceGroup(i.ResourceGroup).SetEndpoint(i.Endpoint).SetArtifactDigest(i.ArtifactDigest).
 				SetStartedAt(now).SetNextPollAt(nextPoll).Save(ctx)
 			return err
 		}
-		return nil
+		return deferPublication(ctx, tx, next)
 	})
 	return task, err
+}
+
+func deferPublication(ctx context.Context, tx *ent.Tx, task *ent.Request) error {
+	// 槽位暂满时先持久化下次投递再确认消息，消费者可以继续处理其他模型。
+	due := time.Now().UTC().Add(500 * time.Millisecond).Truncate(time.Microsecond)
+	// 时间也用来识别投递轮次。副本时钟有偏差时，延期仍须写入一个更晚的值。
+	if task.QueuePublishAt != nil && !due.After(*task.QueuePublishAt) {
+		due = task.QueuePublishAt.Add(time.Microsecond)
+	}
+	_, err := tx.Request.Update().Where(request.IDEQ(task.ID)).SetQueuePublishAt(due).Save(ctx)
+	return err
 }
 
 func (s *Store) Cancel(ctx context.Context, id string) error {

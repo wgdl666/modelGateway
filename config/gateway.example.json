@@ -1,5 +1,6 @@
 {
   "database_url": "postgresql://gateway:replace-me@postgres:5432/model_gateway?sslmode=verify-full",
+  "rabbitmq_queue": "model-gateway.requests.dev",
   "listen": ":18580",
   "api_token": "replace-with-a-distinct-api-token",
   "admin_token": "replace-with-a-distinct-admin-token",

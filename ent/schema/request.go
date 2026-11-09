@@ -12,7 +12,7 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// Request 是队列和容量账本。失败任务可能仍在 GPU 上运行，释放槽位需要单独的终态证据。
+// Request 保存请求状态和容量占用。失败任务可能仍在 GPU 上运行，释放槽位需要单独的终态证据。
 type Request struct{ ent.Schema }
 
 func (Request) Fields() []ent.Field {
@@ -26,6 +26,8 @@ func (Request) Fields() []ent.Field {
 		field.Int64("payload_bytes").Positive().Immutable(),
 		field.Int("units").Positive().Immutable(),
 		field.Enum("state").Values("queued", "processing", "succeeded", "failed").Default("queued"),
+		// 待投递时间与请求一起提交，RabbitMQ 故障时已受理任务仍能补发。
+		field.Time("queue_publish_at").Optional().Nillable().Annotations(entsql.DefaultExpr("CURRENT_TIMESTAMP")),
 		field.Bool("slot_reserved").Default(false),
 		field.Text("instance_id").Default(""),
 		field.Text("resource_group").Default(""),
@@ -57,6 +59,7 @@ func (Request) Annotations() []schema.Annotation {
 func (Request) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("model_key", "capability", "created_at", "id").Annotations(entsql.IndexWhere("state = 'queued'")),
+		index.Fields("queue_publish_at", "id").Annotations(entsql.IndexWhere("state = 'queued' AND queue_publish_at IS NOT NULL")),
 		index.Fields("deadline_at").Annotations(entsql.IndexWhere("state = 'queued'")),
 		index.Fields("resource_group", "instance_id").Annotations(entsql.IndexWhere("slot_reserved")),
 		index.Fields("next_poll_at").Annotations(entsql.IndexWhere("slot_reserved")),

@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/wgdl666/modelGateway/internal/store"
+	"github.com/wgdl666/modelGateway/internal/testsupport"
 )
 
 func TestConfigCenterReloadsRunningServer(t *testing.T) {
@@ -28,6 +29,8 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL required for PostgreSQL integration test")
 	}
+	mqURL, queue, _ := testsupport.RabbitQueue(t)
+	t.Setenv("MODEL_GATEWAY_RABBITMQ_URL", mqURL)
 	t.Setenv("XX_WG_REGION", "US")
 	u, err := url.Parse(dsn)
 	if err != nil || !strings.HasSuffix(u.Path, "_test") {
@@ -76,6 +79,7 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 	}
 	first, second := address(), address()
 	values := map[string]any{"database_url": u.String(), "listen": first, "api_token": "test-api-token-at-least-24-characters", "admin_token": "test-admin-token-at-least-24-characters", "backend_cidrs": []string{"127.0.0.0/8"}, "backend_ports": []string{"8001"}, "backend_timeout": "120s", "poll_interval": "5s"}
+	values["rabbitmq_queue"] = queue
 	var content atomic.Value
 	setContent := func() { raw, _ := json.Marshal(values); content.Store(raw) }
 	setContent()

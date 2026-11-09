@@ -32,6 +32,8 @@ type Request struct {
 	Units int `json:"units,omitempty"`
 	// State holds the value of the "state" field.
 	State request.State `json:"state,omitempty"`
+	// QueuePublishAt holds the value of the "queue_publish_at" field.
+	QueuePublishAt *time.Time `json:"queue_publish_at,omitempty"`
 	// SlotReserved holds the value of the "slot_reserved" field.
 	SlotReserved bool `json:"slot_reserved,omitempty"`
 	// InstanceID holds the value of the "instance_id" field.
@@ -82,7 +84,7 @@ func (*Request) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case request.FieldID, request.FieldModelKey, request.FieldCapability, request.FieldTraceID, request.FieldState, request.FieldInstanceID, request.FieldResourceGroup, request.FieldEndpoint, request.FieldArtifactDigest, request.FieldBackendTaskID, request.FieldPollClaim, request.FieldErrorCode, request.FieldErrorMessage:
 			values[i] = new(sql.NullString)
-		case request.FieldDeadlineAt, request.FieldStartedAt, request.FieldFinishedAt, request.FieldNextPollAt, request.FieldCreatedAt, request.FieldUpdatedAt:
+		case request.FieldQueuePublishAt, request.FieldDeadlineAt, request.FieldStartedAt, request.FieldFinishedAt, request.FieldNextPollAt, request.FieldCreatedAt, request.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -148,6 +150,13 @@ func (_m *Request) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field state", values[i])
 			} else if value.Valid {
 				_m.State = request.State(value.String)
+			}
+		case request.FieldQueuePublishAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field queue_publish_at", values[i])
+			} else if value.Valid {
+				_m.QueuePublishAt = new(time.Time)
+				*_m.QueuePublishAt = value.Time
 			}
 		case request.FieldSlotReserved:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -312,6 +321,11 @@ func (_m *Request) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("state=")
 	builder.WriteString(fmt.Sprintf("%v", _m.State))
+	builder.WriteString(", ")
+	if v := _m.QueuePublishAt; v != nil {
+		builder.WriteString("queue_publish_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("slot_reserved=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SlotReserved))

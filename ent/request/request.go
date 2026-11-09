@@ -28,6 +28,8 @@ const (
 	FieldUnits = "units"
 	// FieldState holds the string denoting the state field in the database.
 	FieldState = "state"
+	// FieldQueuePublishAt holds the string denoting the queue_publish_at field in the database.
+	FieldQueuePublishAt = "queue_publish_at"
 	// FieldSlotReserved holds the string denoting the slot_reserved field in the database.
 	FieldSlotReserved = "slot_reserved"
 	// FieldInstanceID holds the string denoting the instance_id field in the database.
@@ -76,6 +78,7 @@ var Columns = []string{
 	FieldPayloadBytes,
 	FieldUnits,
 	FieldState,
+	FieldQueuePublishAt,
 	FieldSlotReserved,
 	FieldInstanceID,
 	FieldResourceGroup,
@@ -204,6 +207,11 @@ func ByUnits(opts ...sql.OrderTermOption) OrderOption {
 // ByState orders the results by the state field.
 func ByState(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldState, opts...).ToFunc()
+}
+
+// ByQueuePublishAt orders the results by the queue_publish_at field.
+func ByQueuePublishAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQueuePublishAt, opts...).ToFunc()
 }
 
 // BySlotReserved orders the results by the slot_reserved field.
