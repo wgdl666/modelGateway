@@ -70,10 +70,13 @@ python -m uvicorn app:app --app-dir worker_adapter --host 127.0.0.1 --port 8001
 
 国内 ACK 通过 `workspace/deploy/server_release.py release --service model-gateway-worker --branch dev` 发布适配器。国内启用 `VMIND_WORKER_STATE_BACKEND=oss`，领取、受理和终态以独占写入保存到同一请求目录，Pod 重建后可继续回查。该 OSS 桶需保持版本控制未启用，确保条件写入拒绝覆盖。记录包含任务身份与状态，成品引用只包含实际媒体对象。
 
-业务配置通过 AppConfig Agent 或 Nacos 加载。示例见 [gateway.example.json](config/gateway.example.json)。多个副本使用同一份 PG schema。换库前需要排空任务并重启。
+启动网关时必须设置 `XX_WG_REGION`。`CN` 用 `nacos_url` 连接 Nacos。`SG` 和 `US` 用 `appconfig_url` 连接 AppConfig Agent。在 `bootstrap.json` 中填入对应环境的地址。参见 [Nacos 引导示例](config/bootstrap.aliyun.example.json)和 [AppConfig 引导示例](config/bootstrap.aws.example.json)。
+
+配置正文见 [gateway.example.json](config/gateway.example.json)。多个副本使用同一份 PG schema。换库前需要排空任务并重启。
 
 ```sh
 go build -o bin/model-gateway ./cmd/model-gateway
+export XX_WG_REGION=CN
 bin/model-gateway -config /etc/model-gateway/bootstrap.json -migrate
 bin/model-gateway -config /etc/model-gateway/bootstrap.json
 ```

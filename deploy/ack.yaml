@@ -24,6 +24,9 @@ spec:
       containers:
         - name: model-gateway
           image: wgdl-registry-vpc.cn-shenzhen.cr.aliyuncs.com/wg/model-gateway@sha256:REPLACE_ME
+          env:
+            - name: XX_WG_REGION
+              value: CN
           envFrom:
             - secretRef:
                 name: model-gateway-runtime

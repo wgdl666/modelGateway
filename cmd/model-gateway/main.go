@@ -31,7 +31,10 @@ func main() {
 }
 
 func run(ctx context.Context, path string, migration bool) error {
-	loader := config.NewLoader(path)
+	loader, err := config.NewLoader(path)
+	if err != nil {
+		return err
+	}
 	defer loader.Close()
 	raw, err := loader.Load(ctx)
 	if err != nil {
@@ -87,7 +90,7 @@ func run(ctx context.Context, path string, migration bool) error {
 		shutdown(server)
 		retiring.Wait()
 	}()
-	// 两个配置中心共用整份 JSON 热加载；失败时不替换已应用快照，也不输出配置正文。
+	// 从选定的配置中心读取整份 JSON，应用失败时保留上一份可用配置。日志只记录结果。
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {

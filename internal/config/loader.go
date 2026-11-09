@@ -13,26 +13,42 @@ import (
 	"time"
 )
 
-// 引导文件只保存配置中心入口和必要凭据；业务配置全部由中心返回。
+// 引导文件保存对应地区的连接信息，配置中心由部署地区决定。
 type Bootstrap struct {
-	Source   string `json:"source"`
-	URL      string `json:"url"`
-	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
+	NacosURL     string `json:"nacos_url,omitempty"`
+	AppConfigURL string `json:"appconfig_url,omitempty"`
+	Username     string `json:"username,omitempty"`
+	Password     string `json:"password,omitempty"`
 }
 
 type Loader struct {
 	Path    string
+	nacos   bool
 	client  *http.Client
 	login   Bootstrap
 	token   string
 	expires time.Time
 }
 
-func NewLoader(path string) *Loader {
+func NewLoader(path string) (*Loader, error) {
+	// 地区在启动时确定，避免热加载引导文件时切到另一个配置中心。
+	region := strings.ToUpper(strings.TrimSpace(os.Getenv("XX_WG_REGION")))
+	switch region {
+	case "CN", "SG", "US":
+	default:
+		return nil, errors.New("XX_WG_REGION must be CN, SG, or US")
+	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	return &Loader{Path: path, client: &http.Client{Timeout: 5 * time.Second, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &Loader{
+		Path:  path,
+		nacos: region == "CN",
+		client: &http.Client{
+			Timeout:       5 * time.Second,
+			Transport:     transport,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+	}, nil
 }
 
 func (l *Loader) Close() { l.client.CloseIdleConnections() }
@@ -46,14 +62,18 @@ func (l *Loader) Load(ctx context.Context) ([]byte, error) {
 	if err = json.Unmarshal(raw, &bootstrap); err != nil {
 		return nil, errors.New("invalid configuration bootstrap JSON")
 	}
-	if bootstrap.Source != "appconfig" && bootstrap.Source != "nacos" {
-		return nil, errors.New("configuration source must be appconfig or nacos")
+	address := bootstrap.AppConfigURL
+	if l.nacos {
+		address = bootstrap.NacosURL
 	}
-	endpoint, err := url.Parse(bootstrap.URL)
+	if address == "" {
+		return nil, errors.New("missing configuration URL for XX_WG_REGION")
+	}
+	endpoint, err := url.Parse(address)
 	if err != nil {
 		return nil, errors.New("invalid configuration URL")
 	}
-	if bootstrap.Source == "nacos" && bootstrap.Username != "" {
+	if l.nacos && bootstrap.Username != "" {
 		if l.login != bootstrap || !time.Now().Before(l.expires) {
 			loginURL := *endpoint
 			loginURL.Path = strings.TrimSuffix(endpoint.Path, "/v1/cs/configs") + "/v1/auth/login"

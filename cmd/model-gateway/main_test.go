@@ -27,6 +27,7 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL required for PostgreSQL integration test")
 	}
+	t.Setenv("XX_WG_REGION", "US")
 	u, err := url.Parse(dsn)
 	if err != nil || !strings.HasSuffix(u.Path, "_test") {
 		t.Fatal("TEST_DATABASE_URL must be a PostgreSQL URI for a _test database")
@@ -72,7 +73,7 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 	setContent()
 	center := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(content.Load().([]byte)) }))
 	defer center.Close()
-	bootstrap, _ := json.Marshal(map[string]string{"source": "appconfig", "url": center.URL})
+	bootstrap, _ := json.Marshal(map[string]string{"appconfig_url": center.URL})
 	path := filepath.Join(t.TempDir(), "bootstrap.json")
 	if err := os.WriteFile(path, bootstrap, 0600); err != nil {
 		t.Fatal(err)
