@@ -29,7 +29,9 @@ spec:
             - {name: VMIND_WORKER_STATE_BACKEND, value: oss}
             - {name: VMIND_WORKER_INSTANCE_ID, value: cn-image}
             - {name: VMIND_WORKER_ARTIFACT_DIGEST, value: WORKER_IMAGE_DIGEST}
-            - {name: VMIND_WORKER_CAPABILITIES, value: "cloth_gen,garment_extraction,vton,body_model"}
+            # CN 当前入口仅验证了试衣 API，其余图片能力等实际端点开放后再登记。
+            - {name: VMIND_WORKER_CAPABILITIES, value: vton}
+            - {name: VMIND_NATIVE_VTON_EDITS, value: "true"}
           ports:
             - {name: image, containerPort: 8001}
           readinessProbe:

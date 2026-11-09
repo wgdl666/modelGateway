@@ -119,6 +119,7 @@ class Adapter:
         self.artifact = os.environ["VMIND_WORKER_ARTIFACT_DIGEST"]
         self.native = os.environ["VMIND_NATIVE_ORIGIN"].rstrip("/")
         self.health_url = os.environ["VMIND_NATIVE_HEALTH_URL"]
+        self.vton_edits = os.environ.get("VMIND_NATIVE_VTON_EDITS") == "true"
         self.video_protocol = os.environ.get("VMIND_NATIVE_VIDEO_PROTOCOL", "gateway")
         if self.video_protocol not in ("gateway", "jobs"):
             raise ValueError("invalid native video protocol")
@@ -205,7 +206,7 @@ class Adapter:
             status_code=202 if row["state"] == "processing" else 200,
         )
 
-    def multipart(self, value, fields):
+    def multipart(self, value, path, fields):
         business = value["input"]
         images = business["images"]
         minimum = len(fields) if value["capability"] != "garment_extraction" else 1
@@ -222,6 +223,12 @@ class Adapter:
             key: item if isinstance(item, str) else json.dumps(item, ensure_ascii=False)
             for key, item in business.items() if key != "images"
         }
+        if self.vton_edits and value["capability"] == "vton":
+            # 国内 FLUX 服务的试衣入口使用两个同名 image 文件，由 LoRA 选择试衣能力。
+            path = "/v1/images/edits"
+            files = [("image", (f"{name}.{mime[6:]}", data, mime)) for name, (_, data, mime) in files]
+            form.update(model="FLUX.2-klein-9B", lora_name="vton", lora_strength="1.0",
+                        n="1", size="768x1024", response_format="b64_json")
         if value["capability"] == "video" and self.video_protocol == "jobs":
             # 原生视频服务包含多个实例，固定本部署的目标以兑现网关登记的 GPU 分组。
             form["target_instance"] = self.video_target
@@ -233,7 +240,7 @@ class Adapter:
         if user := metadata.get("user_id"):
             # 图片接口按白名单读表单，用户归属只走请求头。
             headers["X-User-ID"] = user
-        return form, files, headers
+        return path, form, files, headers
 
     async def execute(self, row, path, form, files, headers):
         # 一旦标记已发送，重启后只核对原任务，绝不再次触发推理。
@@ -259,7 +266,15 @@ class Adapter:
             if response.status_code in (400, 401, 403, 413, 415, 422, 429):
                 await self.fail(row, "model_rejected", "native model rejected the request before execution")
                 return True
+            if (self.vton_edits and row["capability"] == "vton" and response.status_code == 404
+                    and response.headers.get("content-type", "").startswith("text/plain")
+                    and response.content.strip().lower() == b"not found"):
+                # 国内入口的纯文本 404 表示路由没有匹配，模型尚未接单，可以释放容量。
+                await self.fail(row, "native_route_unavailable", "native image route is unavailable")
+                return True
             if not response.is_success:
+                LOG.warning("native model response status=%s capability=%s request_id=%s",
+                            response.status_code, row["capability"], row["request_id"])
                 return False
         except (httpx.ConnectError, httpx.ConnectTimeout):
             await self.fail(row, "native_unreachable", "model connection was not established")
@@ -435,7 +450,7 @@ async def submit(request: Request):
         fingerprint = hashlib.sha256(
             json.dumps([model, capability, value["input"]], sort_keys=True, allow_nan=False).encode()
         ).hexdigest()
-        form, files, headers = worker.multipart(value, fields)
+        path, form, files, headers = worker.multipart(value, path, fields)
     except (ValueError, KeyError, TypeError, AttributeError) as exc:
         raise HTTPException(400, "invalid model request") from exc
     row = {"request_id": request_id, "fingerprint": fingerprint, "capability": capability,
