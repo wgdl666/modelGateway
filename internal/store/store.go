@@ -11,7 +11,6 @@ import (
 )
 
 var (
-	ErrBusy     = errors.New("no healthy model instance")
 	ErrFull     = errors.New("waiting queue is full")
 	ErrConflict = errors.New("request or instance conflict")
 )

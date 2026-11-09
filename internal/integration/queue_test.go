@@ -215,6 +215,36 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	}
 }
 
+func TestQueuedUntilMatchingInstanceHasFreshProbe(t *testing.T) {
+	a, b, _ := stores(t)
+	matching := testInstance("Vmind_wardrobe_v1.0", "garment_extraction", "http://127.0.0.1:8001", 1)
+	in := testAdmission(matching, uuid.NewString(), 1)
+	if task, err := a.Admit(t.Context(), in); err != nil || task.State != request.StateQueued {
+		t.Fatalf("admit with no instances: task=%v err=%v", task, err)
+	}
+	// 模拟拆分模型键前留下的注册记录，确认它不能接走新拆衣任务。
+	legacy := testInstance(matching.ModelKey, "cloth_gen", "http://127.0.0.1:8002", 1)
+	registerReady(t, a, legacy)
+	if err := a.Register(t.Context(), matching); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.RecordProbe(t.Context(), matching.ID, time.Now().Add(-time.Minute), true); err != nil {
+		t.Fatal(err)
+	}
+	if task, err := b.Claim(t.Context(), testConfig()); err != nil || task != nil {
+		t.Fatalf("claimed with wrong capability or stale probe: task=%v err=%v", task, err)
+	}
+	if task, err := b.Get(t.Context(), in.ID); err != nil || task.State != request.StateQueued {
+		t.Fatalf("task no longer queued: task=%v err=%v", task, err)
+	}
+	if err := a.RecordProbe(t.Context(), matching.ID, time.Now(), true); err != nil {
+		t.Fatal(err)
+	}
+	if task, err := b.Claim(t.Context(), testConfig()); err != nil || task == nil || task.ID != in.ID || task.InstanceID != matching.ID || task.State != request.StateProcessing {
+		t.Fatalf("claim after fresh probe: task=%v err=%v", task, err)
+	}
+}
+
 func TestGroupRegistrationAndQueueExpiry(t *testing.T) {
 	a, b, _ := stores(t)
 	i := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8001", 1)
@@ -223,7 +253,7 @@ func TestGroupRegistrationAndQueueExpiry(t *testing.T) {
 	if err := b.Register(t.Context(), inconsistent); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("inconsistent group capacity accepted: %v", err)
 	}
-	in := testAdmission(i, uuid.NewString(), 1)
+	in := testAdmission(inconsistent, uuid.NewString(), 1)
 	in.BackendTimeout = time.Millisecond
 	if _, err := b.Admit(t.Context(), in); err != nil {
 		t.Fatal(err)
@@ -233,7 +263,7 @@ func TestGroupRegistrationAndQueueExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	task, err := b.Get(t.Context(), in.ID)
-	if err != nil || task.State != request.StateFailed || task.ErrorCode != "queue_timeout" {
+	if err != nil || task.State != request.StateFailed || task.ErrorCode != "queue_timeout" || task.ErrorStatus != 504 {
 		t.Fatalf("expired task: %v %v", task, err)
 	}
 }

@@ -114,8 +114,6 @@ func storeError(c *app.RequestContext, err error, id string) {
 		writeError(c, 404, "not_found", "record does not exist", id)
 	case errors.Is(err, store.ErrConflict):
 		writeError(c, 409, "conflict", "request or instance conflicts with an existing record", id)
-	case errors.Is(err, store.ErrBusy):
-		writeError(c, 503, "no_healthy_instance", "no healthy model instance is available", id)
 	case errors.Is(err, store.ErrFull):
 		writeError(c, 429, "queue_full", "waiting queue is full", id)
 	default:
@@ -224,7 +222,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	model := c.Param("model_key")
-	if len(protocol.Capabilities(model)) == 0 {
+	if protocol.Capability(model) == "" {
 		writeError(c, 404, "model_not_found", "model is not configured", id)
 		return
 	}

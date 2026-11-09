@@ -15,6 +15,7 @@ import (
 
 const (
 	wardrobeModel = "Vmind_wardrobe_v1.0"
+	clothGenModel = "Vmind_cloth_gen_v1.0"
 	OutfitModel   = "Vmind_outfit_v1.0"
 	bodyModel     = "Vmind_bodymodel_v1.0"
 	VideoModel    = "Vmind_outfit_video_v1.0"
@@ -42,7 +43,8 @@ type Instance struct {
 
 // Valid 检查部署身份和容量。地址还需按当前配置的出站白名单验证。
 func (i Instance) Valid() bool {
-	return instanceID.MatchString(i.ID) && slices.Contains(Capabilities(i.ModelKey), i.Capability) &&
+	capability := Capability(i.ModelKey)
+	return instanceID.MatchString(i.ID) && capability != "" && i.Capability == capability &&
 		i.ResourceGroup != "" && len(i.ResourceGroup) <= 256 && validArtifact(i.Artifact) &&
 		i.Capacity >= 1 && i.Capacity <= 65536 && i.GroupCapacity >= 1 && i.GroupCapacity <= 65536
 }
@@ -145,18 +147,21 @@ func validArtifact(value string) bool {
 	return err == nil
 }
 
-func Capabilities(model string) []string {
+// Capability 固定模型键的执行能力，使实例注册和请求派发使用同一份映射。
+func Capability(model string) string {
 	switch model {
 	case wardrobeModel:
-		return []string{"cloth_gen", "garment_extraction"}
+		return "garment_extraction"
+	case clothGenModel:
+		return "cloth_gen"
 	case OutfitModel:
-		return []string{"vton"}
+		return "vton"
 	case bodyModel:
-		return []string{"body_model"}
+		return "body_model"
 	case VideoModel:
-		return []string{"video"}
+		return "video"
 	default:
-		return nil
+		return ""
 	}
 }
 
@@ -184,26 +189,27 @@ func DecodeInput(input json.RawMessage) (map[string]json.RawMessage, []InputImag
 	return fields, images, nil
 }
 
-// 模型标识和业务输入决定能力，客户端不能提交模型地址、内部路径或执行容量。
+// 模型键选定能力，业务字段只用于校验。缺少拆衣输入时不能转成商品图请求。
 func Route(model string, input json.RawMessage) (string, error) {
-	if len(Capabilities(model)) == 0 {
+	capability := Capability(model)
+	if capability == "" {
 		return "", errors.New("unknown model")
 	}
 	fields, images, err := DecodeInput(input)
 	if err != nil {
 		return "", err
 	}
-	capability := Capabilities(model)[0]
 	minImages, maxImages := 1, 1
 	var allowed []string
 	switch model {
-	case wardrobeModel:
+	case clothGenModel:
 		allowed = []string{"garment_name", "garment_role"}
-		if fields["bbox"] != nil || fields["parse_labels"] != nil || len(images) > 1 {
-			capability = "garment_extraction"
-			maxImages = 2
-			allowed = append(allowed, "bbox", "bbox_format", "parse_labels")
+	case wardrobeModel:
+		if len(images) == 1 && fields["bbox"] == nil && fields["parse_labels"] == nil {
+			return "", errors.New("garment extraction requires bbox or parser input")
 		}
+		maxImages = 2
+		allowed = []string{"garment_name", "garment_role", "bbox", "bbox_format", "parse_labels"}
 	case OutfitModel:
 		minImages, maxImages = 2, 2
 		allowed = []string{"prompt"}

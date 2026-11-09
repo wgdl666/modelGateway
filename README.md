@@ -8,16 +8,20 @@
 
 请求体包含 `input` 和可选的 `metadata`。图片按顺序放入 `input.images`，每项为 `mime_type` 和 base64 `data`。同一键和相同业务输入复用原任务，改模型或业务输入返回 409。追踪字段变化不改变任务身份。
 
-| 模型 | 输入 |
-|---|---|
-| `Vmind_wardrobe_v1.0` | 原图与衣物名称，可带角色、框、解析标签或第二张解析掩码。按业务输入选择商品图或拆衣。 |
-| `Vmind_outfit_v1.0` | 人物图、衣物图和提示词。 |
-| `Vmind_bodymodel_v1.0` | 人物图与性别。 |
-| `Vmind_outfit_video_v1.0` | 首帧、提示词和可选动作参数。 |
+每个 `model_key` 固定对应一种能力。调用方按业务选择模型键。
+
+| 模型 | 能力 | 输入 |
+|---|---|---|
+| `Vmind_wardrobe_v1.0` | `garment_extraction` | 人物图、衣物名称和衣物框或人体解析输入。 |
+| `Vmind_cloth_gen_v1.0` | `cloth_gen` | 单件原图、衣物名称和可选角色。 |
+| `Vmind_outfit_v1.0` | `vton` | 人物图、衣物图和提示词。 |
+| `Vmind_bodymodel_v1.0` | `body_model` | 人物图与性别。 |
+| `Vmind_outfit_video_v1.0` | `video` | 首帧、提示词和可选动作参数。 |
 
 图片持久入队后同步等待结果。视频持久入队后立即返回 202 和 `request_id`、`state`。使用相同请求头调用 `GET /v1/gateway/requests` 查询。成功响应为 `result.files[]`，每项只有 `provider`、`region`、`bucket` 和 `key`。在排队时可用 `POST /v1/gateway/requests/cancel` 取消，已经派发返回 409。
 
-队列按模型限等待条数和字节数，默认 64 条、128 MiB。队列满返回 429。没有健康实例或 PG 不可用返回 503。`backend_timeout` 默认 120 秒，用于排队和上游等待。使用 Worker 协议的实例也用这份预算完成首次模型调用。
+队列按模型限制等待条数和字节数，默认 64 条、128 MiB。队列满返回 429，PostgreSQL 不可用返回 503。
+派发时检查能力、探活和容量。暂时没有可用实例时，任务保持 `queued`。`backend_timeout` 默认 120 秒，用于排队和上游等待。使用 Worker 协议的实例也用这份预算完成首次模型调用。截止时仍在队列的任务进入 `failed`，错误码为 `queue_timeout`。
 
 ## 实例管理
 
@@ -38,6 +42,8 @@
 ```
 
 网关主动探测。探针返回 `ready: true` 后实例可以接单。使用管理凭据调用 `GET /v1/instances` 查询和 `POST /v1/instances/{id}/drain` 设置 `{"draining":true}`。同一卡的模型登记同一个资源组和组容量。部署身份变化时先排空旧实例，再登记新实例。
+
+商品图实例登记 `Vmind_cloth_gen_v1.0` 和 `cloth_gen`。切换前处理完旧模型键上的商品图任务并排空旧实例，再用新的 `instance_id` 登记。历史结果仍用原请求 ID 查询。
 
 ## 处理和恢复
 

@@ -50,18 +50,7 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 		if !ent.IsNotFound(err) {
 			return err
 		}
-		healthy, err := tx.ModelInstance.Query().Where(
-			modelinstance.ModelKeyEQ(in.ModelKey), modelinstance.CapabilityEQ(in.Capability),
-			modelinstance.ReadyEQ(true), modelinstance.DrainingEQ(false),
-			modelinstance.HealthCheckedAtGT(now.Add(-probeMaxAge)),
-			modelinstance.CapacityUnitsGTE(in.Units), modelinstance.GroupCapacityUnitsGTE(in.Units),
-		).Exist(ctx)
-		if err != nil {
-			return err
-		}
-		if !healthy {
-			return ErrBusy
-		}
+		// 实例短时下线时仍可接单。派发再查健康和可用容量，超过原截止时间的任务按排队超时结束。
 		var totals []struct {
 			Count int
 			Bytes *int64

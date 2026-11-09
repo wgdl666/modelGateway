@@ -25,7 +25,8 @@ LOG = logging.getLogger("vmind-worker-adapter")
 MAX_JSON = 65 * 1024**2
 MAX_VIDEO = 200 * 1024**2
 ROUTES = {
-    "cloth_gen": ("Vmind_wardrobe_v1.0", "/v2/images/product_generation", ("image",)),
+    # 商品图和拆衣使用不同的模型键，适配器按固定组合接单。
+    "cloth_gen": ("Vmind_cloth_gen_v1.0", "/v2/images/product_generation", ("image",)),
     "garment_extraction": (
         "Vmind_wardrobe_v1.0", "/v2/images/garment_extraction", ("image", "parse_mask")
     ),
