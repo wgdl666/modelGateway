@@ -1,26 +1,19 @@
-package gateway
+package httpapi
 
 import (
 	"context"
 	"strconv"
 	"time"
 
-	entsql "entgo.io/ent/dialect/sql"
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/internal/protocol"
+	"github.com/wgdl666/modelGateway/internal/store"
 )
 
-// 运维查询只读取执行归属与状态，原始媒体仍留在队列账本里。
-var requestSummaryFields = []string{
-	request.FieldID, request.FieldModelKey, request.FieldCapability, request.FieldTraceID,
-	request.FieldState, request.FieldCreatedAt, request.FieldStartedAt, request.FieldFinishedAt,
-	request.FieldInstanceID, request.FieldResourceGroup, request.FieldArtifactDigest,
-	request.FieldBackendTaskID, request.FieldSlotReserved, request.FieldErrorCode,
-}
-
 type requestView struct {
-	Response
+	protocol.Response
 	Capability    string     `json:"capability"`
 	TraceID       string     `json:"trace_id,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
@@ -49,33 +42,20 @@ func (s *Server) listRequests(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_pagination", "invalid request pagination", "")
 		return
 	}
-	query := s.store.DB.Request.Query()
-	if id := c.Query("request_id"); id != "" {
-		if !validID(id) {
-			writeError(c, 400, "invalid_request_id", "request_id must be a UUID", "")
-			return
-		}
-		query.Where(request.IDEQ(id))
+	filter := store.RequestFilter{
+		ID: c.Query("request_id"), TraceID: c.Query("trace_id"), Model: c.Query("model"),
+		InstanceID: c.Query("instance_id"), Artifact: c.Query("artifact_digest"),
+		Limit: limit, Offset: offset, State: request.State(c.Query("state")),
 	}
-	if value := c.Query("trace_id"); value != "" {
-		query.Where(request.TraceIDEQ(value))
+	if filter.ID != "" && !protocol.ValidID(filter.ID) {
+		writeError(c, 400, "invalid_request_id", "request_id must be a UUID", "")
+		return
 	}
-	if value := c.Query("model"); value != "" {
-		query.Where(request.Or(request.ModelKeyEQ(value), request.CapabilityEQ(value)))
-	}
-	if value := c.Query("instance_id"); value != "" {
-		query.Where(request.InstanceIDEQ(value))
-	}
-	if value := c.Query("artifact_digest"); value != "" {
-		query.Where(request.ArtifactDigestEQ(value))
-	}
-	if value := c.Query("state"); value != "" {
-		state := request.State(value)
-		if err := request.StateValidator(state); err != nil {
+	if filter.State != "" {
+		if err := request.StateValidator(filter.State); err != nil {
 			writeError(c, 400, "invalid_state", "invalid request state", "")
 			return
 		}
-		query.Where(request.StateEQ(state))
 	}
 	for _, key := range []string{"from", "to"} {
 		if value := c.Query(key); value != "" {
@@ -85,21 +65,15 @@ func (s *Server) listRequests(ctx context.Context, c *app.RequestContext) {
 				return
 			}
 			if key == "from" {
-				query.Where(request.CreatedAtGTE(bound))
+				filter.From = &bound
 			} else {
-				query.Where(request.CreatedAtLTE(bound))
+				filter.To = &bound
 			}
 		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	total, err := query.Clone().Count(ctx)
-	if err != nil {
-		storeError(c, err, "")
-		return
-	}
-	rows, err := query.Order(request.ByCreatedAt(entsql.OrderDesc()), request.ByID(entsql.OrderDesc())).
-		Offset(offset).Limit(limit).Select(requestSummaryFields...).All(ctx)
+	rows, total, err := s.store.ListRequests(ctx, filter)
 	if err != nil {
 		storeError(c, err, "")
 		return
@@ -113,13 +87,11 @@ func (s *Server) listRequests(ctx context.Context, c *app.RequestContext) {
 
 func (s *Server) requestDetail(ctx context.Context, c *app.RequestContext) {
 	id := c.Param("id")
-	if !validID(id) {
+	if !protocol.ValidID(id) {
 		writeError(c, 400, "invalid_request_id", "request_id must be a UUID", "")
 		return
 	}
-	// 详情只补对象引用和终态错误，禁止将 Base64 输入带到 Ops。
-	fields := append(append([]string(nil), requestSummaryFields...), request.FieldResult, request.FieldErrorMessage)
-	row, err := s.store.DB.Request.Query().Where(request.IDEQ(id)).Select(fields...).Only(ctx)
+	row, err := s.store.RequestDetail(ctx, id)
 	if err != nil {
 		storeError(c, err, id)
 		return

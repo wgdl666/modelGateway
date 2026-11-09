@@ -1,4 +1,4 @@
-package gateway
+package httpapi
 
 import (
 	"bytes"
@@ -11,40 +11,33 @@ import (
 	"log/slog"
 	"mime"
 	"net"
-	"net/http"
-	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/internal/config"
+	"github.com/wgdl666/modelGateway/internal/protocol"
+	"github.com/wgdl666/modelGateway/internal/store"
 )
 
+// Server 固定每次入站请求的配置快照，让鉴权、地址校验和受理使用同一份配置。
 type Server struct {
-	mu      sync.RWMutex
-	current *runtimeConfig
-	store   *Store
-	client  *http.Client
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
+	store   *store.Store
+	runtime *config.Runtime
 	uploads chan struct{}
 }
 
-func NewServer(store *Store, c Config) (*Server, error) {
-	state, err := prepareConfig(c)
-	if err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	transport.DialContext = (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext
-	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	return &Server{current: state, store: store, ctx: ctx, cancel: cancel, client: client, uploads: make(chan struct{}, 2)}, nil
+func New(tasks *store.Store, runtime *config.Runtime) *Server {
+	return &Server{store: tasks, runtime: runtime, uploads: make(chan struct{}, 2)}
+}
+
+type runtimeKey struct{}
+
+func requestConfig(ctx context.Context) *config.Snapshot {
+	return ctx.Value(runtimeKey{}).(*config.Snapshot)
 }
 
 func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
@@ -54,7 +47,7 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 		server.WithHandleMethodNotAllowed(true), server.WithRedirectTrailingSlash(false), server.WithStreamBody(true),
 		server.WithMaxRequestBodySize(4096), server.WithDisablePreParseMultipartForm(true), server.WithSenseClientDisconnection(true))
 	h.Use(func(ctx context.Context, c *app.RequestContext) {
-		c.Next(context.WithValue(ctx, runtimeKey{}, s.config()))
+		c.Next(context.WithValue(ctx, runtimeKey{}, s.runtime.Current()))
 	})
 	h.GET("/_gateway/live", func(_ context.Context, c *app.RequestContext) { writeJSON(c, 200, map[string]bool{"live": true}) })
 	h.GET("/_gateway/ready", s.ready)
@@ -120,11 +113,11 @@ func storeError(c *app.RequestContext, err error, id string) {
 	switch {
 	case ent.IsNotFound(err):
 		writeError(c, 404, "not_found", "record does not exist", id)
-	case errors.Is(err, ErrConflict):
+	case errors.Is(err, store.ErrConflict):
 		writeError(c, 409, "conflict", "request or instance conflicts with an existing record", id)
-	case errors.Is(err, ErrBusy):
+	case errors.Is(err, store.ErrBusy):
 		writeError(c, 503, "no_healthy_instance", "no healthy model instance is available", id)
-	case errors.Is(err, ErrFull):
+	case errors.Is(err, store.ErrFull):
 		writeError(c, 429, "queue_full", "waiting queue is full", id)
 	default:
 		slog.Error("database operation failed", "error_type", fmt.Sprintf("%T", err))
@@ -149,7 +142,7 @@ func readBody(c *app.RequestContext, limit int64, value any, id string) ([]byte,
 		writeError(c, 413, "request_too_large", "request exceeds its size limit", id)
 		return nil, false
 	}
-	if err != nil || decodeJSON(raw, value) != nil {
+	if err != nil || protocol.DecodeJSON(raw, value) != nil {
 		writeError(c, 400, "invalid_json", "invalid JSON request body", id)
 		return nil, false
 	}
@@ -159,11 +152,7 @@ func readBody(c *app.RequestContext, limit int64, value any, id string) ([]byte,
 func (s *Server) ready(ctx context.Context, c *app.RequestContext) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	if _, err := s.store.DB.ModelInstance.Query().Exist(ctx); err != nil {
-		storeError(c, err, "")
-		return
-	}
-	if _, err := s.store.DB.Request.Query().Exist(ctx); err != nil {
+	if err := s.store.CheckReady(ctx); err != nil {
 		storeError(c, err, "")
 		return
 	}
@@ -172,16 +161,12 @@ func (s *Server) ready(ctx context.Context, c *app.RequestContext) {
 
 func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 	cfg := requestConfig(ctx)
-	var spec Instance
+	var spec protocol.Instance
 	if _, ok := readBody(c, 16<<10, &spec, ""); !ok {
 		return
 	}
 	spec.Endpoint = strings.TrimRight(spec.Endpoint, "/")
-	if !instanceID.MatchString(spec.ID) || !slices.Contains(capabilities(spec.ModelKey), spec.Capability) ||
-		spec.ResourceGroup == "" || len(spec.ResourceGroup) > 256 || !validArtifact(spec.Artifact) ||
-		spec.Capacity < 1 || spec.Capacity > 65536 || spec.GroupCapacity < 1 || spec.GroupCapacity > 65536 ||
-		validateEndpoint(spec.Endpoint, false, cfg.networks, cfg.ports) != nil ||
-		validateEndpoint(spec.HealthURL, true, cfg.networks, cfg.ports) != nil {
+	if !spec.Valid() || cfg.ValidateEndpoint(spec.Endpoint, false) != nil || cfg.ValidateEndpoint(spec.HealthURL, true) != nil {
 		writeError(c, 400, "invalid_instance", "invalid model instance specification", "")
 		return
 	}
@@ -211,42 +196,17 @@ func (s *Server) drain(ctx context.Context, c *app.RequestContext) {
 }
 
 func (s *Server) instances(ctx context.Context, c *app.RequestContext) {
-	rows, err := s.store.DB.ModelInstance.Query().All(ctx)
+	result, err := s.store.ListInstances(ctx)
 	if err != nil {
 		storeError(c, err, "")
 		return
-	}
-	holds, err := reserved(ctx, s.store.DB.Request)
-	if err != nil {
-		storeError(c, err, "")
-		return
-	}
-	units := make(map[string]int)
-	requests := make(map[string]int)
-	for _, hold := range holds {
-		units[hold.InstanceID] += hold.Units
-		requests[hold.InstanceID] += hold.Requests
-	}
-	type view struct {
-		*ent.ModelInstance
-		ReservedUnits    int  `json:"reserved_units"`
-		ReservedRequests int  `json:"reserved_requests"`
-		Healthy          bool `json:"healthy"`
-		Eligible         bool `json:"eligible"`
-	}
-	result := make([]view, 0, len(rows))
-	cutoff := time.Now().Add(-probeMaxAge)
-	for _, row := range rows {
-		// 预留单位和请求数分别返回，避免把加权容量显示为在途任务数。
-		healthy := row.Ready && row.HealthCheckedAt.After(cutoff)
-		result = append(result, view{row, units[row.ID], requests[row.ID], healthy, healthy && !row.Draining})
 	}
 	writeJSON(c, 200, result)
 }
 
 func requestID(c *app.RequestContext) (string, bool) {
 	id := string(c.GetHeader("Idempotency-Key"))
-	if !validID(id) || len(c.Request.URI().QueryString()) != 0 || len(c.GetHeader("X-Model-Version")) != 0 || len(c.GetHeader("X-Routing-Key")) != 0 {
+	if !protocol.ValidID(id) || len(c.Request.URI().QueryString()) != 0 || len(c.GetHeader("X-Model-Version")) != 0 || len(c.GetHeader("X-Routing-Key")) != 0 {
 		writeError(c, 400, "invalid_request", "supply a UUID Idempotency-Key without extra routing selectors", "")
 		return "", false
 	}
@@ -260,7 +220,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	model := c.Param("model_key")
-	if len(capabilities(model)) == 0 {
+	if len(protocol.Capabilities(model)) == 0 {
 		writeError(c, 404, "model_not_found", "model is not configured", id)
 		return
 	}
@@ -271,13 +231,13 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	cfg := requestConfig(ctx)
-	var input Submission
+	var input protocol.Submission
 	raw, ok := readBody(c, cfg.MaxBodyBytes, &input, id)
 	if !ok {
 		<-s.uploads
 		return
 	}
-	capability, err := route(model, input.Input)
+	capability, err := protocol.Route(model, input.Input)
 	for _, value := range []string{input.Metadata.TraceID, input.Metadata.UserID} {
 		if len(value) > 256 || strings.ContainsFunc(value, func(r rune) bool { return r < 32 || r == 127 }) {
 			err = errors.New("invalid metadata")
@@ -288,30 +248,31 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_input", err.Error(), id)
 		return
 	}
-	task, err := s.store.Admit(ctx, admission{
-		id: id, model: model, capability: capability, raw: raw, input: input.Input,
-		traceID: input.Metadata.TraceID, units: max(1, cfg.UnitsByCapability[capability]), config: cfg.Config,
+	task, err := s.store.Admit(ctx, store.Admission{
+		ID: id, ModelKey: model, Capability: capability, Payload: raw, Input: input.Input,
+		TraceID: input.Metadata.TraceID, Units: max(1, cfg.UnitsByCapability[capability]),
+		MaxWaiting: cfg.MaxWaiting, MaxWaitingBytes: cfg.MaxWaitingBytes, BackendTimeout: cfg.BackendTimeout,
 	})
 	<-s.uploads
 	if err != nil {
 		storeError(c, err, id)
 		return
 	}
-	if model == videoModel {
-		writeJSON(c, 202, Response{RequestID: id, ModelKey: model, State: string(task.State)})
+	if model == protocol.VideoModel {
+		writeJSON(c, 202, protocol.Response{RequestID: id, ModelKey: model, State: string(task.State)})
 		return
 	}
 	// 响应等待不持有原始上传，也不取消已经提交到 PG 的生成。
 	s.waitImage(ctx, c, id)
 }
 
-func taskResponse(task *ent.Request) Response {
-	response := Response{RequestID: task.ID, ModelKey: task.ModelKey, State: string(task.State)}
+func taskResponse(task *ent.Request) protocol.Response {
+	response := protocol.Response{RequestID: task.ID, ModelKey: task.ModelKey, State: string(task.State)}
 	if task.ErrorCode != "" {
-		response.Error = &RequestError{Code: task.ErrorCode, Message: task.ErrorMessage}
+		response.Error = &protocol.RequestError{Code: task.ErrorCode, Message: task.ErrorMessage}
 	}
 	if len(task.Result) != 0 {
-		response.Result = &Result{}
+		response.Result = &protocol.Result{}
 		_ = json.Unmarshal(task.Result, response.Result)
 	}
 	return response
@@ -374,12 +335,5 @@ func (s *Server) cancelRequest(ctx context.Context, c *app.RequestContext) {
 		storeError(c, err, id)
 		return
 	}
-	writeJSON(c, 200, Response{RequestID: id, State: "failed"})
-}
-
-func (s *Server) Close() {
-	s.cancel()
-	s.wg.Wait()
-	s.client.CloseIdleConnections()
-	_ = s.store.DB.Close()
+	writeJSON(c, 200, protocol.Response{RequestID: id, State: "failed"})
 }

@@ -19,7 +19,7 @@ import (
 	atlasschema "ariga.io/atlas/sql/schema"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/wgdl666/modelGateway/internal/gateway"
+	"github.com/wgdl666/modelGateway/internal/store"
 )
 
 func TestConfigCenterReloadsRunningServer(t *testing.T) {
@@ -36,7 +36,7 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 	query := u.Query()
 	query.Set("search_path", namespace)
 	u.RawQuery = query.Encode()
-	db, err := gateway.OpenDatabase(context.Background(), u.String(), true)
+	db, err := store.OpenDatabase(context.Background(), u.String(), true)
 	if err != nil {
 		t.Fatal(err)
 	}

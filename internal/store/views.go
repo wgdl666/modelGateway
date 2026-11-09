@@ -1,0 +1,110 @@
+package store
+
+import (
+	"context"
+	"time"
+
+	entsql "entgo.io/ent/dialect/sql"
+	"github.com/wgdl666/modelGateway/ent"
+	"github.com/wgdl666/modelGateway/ent/request"
+)
+
+// 等待响应时只取响应字段和截止时间，避免反复读取入队保存的大图。
+func (s *Store) Get(ctx context.Context, id string) (*ent.Request, error) {
+	return s.db.Request.Query().Where(request.IDEQ(id)).Select(
+		request.FieldID, request.FieldModelKey, request.FieldState, request.FieldInstanceID,
+		request.FieldDeadlineAt, request.FieldResult, request.FieldErrorCode, request.FieldErrorMessage, request.FieldErrorStatus,
+	).Only(ctx)
+}
+
+type InstanceView struct {
+	*ent.ModelInstance
+	ReservedUnits    int  `json:"reserved_units"`
+	ReservedRequests int  `json:"reserved_requests"`
+	Healthy          bool `json:"healthy"`
+	Eligible         bool `json:"eligible"`
+}
+
+func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
+	rows, err := s.db.ModelInstance.Query().All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	holds, err := reserved(ctx, s.db.Request)
+	if err != nil {
+		return nil, err
+	}
+	units := make(map[string]int)
+	requests := make(map[string]int)
+	for _, hold := range holds {
+		units[hold.InstanceID] += hold.Units
+		requests[hold.InstanceID] += hold.Requests
+	}
+	result := make([]InstanceView, 0, len(rows))
+	cutoff := time.Now().Add(-probeMaxAge)
+	for _, row := range rows {
+		// 预留单位和请求数分别返回，避免把加权容量显示为在途任务数。
+		healthy := row.Ready && row.HealthCheckedAt.After(cutoff)
+		result = append(result, InstanceView{
+			ModelInstance: row, ReservedUnits: units[row.ID], ReservedRequests: requests[row.ID],
+			Healthy: healthy, Eligible: healthy && !row.Draining,
+		})
+	}
+	return result, nil
+}
+
+type RequestFilter struct {
+	ID, TraceID, Model, InstanceID, Artifact string
+	State                                    request.State
+	From, To                                 *time.Time
+	Offset, Limit                            int
+}
+
+// 运维查询只读取执行归属与状态，原始媒体仍留在队列账本里。
+var requestSummaryFields = []string{
+	request.FieldID, request.FieldModelKey, request.FieldCapability, request.FieldTraceID,
+	request.FieldState, request.FieldCreatedAt, request.FieldStartedAt, request.FieldFinishedAt,
+	request.FieldInstanceID, request.FieldResourceGroup, request.FieldArtifactDigest,
+	request.FieldBackendTaskID, request.FieldSlotReserved, request.FieldErrorCode,
+}
+
+func (s *Store) ListRequests(ctx context.Context, filter RequestFilter) ([]*ent.Request, int, error) {
+	query := s.db.Request.Query()
+	if filter.ID != "" {
+		query.Where(request.IDEQ(filter.ID))
+	}
+	if filter.TraceID != "" {
+		query.Where(request.TraceIDEQ(filter.TraceID))
+	}
+	if filter.Model != "" {
+		query.Where(request.Or(request.ModelKeyEQ(filter.Model), request.CapabilityEQ(filter.Model)))
+	}
+	if filter.InstanceID != "" {
+		query.Where(request.InstanceIDEQ(filter.InstanceID))
+	}
+	if filter.Artifact != "" {
+		query.Where(request.ArtifactDigestEQ(filter.Artifact))
+	}
+	if filter.State != "" {
+		query.Where(request.StateEQ(filter.State))
+	}
+	if filter.From != nil {
+		query.Where(request.CreatedAtGTE(*filter.From))
+	}
+	if filter.To != nil {
+		query.Where(request.CreatedAtLTE(*filter.To))
+	}
+	total, err := query.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	rows, err := query.Order(request.ByCreatedAt(entsql.OrderDesc()), request.ByID(entsql.OrderDesc())).
+		Offset(filter.Offset).Limit(filter.Limit).Select(requestSummaryFields...).All(ctx)
+	return rows, total, err
+}
+
+func (s *Store) RequestDetail(ctx context.Context, id string) (*ent.Request, error) {
+	// 详情只补对象引用和终态错误，禁止将 Base64 输入带到 Ops。
+	fields := append(append([]string(nil), requestSummaryFields...), request.FieldResult, request.FieldErrorMessage)
+	return s.db.Request.Query().Where(request.IDEQ(id)).Select(fields...).Only(ctx)
+}

@@ -1,4 +1,4 @@
-package gateway
+package integration
 
 import (
 	"context"
@@ -11,10 +11,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wgdl666/modelGateway/internal/config"
+	"github.com/wgdl666/modelGateway/internal/httpapi"
+	"github.com/wgdl666/modelGateway/internal/protocol"
+	"github.com/wgdl666/modelGateway/internal/store"
 )
 
 // 使用真实监听器覆盖 Hertz 的路由、流式读取和关闭，避免只测处理函数而漏掉协议层差异。
-func startHTTPServer(t *testing.T, app *Server) string {
+func startHTTPServer(t *testing.T, app *httpapi.Server) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -59,24 +63,23 @@ func startHTTPServer(t *testing.T, app *Server) string {
 }
 
 func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
-	a, b := stores(t)
-	spec := testInstance(videoModel, "video", "http://127.0.0.1:8001", 2)
+	a, b, _ := stores(t)
+	spec := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8001", 2)
 	registerReady(t, a, spec)
 	id := uuid.NewString()
 	submission := testAdmission(spec, id, 2)
-	submission.traceID = "trace-for-ops"
+	submission.TraceID = "trace-for-ops"
 	if _, err := a.Admit(t.Context(), submission); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.Claim(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	app, err := NewServer(b, testConfig())
+	runtime, err := config.NewRuntime(testConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(app.cancel)
-	base := startHTTPServer(t, app)
+	base := startHTTPServer(t, httpapi.New(b, runtime))
 	get := func(path, token string, want int) []byte {
 		t.Helper()
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+path, nil)
@@ -97,6 +100,11 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 	}
 	get("/v1/admin/requests", apiToken, 401)
 	list := get("/v1/admin/requests?trace_id=trace-for-ops&state=processing", adminToken, 200)
+	type requestView struct {
+		protocol.Response
+		TraceID      string `json:"trace_id"`
+		SlotReserved bool   `json:"slot_reserved"`
+	}
 	var page struct {
 		Items []requestView
 		Total int
@@ -114,20 +122,18 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 	}
 	detail := get("/v1/admin/requests/"+id, adminToken, 200)
 	var task requestView
-	if err := json.Unmarshal(detail, &task); err != nil || task.TraceID != submission.traceID ||
+	if err := json.Unmarshal(detail, &task); err != nil || task.TraceID != submission.TraceID ||
 		task.State != "succeeded" || task.Result == nil || len(task.Result.Files) != 1 || task.SlotReserved {
 		t.Fatalf("invalid detail %s, error %v", detail, err)
 	}
 }
 
 func TestHertzRoutingAndValidation(t *testing.T) {
-	cfg := testConfig()
-	app, err := NewServer(&Store{}, cfg)
+	runtime, err := config.NewRuntime(testConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(app.cancel)
-	base := startHTTPServer(t, app)
+	base := startHTTPServer(t, httpapi.New(&store.Store{}, runtime))
 	for _, test := range []struct {
 		path, token string
 		code        int
