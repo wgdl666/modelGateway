@@ -18,8 +18,8 @@ func (f vlmRoundTrip) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestChatCompletions(t *testing.T) {
-	const response = `{"model":"vmind","choices":[{"message":{"content":"red"}}]}`
-	request := `{"model":"vmind","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,` +
+	const response = `{"model":"Vmind_dream_v1","choices":[{"message":{"content":"red"}}]}`
+	request := `{"model":"Vmind_dream_v1","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,` +
 		strings.Repeat("A", 4096) + `"}},{"type":"text","text":"What color?"}]}],"max_tokens":32}`
 	cfg := config.Config{
 		APIToken:        strings.Repeat("a", 24),
@@ -73,8 +73,8 @@ func TestChatCompletions(t *testing.T) {
 	if got := call(cfg.AdminToken, request); got.Code != http.StatusUnauthorized {
 		t.Fatalf("wrong credential returned %d", got.Code)
 	}
-	if got := call(cfg.APIToken, strings.Replace(request, `"vmind"`, `"other"`, 1)); got.Code != http.StatusNotFound {
-		t.Fatalf("unknown model returned %d", got.Code)
+	if got := call(cfg.APIToken, strings.Replace(request, `"Vmind_dream_v1"`, `"vmind"`, 1)); got.Code != http.StatusNotFound {
+		t.Fatalf("retired model name returned %d", got.Code)
 	}
 	got := call(cfg.APIToken, request)
 	if got.Code != http.StatusOK || got.Body.String() != response || calls != 1 {

@@ -31,7 +31,8 @@ func (s *Server) chatCompletions(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	var model string
-	if err := json.Unmarshal(fields["model"], &model); err != nil || model != "vmind" {
+	// 网关用上游的 served-model-name 校验请求，调用方使用同一个发布标识。
+	if err := json.Unmarshal(fields["model"], &model); err != nil || model != "Vmind_dream_v1" {
 		writeError(c, 404, "model_not_found", "model is not configured", "")
 		return
 	}
