@@ -25,9 +25,8 @@ import (
 )
 
 const (
-	apiToken    = "test-client-token-at-least-24-chars"
-	workerToken = "test-worker-token-at-least-24-chars"
-	adminToken  = "test-admin-token-at-least-24-chars"
+	apiToken   = "test-client-token-at-least-24-chars"
+	adminToken = "test-admin-token-at-least-24-chars"
 )
 
 func stores(t *testing.T) (*store.Store, *store.Store, *ent.Client) {
@@ -82,7 +81,7 @@ func stores(t *testing.T) (*store.Store, *store.Store, *ent.Client) {
 
 func testConfig() config.Config {
 	return config.Config{
-		APIToken: apiToken, WorkerToken: workerToken, AdminToken: adminToken,
+		APIToken: apiToken, AdminToken: adminToken,
 		AllowedNetworks: []string{"127.0.0.0/8"}, AllowedPorts: []string{"8001", "8002"},
 		BackendTimeout: 10 * time.Second, MaxWaiting: 64, MaxWaitingBytes: 128 << 20,
 	}

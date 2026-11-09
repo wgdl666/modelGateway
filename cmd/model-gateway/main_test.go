@@ -75,7 +75,7 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 		return listener.Addr().String()
 	}
 	first, second := address(), address()
-	values := map[string]any{"database_url": u.String(), "listen": first, "api_token": "test-api-token-at-least-24-characters", "worker_token": "test-worker-token-at-least-24-characters", "admin_token": "test-admin-token-at-least-24-characters", "backend_cidrs": []string{"127.0.0.0/8"}, "backend_ports": []string{"8001"}, "backend_timeout": "120s", "poll_interval": "5s"}
+	values := map[string]any{"database_url": u.String(), "listen": first, "api_token": "test-api-token-at-least-24-characters", "admin_token": "test-admin-token-at-least-24-characters", "backend_cidrs": []string{"127.0.0.0/8"}, "backend_ports": []string{"8001"}, "backend_timeout": "120s", "poll_interval": "5s"}
 	var content atomic.Value
 	setContent := func() { raw, _ := json.Marshal(values); content.Store(raw) }
 	setContent()

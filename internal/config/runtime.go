@@ -16,7 +16,6 @@ type Config struct {
 	DatabaseURL       string         `json:"database_url"`
 	Listen            string         `json:"listen"`
 	APIToken          string         `json:"api_token"`
-	WorkerToken       string         `json:"worker_token"`
 	AdminToken        string         `json:"admin_token"`
 	BackendToken      string         `json:"backend_token"`
 	AllowedNetworks   []string       `json:"backend_cidrs"`
@@ -42,9 +41,10 @@ func Parse(raw []byte) (Config, error) {
 	}
 	// ACK 用专用 Secret 注入连接凭据，Nacos 只承载可热更新的非密钥设置。
 	for key, field := range map[string]*string{
-		"MODEL_GATEWAY_DATABASE_URL": &c.DatabaseURL,
-		"MODEL_GATEWAY_API_TOKEN":    &c.APIToken, "MODEL_GATEWAY_WORKER_TOKEN": &c.WorkerToken,
-		"MODEL_GATEWAY_ADMIN_TOKEN": &c.AdminToken, "MODEL_GATEWAY_BACKEND_TOKEN": &c.BackendToken,
+		"MODEL_GATEWAY_DATABASE_URL":  &c.DatabaseURL,
+		"MODEL_GATEWAY_API_TOKEN":     &c.APIToken,
+		"MODEL_GATEWAY_ADMIN_TOKEN":   &c.AdminToken,
+		"MODEL_GATEWAY_BACKEND_TOKEN": &c.BackendToken,
 	} {
 		if value, ok := os.LookupEnv(key); ok {
 			*field = value
@@ -75,8 +75,9 @@ type Snapshot struct {
 }
 
 func prepareConfig(c Config) (*Snapshot, error) {
-	if len(c.APIToken) < 24 || len(c.WorkerToken) < 24 || len(c.AdminToken) < 24 || c.APIToken == c.WorkerToken || c.APIToken == c.AdminToken || c.AdminToken == c.WorkerToken {
-		return nil, errors.New("three distinct tokens of at least 24 characters required")
+	// 业务调用方与管理员使用独立凭据，避免业务凭据具备实例管理权限。
+	if len(c.APIToken) < 24 || len(c.AdminToken) < 24 || c.APIToken == c.AdminToken {
+		return nil, errors.New("distinct API and admin tokens of at least 24 characters required")
 	}
 	if c.BackendTimeout == 0 {
 		c.BackendTimeout = 120 * time.Second

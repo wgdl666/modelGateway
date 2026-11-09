@@ -135,16 +135,20 @@ func TestHertzRoutingAndValidation(t *testing.T) {
 	}
 	base := startHTTPServer(t, httpapi.New(&store.Store{}, runtime))
 	for _, test := range []struct {
-		path, token string
-		code        int
+		method, path, token string
+		code                int
 	}{
-		{"/_gateway/live", "", 200},
-		{"/v1/gateway/requests", "", 401},
-		{"/v1/gateway/requests", workerToken, 401},
-		{"/v1/gateway/requests", apiToken, 400},
-		{"/v1/requests/no-legacy-route", apiToken, 404},
+		{http.MethodGet, "/_gateway/live", "", 200},
+		{http.MethodGet, "/v1/gateway/requests", "", 401},
+		{http.MethodGet, "/v1/gateway/requests", adminToken, 401},
+		{http.MethodGet, "/v1/gateway/requests", apiToken, 400},
+		{http.MethodGet, "/v1/requests/no-legacy-route", apiToken, 404},
+		{http.MethodPost, "/v1/instances/register", "", 401},
+		{http.MethodPost, "/v1/instances/register", apiToken, 401},
+		// 缺少 Content-Type 时返回 415，表明管理凭据已通过鉴权。
+		{http.MethodPost, "/v1/instances/register", adminToken, 415},
 	} {
-		req, err := http.NewRequest(http.MethodGet, base+test.path, nil)
+		req, err := http.NewRequest(test.method, base+test.path, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

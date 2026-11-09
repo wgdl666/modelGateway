@@ -6,7 +6,6 @@ func TestHotReloadKeepsQueueDatabase(t *testing.T) {
 	cfg := Config{
 		DatabaseURL:     "test-original-database",
 		APIToken:        "test-client-token-at-least-24-chars",
-		WorkerToken:     "test-worker-token-at-least-24-chars",
 		AdminToken:      "test-admin-token-at-least-24-chars",
 		AllowedNetworks: []string{"127.0.0.0/8"},
 		AllowedPorts:    []string{"8001", "8002"},

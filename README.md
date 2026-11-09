@@ -21,7 +21,7 @@
 
 ## 实例管理
 
-`POST /v1/instances/register` 使用注册或管理凭据，提交以下字段。
+`POST /v1/instances/register` 使用管理凭据，提交以下字段。
 
 ```json
 {
@@ -64,7 +64,7 @@ python -m uvicorn app:app --app-dir worker_adapter --host 127.0.0.1 --port 8001
 
 部署前，数据库侧根据 [Ent 模型定义](ent/schema) 准备 `model_gateway` schema、业务表和索引。国内 ACK 使用 `wghub` 数据库。网关运行账号需要该 schema 的访问权限和业务表的读写权限。
 
-国内 ACK 通过 workspace 的 `server_release.py release --service model-gateway --branch dev` 发布两个副本和内网 Service。镜像使用私有不可变仓库 `wg/model-gateway`。首次部署需要 [启动配置清单](deploy/ack-bootstrap.yaml) 和 Kubernetes Secret `model-gateway-runtime`。Nacos `wg.mirror.modelGateway` 保存监听、后端白名单、队列和容量设置。Secret 提供 `MODEL_GATEWAY_DATABASE_URL` 和 `MODEL_GATEWAY_{API,WORKER,ADMIN,BACKEND}_TOKEN`。
+国内 ACK 通过 workspace 的 `server_release.py release --service model-gateway --branch dev` 发布两个副本和内网 Service。镜像使用私有不可变仓库 `wg/model-gateway`。首次部署需要 [启动配置清单](deploy/ack-bootstrap.yaml) 和 Kubernetes Secret `model-gateway-runtime`。Nacos `wg.mirror.modelGateway` 保存监听、后端白名单、队列和容量设置。Secret 提供 `MODEL_GATEWAY_DATABASE_URL` 和 `MODEL_GATEWAY_{API,ADMIN,BACKEND}_TOKEN`。
 
 国内视频 Worker 设置 `VMIND_NATIVE_VIDEO_PROTOCOL=jobs` 和 `VMIND_NATIVE_VIDEO_TARGET`。目标实例名必须来自原生 `/healthz`，并与网关登记的 GPU 分组对应。提交原生 `/vton` 后持久化后端分配的 job_id，再查询 `/jobs/{job_id}`。原生服务未提供按外部 UUID 查询，受理响应丢失时保留槽位，待核实原执行。图片上游需要 Basic Auth 时，由模型部署提供 `VMIND_NATIVE_USERNAME` 和 `VMIND_NATIVE_PASSWORD`。
 

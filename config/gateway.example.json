@@ -2,7 +2,6 @@
   "database_url": "postgresql://gateway:replace-me@postgres:5432/model_gateway?sslmode=verify-full",
   "listen": ":18580",
   "api_token": "replace-with-a-distinct-api-token",
-  "worker_token": "replace-with-a-distinct-worker-token",
   "admin_token": "replace-with-a-distinct-admin-token",
   "backend_token": "replace-with-the-worker-adapter-bearer",
   "backend_cidrs": [

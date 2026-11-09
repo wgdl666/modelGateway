@@ -51,7 +51,8 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	})
 	h.GET("/_gateway/live", func(_ context.Context, c *app.RequestContext) { writeJSON(c, 200, map[string]bool{"live": true}) })
 	h.GET("/_gateway/ready", s.ready)
-	h.POST("/v1/instances/register", s.auth("worker", s.register))
+	// 实例登记决定网关可以向哪些执行地址派单，因此使用管理凭据。
+	h.POST("/v1/instances/register", s.auth("admin", s.register))
 	h.POST("/v1/instances/:id/drain", s.auth("admin", s.drain))
 	h.GET("/v1/instances", s.auth("admin", s.instances))
 	h.GET("/v1/admin/requests", s.auth("admin", s.listRequests))
@@ -71,8 +72,6 @@ func (s *Server) auth(role string, next app.HandlerFunc) app.HandlerFunc {
 		}
 		allowed := false
 		switch role {
-		case "worker":
-			allowed = match(cfg.WorkerToken) || match(cfg.AdminToken)
 		case "admin":
 			allowed = match(cfg.AdminToken)
 		case "api":
