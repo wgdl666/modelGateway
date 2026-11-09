@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/httpapi"
 	"github.com/wgdl666/modelGateway/internal/protocol"
@@ -161,5 +163,109 @@ func TestHertzRoutingAndValidation(t *testing.T) {
 		if resp.StatusCode != test.code {
 			t.Errorf("%s: got %d want %d", test.path, resp.StatusCode, test.code)
 		}
+	}
+}
+
+func TestClearInstanceKeepsRequestHistory(t *testing.T) {
+	a, b, db := stores(t)
+	ctx := t.Context()
+	spec := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8001", 1)
+	if err := a.Register(ctx, spec); err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := config.NewRuntime(testConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := startHTTPServer(t, httpapi.New(b, runtime))
+	call := func(method, path, token string, want int) []byte {
+		t.Helper()
+		req, err := http.NewRequestWithContext(ctx, method, base+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		raw, err := io.ReadAll(res.Body)
+		if err != nil || res.StatusCode != want {
+			t.Fatalf("%s %s: status=%d body=%s err=%v", method, path, res.StatusCode, raw, err)
+		}
+		return raw
+	}
+	path := "/v1/instances/" + spec.ID
+	call(http.MethodDelete, path, apiToken, 401)
+	call(http.MethodDelete, path, adminToken, 409) // 未暂停
+	if err := a.Drain(ctx, spec.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	call(http.MethodDelete, path, adminToken, 409) // 尚未探测
+	if err := a.Drain(ctx, spec.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	registerReady(t, a, spec)
+	id := uuid.NewString()
+	if _, err := a.Admit(ctx, testAdmission(spec, id, 1)); err != nil {
+		t.Fatal(err)
+	}
+	if row, err := a.Claim(ctx, testConfig(), id); err != nil || row == nil {
+		t.Fatalf("claim: %v %v", row, err)
+	}
+	if err := a.Drain(ctx, spec.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// 暂停后停止探活，模拟成功样本过期和请求已报失败但执行尚未确认的场景。
+	if err := db.ModelInstance.UpdateOneID(spec.ID).SetHealthCheckedAt(time.Now().Add(-time.Minute)).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DispatchFailure(ctx, id, 504, "upstream_timeout", "test pending confirmation", true); err != nil {
+		t.Fatal(err)
+	}
+	call(http.MethodDelete, path, adminToken, 409)
+	if rows := call(http.MethodGet, "/v1/instances", adminToken, 200); strings.Contains(string(rows), `"clearable":true`) {
+		t.Fatalf("instance with a reserved slot was clearable: %s", rows)
+	}
+	if err := a.RecordResponse(ctx, id, "", succeeded(id), time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.RecordProbe(ctx, spec.ID, time.Now().UTC(), true); err != nil {
+		t.Fatal(err)
+	}
+	call(http.MethodDelete, path, adminToken, 409) // 已暂停且无占槽，探活仍健康
+	if err := db.ModelInstance.UpdateOneID(spec.ID).SetHealthCheckedAt(time.Now().Add(-time.Minute)).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if rows := call(http.MethodGet, "/v1/instances", adminToken, 200); !strings.Contains(string(rows), `"clearable":true`) {
+		t.Fatalf("paused instance with an expired sample was not clearable: %s", rows)
+	}
+
+	call(http.MethodDelete, path, adminToken, 200)
+	call(http.MethodDelete, path, adminToken, 200)
+	if rows := call(http.MethodGet, "/v1/instances", adminToken, 200); strings.TrimSpace(string(rows)) != "[]" {
+		t.Fatalf("soft-deleted registration still listed: %s", rows)
+	}
+	row, err := db.ModelInstance.Get(ctx, spec.ID)
+	if err != nil || row.DeletedAt == nil {
+		t.Fatalf("missing soft-deleted row: %v %v", row, err)
+	}
+	if err := a.Drain(ctx, spec.ID, false); !ent.IsNotFound(err) {
+		t.Fatalf("clear did not prevent reopening: %v", err)
+	}
+	if err := a.Register(ctx, spec); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("cleared ID accepted for registration: %v", err)
+	}
+	// 新部署可以更换组容量，已清除的登记不会约束它。
+	replacement := spec
+	replacement.ID, replacement.GroupCapacity = uuid.NewString(), 2
+	if err := a.Register(ctx, replacement); err != nil {
+		t.Fatalf("tombstone blocked a new deployment: %v", err)
+	}
+	history := call(http.MethodGet, "/v1/admin/requests?instance_id="+spec.ID, adminToken, 200)
+	if !strings.Contains(string(history), id) || !strings.Contains(string(history), `"state":"failed"`) {
+		t.Fatalf("historical request changed or disappeared: %s", history)
 	}
 }

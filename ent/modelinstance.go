@@ -44,6 +44,8 @@ type ModelInstance struct {
 	HealthCheckedAt time.Time `json:"health_checked_at,omitempty"`
 	// Draining holds the value of the "draining" field.
 	Draining bool `json:"draining,omitempty"`
+	// DeletedAt holds the value of the "deleted_at" field.
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -64,7 +66,7 @@ func (*ModelInstance) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case modelinstance.FieldID, modelinstance.FieldModelKey, modelinstance.FieldCapability, modelinstance.FieldEndpoint, modelinstance.FieldHealthURL, modelinstance.FieldArtifactDigest, modelinstance.FieldResourceGroup, modelinstance.FieldMachineID:
 			values[i] = new(sql.NullString)
-		case modelinstance.FieldHealthCheckedAt, modelinstance.FieldCreatedAt, modelinstance.FieldUpdatedAt:
+		case modelinstance.FieldHealthCheckedAt, modelinstance.FieldDeletedAt, modelinstance.FieldCreatedAt, modelinstance.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -167,6 +169,13 @@ func (_m *ModelInstance) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Draining = value.Bool
 			}
+		case modelinstance.FieldDeletedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field deleted_at", values[i])
+			} else if value.Valid {
+				_m.DeletedAt = new(time.Time)
+				*_m.DeletedAt = value.Time
+			}
 		case modelinstance.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -253,6 +262,11 @@ func (_m *ModelInstance) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("draining=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Draining))
+	builder.WriteString(", ")
+	if v := _m.DeletedAt; v != nil {
+		builder.WriteString("deleted_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

@@ -55,6 +55,7 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.POST("/v1/instances/register", s.auth("admin", s.register))
 	h.POST("/v1/instances/:id/drain", s.auth("admin", s.drain))
 	h.GET("/v1/instances", s.auth("admin", s.instances))
+	h.DELETE("/v1/instances/:id", s.auth("admin", s.clearInstance))
 	h.GET("/v1/admin/requests", s.auth("admin", s.listRequests))
 	h.GET("/v1/admin/requests/:id", s.auth("admin", s.requestDetail))
 	h.POST("/v1/gateway/requests/cancel", s.auth("api", s.cancelRequest))
@@ -116,6 +117,8 @@ func storeError(c *app.RequestContext, err error, id string) {
 		writeError(c, 409, "conflict", "request or instance conflicts with an existing record", id)
 	case errors.Is(err, store.ErrLegacyRegistration):
 		writeError(c, 409, "legacy_registration", "register a new instance with the current model key", id)
+	case errors.Is(err, store.ErrInstanceNotClearable):
+		writeError(c, 409, "instance_not_clearable", err.Error(), id)
 	case errors.Is(err, store.ErrFull):
 		writeError(c, 429, "queue_full", "waiting queue is full", id)
 	default:
@@ -197,6 +200,19 @@ func (s *Server) drain(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	writeJSON(c, 200, map[string]bool{"draining": *body.Draining})
+}
+
+func (s *Server) clearInstance(ctx context.Context, c *app.RequestContext) {
+	id := c.Param("id")
+	if !protocol.ValidInstanceID(id) {
+		writeError(c, 400, "invalid_instance", "invalid instance ID", "")
+		return
+	}
+	if err := s.store.ClearInstance(ctx, id); err != nil {
+		storeError(c, err, "")
+		return
+	}
+	writeJSON(c, 200, map[string]bool{"deleted": true})
 }
 
 func (s *Server) instances(ctx context.Context, c *app.RequestContext) {

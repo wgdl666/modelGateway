@@ -43,9 +43,13 @@ type Instance struct {
 
 // Valid 检查部署身份和容量。地址还需按当前配置的出站白名单验证。
 func (i Instance) Valid() bool {
-	return instanceID.MatchString(i.ID) && MatchesCapability(i.ModelKey, i.Capability) &&
+	return ValidInstanceID(i.ID) && MatchesCapability(i.ModelKey, i.Capability) &&
 		i.ResourceGroup != "" && len(i.ResourceGroup) <= 256 && validArtifact(i.Artifact) &&
 		i.Capacity >= 1 && i.Capacity <= 65536 && i.GroupCapacity >= 1 && i.GroupCapacity <= 65536
+}
+
+func ValidInstanceID(id string) bool {
+	return instanceID.MatchString(id)
 }
 
 type Metadata struct {

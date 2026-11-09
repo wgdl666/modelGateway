@@ -43,6 +43,9 @@
 
 网关主动探测。探针返回 `ready: true` 后实例可以接单。使用管理凭据调用 `GET /v1/instances` 查询和 `POST /v1/instances/{id}/drain` 设置 `{"draining":true}`。同一卡的模型登记同一个资源组和组容量。部署身份变化时先排空旧实例，再登记新实例。
 
+实例列表用 `clearable` 标明可清除的登记。使用管理凭据调用 `DELETE /v1/instances/{id}`，网关在同一事务里确认实例已暂停、未就绪且没有占槽请求。状态不满足时返回 409。
+清除只写入 `deleted_at`，实例从列表移除。历史请求仍可按原实例 ID 查询，新部署使用新的实例 ID。
+
 商品图实例登记 `Vmind_cloth_gen_v1.0` 和 `cloth_gen`。切换前处理完旧模型键上的商品图任务并排空旧实例，再用新的 `instance_id` 登记。历史结果仍用原请求 ID 查询。
 
 ## 处理和恢复
@@ -94,6 +97,8 @@ VMind-Image 和 LTX 的原生鉴权分别使用 `MODEL_GATEWAY_NATIVE_IMAGE_*` �
 ## 网关启动
 
 部署前，数据库侧根据 [Ent 模型定义](ent/schema) 准备 `model_gateway` schema、业务表和索引。已有数据库以自动提交方式执行 [RabbitMQ 迁移](deploy/migrations/rabbitmq-dispatch.sql)，并发索引需要独立提交。国内 ACK 使用 `wghub` 数据库。网关运行账号需要该 schema 的访问权限和业务表的读写权限。
+
+上线实例清除功能时，先执行[实例软删除迁移](deploy/migrations/instance-soft-delete.sql)。等网关的所有副本更新后，再发布 Ops 后端和页面。
 
 国内 ACK 通过 workspace 的 `server_release.py release --service model-gateway --branch dev` 发布两个副本和内网 Service。镜像使用私有不可变仓库 `wg/model-gateway`。首次部署需要 [启动配置清单](deploy/ack-bootstrap.yaml) 和 Kubernetes Secret `model-gateway-runtime`。Nacos `wg.mirror.modelGateway` 保存监听、后端白名单、`rabbitmq_queue` 和容量设置。Secret 提供 `MODEL_GATEWAY_DATABASE_URL`、`MODEL_GATEWAY_RABBITMQ_URL` 和 `MODEL_GATEWAY_{API,ADMIN,BACKEND}_TOKEN`。
 

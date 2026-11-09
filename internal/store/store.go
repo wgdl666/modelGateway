@@ -8,13 +8,15 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/wgdl666/modelGateway/ent"
+	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
 )
 
 var (
-	ErrFull               = errors.New("waiting queue is full")
-	ErrConflict           = errors.New("request or instance conflict")
-	ErrLegacyRegistration = errors.New("instance model key no longer matches its capability")
+	ErrFull                 = errors.New("waiting queue is full")
+	ErrConflict             = errors.New("request or instance conflict")
+	ErrLegacyRegistration   = errors.New("instance model key no longer matches its capability")
+	ErrInstanceNotClearable = errors.New("instance must be paused, not ready and have no in-flight requests")
 )
 
 // Store 管理 PG 账本，同一事务协调多个网关副本的受理和容量分配。
@@ -25,7 +27,8 @@ func New(db *ent.Client) *Store {
 }
 
 func (s *Store) CheckReady(ctx context.Context) error {
-	if _, err := s.db.ModelInstance.Query().Exist(ctx); err != nil {
+	// 就绪检查覆盖软删除字段，迁移完成后才允许新副本接流量。
+	if _, err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).Exist(ctx); err != nil {
 		return err
 	}
 	// 核对待投递字段已经迁移，避免就绪检查放过旧表结构。

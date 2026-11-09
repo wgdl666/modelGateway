@@ -41,11 +41,11 @@ func init() {
 	// modelinstance.DefaultDraining holds the default value on creation for the draining field.
 	modelinstance.DefaultDraining = modelinstanceDescDraining.Default.(bool)
 	// modelinstanceDescCreatedAt is the schema descriptor for created_at field.
-	modelinstanceDescCreatedAt := modelinstanceFields[14].Descriptor()
+	modelinstanceDescCreatedAt := modelinstanceFields[15].Descriptor()
 	// modelinstance.DefaultCreatedAt holds the default value on creation for the created_at field.
 	modelinstance.DefaultCreatedAt = modelinstanceDescCreatedAt.Default.(func() time.Time)
 	// modelinstanceDescUpdatedAt is the schema descriptor for updated_at field.
-	modelinstanceDescUpdatedAt := modelinstanceFields[15].Descriptor()
+	modelinstanceDescUpdatedAt := modelinstanceFields[16].Descriptor()
 	// modelinstance.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	modelinstance.DefaultUpdatedAt = modelinstanceDescUpdatedAt.Default.(func() time.Time)
 	// modelinstance.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

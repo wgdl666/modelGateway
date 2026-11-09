@@ -52,6 +52,7 @@ type ModelInstanceMutation struct {
 	ready                   *bool
 	health_checked_at       *time.Time
 	draining                *bool
+	deleted_at              *time.Time
 	created_at              *time.Time
 	updated_at              *time.Time
 	clearedFields           map[string]struct{}
@@ -701,6 +702,55 @@ func (m *ModelInstanceMutation) ResetDraining() {
 	m.draining = nil
 }
 
+// SetDeletedAt sets the "deleted_at" field.
+func (m *ModelInstanceMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *ModelInstanceMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the ModelInstance entity.
+// If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelInstanceMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *ModelInstanceMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[modelinstance.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *ModelInstanceMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[modelinstance.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *ModelInstanceMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, modelinstance.FieldDeletedAt)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *ModelInstanceMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -807,7 +857,7 @@ func (m *ModelInstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelInstanceMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 16)
 	if m.model_key != nil {
 		fields = append(fields, modelinstance.FieldModelKey)
 	}
@@ -846,6 +896,9 @@ func (m *ModelInstanceMutation) Fields() []string {
 	}
 	if m.draining != nil {
 		fields = append(fields, modelinstance.FieldDraining)
+	}
+	if m.deleted_at != nil {
+		fields = append(fields, modelinstance.FieldDeletedAt)
 	}
 	if m.created_at != nil {
 		fields = append(fields, modelinstance.FieldCreatedAt)
@@ -887,6 +940,8 @@ func (m *ModelInstanceMutation) Field(name string) (ent.Value, bool) {
 		return m.HealthCheckedAt()
 	case modelinstance.FieldDraining:
 		return m.Draining()
+	case modelinstance.FieldDeletedAt:
+		return m.DeletedAt()
 	case modelinstance.FieldCreatedAt:
 		return m.CreatedAt()
 	case modelinstance.FieldUpdatedAt:
@@ -926,6 +981,8 @@ func (m *ModelInstanceMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldHealthCheckedAt(ctx)
 	case modelinstance.FieldDraining:
 		return m.OldDraining(ctx)
+	case modelinstance.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
 	case modelinstance.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case modelinstance.FieldUpdatedAt:
@@ -1030,6 +1087,13 @@ func (m *ModelInstanceMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetDraining(v)
 		return nil
+	case modelinstance.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
 	case modelinstance.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -1104,6 +1168,9 @@ func (m *ModelInstanceMutation) ClearedFields() []string {
 	if m.FieldCleared(modelinstance.FieldGpuDevices) {
 		fields = append(fields, modelinstance.FieldGpuDevices)
 	}
+	if m.FieldCleared(modelinstance.FieldDeletedAt) {
+		fields = append(fields, modelinstance.FieldDeletedAt)
+	}
 	return fields
 }
 
@@ -1120,6 +1187,9 @@ func (m *ModelInstanceMutation) ClearField(name string) error {
 	switch name {
 	case modelinstance.FieldGpuDevices:
 		m.ClearGpuDevices()
+		return nil
+	case modelinstance.FieldDeletedAt:
+		m.ClearDeletedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown ModelInstance nullable field %s", name)
@@ -1167,6 +1237,9 @@ func (m *ModelInstanceMutation) ResetField(name string) error {
 		return nil
 	case modelinstance.FieldDraining:
 		m.ResetDraining()
+		return nil
+	case modelinstance.FieldDeletedAt:
+		m.ResetDeletedAt()
 		return nil
 	case modelinstance.FieldCreatedAt:
 		m.ResetCreatedAt()

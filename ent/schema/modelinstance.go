@@ -30,6 +30,8 @@ func (ModelInstance) Fields() []ent.Field {
 		field.Bool("ready").Default(false),
 		field.Time("health_checked_at").Default(func() time.Time { return time.Unix(0, 0).UTC() }),
 		field.Bool("draining").Default(false),
+		// 清除只标记实例登记，保留实例 ID 供历史请求追溯。
+		field.Time("deleted_at").Optional().Nillable(),
 		field.Time("created_at").Default(time.Now).Immutable(),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

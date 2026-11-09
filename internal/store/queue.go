@@ -111,7 +111,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 			return err
 		}
 		instances, err := tx.ModelInstance.Query().Where(
-			modelinstance.ModelKeyEQ(next.ModelKey), modelinstance.CapabilityEQ(next.Capability),
+			modelinstance.DeletedAtIsNil(), modelinstance.ModelKeyEQ(next.ModelKey), modelinstance.CapabilityEQ(next.Capability),
 			modelinstance.ReadyEQ(true), modelinstance.DrainingEQ(false), modelinstance.HealthCheckedAtGT(now.Add(-probeMaxAge)),
 		).Order(ent.Asc(modelinstance.FieldID)).All(ctx)
 		if err != nil {

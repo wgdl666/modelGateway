@@ -6,6 +6,7 @@ import (
 
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/wgdl666/modelGateway/ent"
+	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 )
@@ -24,11 +25,12 @@ type InstanceView struct {
 	ReservedRequests   int  `json:"reserved_requests"`
 	Healthy            bool `json:"healthy"`
 	Eligible           bool `json:"eligible"`
+	Clearable          bool `json:"clearable,omitempty"`
 	LegacyRegistration bool `json:"legacy_registration,omitempty"`
 }
 
 func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
-	rows, err := s.db.ModelInstance.Query().All(ctx)
+	rows, err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -43,15 +45,15 @@ func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
 		requests[hold.InstanceID] += hold.Requests
 	}
 	result := make([]InstanceView, 0, len(rows))
-	cutoff := time.Now().Add(-probeMaxAge)
+	now := time.Now()
 	for _, row := range rows {
 		// 预留单位和请求数分别返回，避免把加权容量显示为在途任务数。
-		healthy := row.Ready && row.HealthCheckedAt.After(cutoff)
+		healthy := instanceHealthy(row, now)
 		legacy := !protocol.MatchesCapability(row.ModelKey, row.Capability)
 		result = append(result, InstanceView{
 			ModelInstance: row, ReservedUnits: units[row.ID], ReservedRequests: requests[row.ID],
 			Healthy: healthy, Eligible: healthy && !row.Draining && !legacy,
-			LegacyRegistration: legacy,
+			Clearable: instanceClearable(row, healthy) && requests[row.ID] == 0, LegacyRegistration: legacy,
 		})
 	}
 	return result, nil

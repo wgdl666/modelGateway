@@ -70,6 +70,26 @@ func (_u *ModelInstanceUpdate) SetNillableDraining(v *bool) *ModelInstanceUpdate
 	return _u
 }
 
+// SetDeletedAt sets the "deleted_at" field.
+func (_u *ModelInstanceUpdate) SetDeletedAt(v time.Time) *ModelInstanceUpdate {
+	_u.mutation.SetDeletedAt(v)
+	return _u
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_u *ModelInstanceUpdate) SetNillableDeletedAt(v *time.Time) *ModelInstanceUpdate {
+	if v != nil {
+		_u.SetDeletedAt(*v)
+	}
+	return _u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (_u *ModelInstanceUpdate) ClearDeletedAt() *ModelInstanceUpdate {
+	_u.mutation.ClearDeletedAt()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ModelInstanceUpdate) SetUpdatedAt(v time.Time) *ModelInstanceUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -138,6 +158,12 @@ func (_u *ModelInstanceUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	if value, ok := _u.mutation.Draining(); ok {
 		_spec.SetField(modelinstance.FieldDraining, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.DeletedAt(); ok {
+		_spec.SetField(modelinstance.FieldDeletedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DeletedAtCleared() {
+		_spec.ClearField(modelinstance.FieldDeletedAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(modelinstance.FieldUpdatedAt, field.TypeTime, value)
 	}
@@ -200,6 +226,26 @@ func (_u *ModelInstanceUpdateOne) SetNillableDraining(v *bool) *ModelInstanceUpd
 	if v != nil {
 		_u.SetDraining(*v)
 	}
+	return _u
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (_u *ModelInstanceUpdateOne) SetDeletedAt(v time.Time) *ModelInstanceUpdateOne {
+	_u.mutation.SetDeletedAt(v)
+	return _u
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_u *ModelInstanceUpdateOne) SetNillableDeletedAt(v *time.Time) *ModelInstanceUpdateOne {
+	if v != nil {
+		_u.SetDeletedAt(*v)
+	}
+	return _u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (_u *ModelInstanceUpdateOne) ClearDeletedAt() *ModelInstanceUpdateOne {
+	_u.mutation.ClearDeletedAt()
 	return _u
 }
 
@@ -300,6 +346,12 @@ func (_u *ModelInstanceUpdateOne) sqlSave(ctx context.Context) (_node *ModelInst
 	}
 	if value, ok := _u.mutation.Draining(); ok {
 		_spec.SetField(modelinstance.FieldDraining, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.DeletedAt(); ok {
+		_spec.SetField(modelinstance.FieldDeletedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DeletedAtCleared() {
+		_spec.ClearField(modelinstance.FieldDeletedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(modelinstance.FieldUpdatedAt, field.TypeTime, value)

@@ -25,6 +25,7 @@ var (
 		{Name: "ready", Type: field.TypeBool, Default: false},
 		{Name: "health_checked_at", Type: field.TypeTime},
 		{Name: "draining", Type: field.TypeBool, Default: false},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
