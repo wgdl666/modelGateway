@@ -29,9 +29,8 @@ spec:
             - {name: VMIND_WORKER_STATE_BACKEND, value: oss}
             - {name: VMIND_WORKER_INSTANCE_ID, value: cn-image}
             - {name: VMIND_WORKER_ARTIFACT_DIGEST, value: WORKER_IMAGE_DIGEST}
-            # CN 当前入口仅验证了试衣 API，其余模型等实际端点开放后再登记。
+            # CN 上游公开 /v2/images/vton，由模型键选择该路由和对应的两张图片字段。
             - {name: VMIND_WORKER_MODEL_KEYS, value: Vmind_outfit_v1.0}
-            - {name: VMIND_NATIVE_VTON_EDITS, value: "true"}
           ports:
             - {name: image, containerPort: 8001}
           readinessProbe:
