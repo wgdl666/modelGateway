@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -100,7 +99,7 @@ func (w *Reconciler) modelCall(ctx context.Context, cfg *config.Snapshot, method
 	if cfg.BackendToken != "" {
 		req.Header.Set("Authorization", "Bearer "+cfg.BackendToken)
 	}
-	resp, err := w.modelHTTP(req)
+	resp, err := w.modelHTTP(req, false)
 	if err != nil {
 		return nil, err
 	}
@@ -112,19 +111,16 @@ func (w *Reconciler) modelCall(ctx context.Context, cfg *config.Snapshot, method
 	return raw, nil
 }
 
-func (w *Reconciler) modelHTTP(req *http.Request) (*http.Response, error) {
+func (w *Reconciler) modelHTTP(req *http.Request, nativeSubmission bool) (*http.Response, error) {
 	resp, err := w.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
-		// 国内 FLUX 的路由未命中用纯文本 404 表示，能确认模型尚未接单。
-		if req.Method == http.MethodPost && req.URL.Path == fluxEditsPath &&
-			resp.StatusCode == http.StatusNotFound && strings.HasPrefix(resp.Header.Get("Content-Type"), "text/plain") {
-			if raw, err := readModelBody(resp.Body, 64); err == nil && strings.EqualFold(strings.TrimSpace(string(raw)), "not found") {
-				return nil, errNativeRouteUnavailable
-			}
+		// 只有原生提交阶段的标准路由拒绝能确认未受理，回查 404 无法确认执行终态。
+		if nativeSubmission && resp.StatusCode == http.StatusNotFound && nativeRouteNotFound(resp) {
+			return nil, errNativeRouteUnavailable
 		}
 		return nil, modelStatusError(resp.StatusCode)
 	}

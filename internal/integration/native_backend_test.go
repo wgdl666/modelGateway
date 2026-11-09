@@ -66,6 +66,16 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 					case "reject":
 						w.WriteHeader(http.StatusUnprocessableEntity)
 						return
+					case "route-not-found":
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusNotFound)
+						_, _ = io.WriteString(w, `{"detail":"Not Found"}`)
+						return
+					case "unknown-404":
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusNotFound)
+						_, _ = io.WriteString(w, `{"detail":"garment not found"}`)
+						return
 					case "disconnect":
 						conn, _, err := w.(http.Hijacker).Hijack()
 						if err != nil {
@@ -295,19 +305,31 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			}
 
 			if provider == "oss" {
-				rejected, disconnected := uuid.NewString(), uuid.NewString()
-				call(http.MethodPost, imagePath, apiToken, rejected, strings.Replace(imageBody, "try on", "reject", 1), 502)
-				disconnectedBody := strings.Replace(imageBody, "try on", "disconnect", 1)
-				call(http.MethodPost, imagePath, apiToken, disconnected, disconnectedBody, 502)
-				call(http.MethodPost, imagePath, apiToken, disconnected, disconnectedBody, 502)
-				rejectedRow, err := db.Request.Get(t.Context(), rejected)
-				if err != nil || rejectedRow.SlotReserved || rejectedRow.ErrorCode != "model_rejected" {
-					t.Fatalf("model rejection did not release its slot: %v (%v)", rejectedRow, err)
+				for _, rejection := range []struct{ prompt, code string }{
+					{"reject", "model_rejected"},
+					{"route-not-found", "native_route_unavailable"},
+				} {
+					id := uuid.NewString()
+					call(http.MethodPost, imagePath, apiToken, id, strings.Replace(imageBody, "try on", rejection.prompt, 1), 502)
+					row, err := db.Request.Get(t.Context(), id)
+					if err != nil || row.State != request.StateFailed || row.SlotReserved || row.ErrorCode != rejection.code {
+						t.Fatalf("%s did not finish and release its slot: %v (%v)", rejection.prompt, row, err)
+					}
 				}
-				disconnectedRow, err := db.Request.Get(t.Context(), disconnected)
-				if err != nil || !disconnectedRow.SlotReserved || disconnectedRow.ErrorCode != "backend_outcome_unknown" || imageCalls.Load() != 3 {
-					t.Fatalf("unknown image outcome lost its slot or was sent again: %v (%v)", disconnectedRow, err)
-				}
+			}
+			// 断线和无法判定的 404 都要保留原占用，重试同一请求不能再发一次。
+			unknownPrompt := "disconnect"
+			if provider == "s3" {
+				unknownPrompt = "unknown-404"
+			}
+			unknownID := uuid.NewString()
+			unknownBody := strings.Replace(imageBody, "try on", unknownPrompt, 1)
+			callsBefore := imageCalls.Load()
+			call(http.MethodPost, imagePath, apiToken, unknownID, unknownBody, 502)
+			call(http.MethodPost, imagePath, apiToken, unknownID, unknownBody, 502)
+			unknownRow, err := db.Request.Get(t.Context(), unknownID)
+			if err != nil || !unknownRow.SlotReserved || unknownRow.ErrorCode != "backend_outcome_unknown" || imageCalls.Load() != callsBefore+1 {
+				t.Fatalf("unknown image outcome lost its slot or was sent again: %v (%v)", unknownRow, err)
 			}
 		})
 	}

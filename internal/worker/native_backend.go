@@ -29,7 +29,7 @@ const (
 	fluxEditsPath    = "/v1/images/edits"
 )
 
-var errNativeRouteUnavailable = errors.New("native image route is unavailable")
+var errNativeRouteUnavailable = errors.New("native model route is unavailable")
 
 type nativeAuth struct {
 	username, password, token string
@@ -159,7 +159,23 @@ func (w *Reconciler) nativeHTTP(ctx context.Context, auth nativeAuth, method, ur
 	if auth.token != "" {
 		req.Header.Set("X-Token", auth.token)
 	}
-	return w.modelHTTP(req)
+	return w.modelHTTP(req, method == http.MethodPost)
+}
+
+func nativeRouteNotFound(resp *http.Response) bool {
+	mediaType, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if err != nil || (mediaType != "text/plain" && mediaType != "application/json") {
+		return false
+	}
+	raw, err := readModelBody(resp.Body, 64)
+	if err != nil {
+		return false
+	}
+	if mediaType == "text/plain" {
+		return strings.EqualFold(strings.TrimSpace(string(raw)), "not found")
+	}
+	var body map[string]string
+	return json.Unmarshal(raw, &body) == nil && len(body) == 1 && body["detail"] == "Not Found"
 }
 
 func (w *Reconciler) nativeJSON(ctx context.Context, auth nativeAuth, url string, out any) error {
