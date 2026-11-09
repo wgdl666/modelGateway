@@ -1,4 +1,4 @@
-package gateway
+package protocol
 
 import (
 	"bytes"
@@ -6,31 +6,23 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
-	"net/url"
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 )
 
 const (
 	wardrobeModel = "Vmind_wardrobe_v1.0"
-	outfitModel   = "Vmind_outfit_v1.0"
+	OutfitModel   = "Vmind_outfit_v1.0"
 	bodyModel     = "Vmind_bodymodel_v1.0"
-	videoModel    = "Vmind_outfit_video_v1.0"
-	probeInterval = 2 * time.Second
-	probeMaxAge   = 9 * time.Second
+	VideoModel    = "Vmind_outfit_video_v1.0"
 )
 
 var (
-	ErrBusy     = errors.New("no healthy model instance")
-	ErrFull     = errors.New("waiting queue is full")
-	ErrConflict = errors.New("request or instance conflict")
-	imageMIME   = regexp.MustCompile(`^image/[A-Za-z0-9.+-]+$`)
-	instanceID  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,255}$`)
+	imageMIME  = regexp.MustCompile(`^image/[A-Za-z0-9.+-]+$`)
+	instanceID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,255}$`)
 )
 
 // Instance 记录部署身份和同卡分组。是否可派由主动探针及排空状态决定。
@@ -46,6 +38,13 @@ type Instance struct {
 	Capacity      int    `json:"capacity_units"`
 	MachineID     string `json:"machine_id,omitempty"`
 	GPUDevices    []int  `json:"gpu_devices,omitempty"`
+}
+
+// Valid 检查部署身份和容量。地址还需按当前配置的出站白名单验证。
+func (i Instance) Valid() bool {
+	return instanceID.MatchString(i.ID) && slices.Contains(Capabilities(i.ModelKey), i.Capability) &&
+		i.ResourceGroup != "" && len(i.ResourceGroup) <= 256 && validArtifact(i.Artifact) &&
+		i.Capacity >= 1 && i.Capacity <= 65536 && i.GroupCapacity >= 1 && i.GroupCapacity <= 65536
 }
 
 type Metadata struct {
@@ -94,7 +93,7 @@ type ModelResponse struct {
 	BackendTaskID string `json:"backend_task_id,omitempty"`
 }
 
-func (r ModelResponse) validate(id string) error {
+func (r ModelResponse) Validate(id string) error {
 	if r.RequestID != id {
 		return errors.New("model returned another request ID")
 	}
@@ -120,7 +119,7 @@ func (r ModelResponse) validate(id string) error {
 	return errors.New("invalid model response")
 }
 
-func decodeJSON(raw []byte, out any) error {
+func DecodeJSON(raw []byte, out any) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(out); err != nil {
@@ -132,7 +131,7 @@ func decodeJSON(raw []byte, out any) error {
 	return nil
 }
 
-func validID(id string) bool {
+func ValidID(id string) bool {
 	parsed, err := uuid.Parse(id)
 	return err == nil && parsed.String() == id
 }
@@ -146,15 +145,15 @@ func validArtifact(value string) bool {
 	return err == nil
 }
 
-func capabilities(model string) []string {
+func Capabilities(model string) []string {
 	switch model {
 	case wardrobeModel:
 		return []string{"cloth_gen", "garment_extraction"}
-	case outfitModel:
+	case OutfitModel:
 		return []string{"vton"}
 	case bodyModel:
 		return []string{"body_model"}
-	case videoModel:
+	case VideoModel:
 		return []string{"video"}
 	default:
 		return nil
@@ -162,8 +161,8 @@ func capabilities(model string) []string {
 }
 
 // 模型标识和业务输入决定能力，客户端不能提交模型地址、内部路径或执行容量。
-func route(model string, input json.RawMessage) (string, error) {
-	if len(capabilities(model)) == 0 {
+func Route(model string, input json.RawMessage) (string, error) {
+	if len(Capabilities(model)) == 0 {
 		return "", errors.New("unknown model")
 	}
 	var fields map[string]json.RawMessage
@@ -174,7 +173,7 @@ func route(model string, input json.RawMessage) (string, error) {
 		MIMEType string `json:"mime_type"`
 		Data     []byte `json:"data"`
 	}
-	if err := decodeJSON(fields["images"], &images); err != nil {
+	if err := DecodeJSON(fields["images"], &images); err != nil {
 		return "", errors.New("images must contain mime_type and base64 data")
 	}
 	for _, image := range images {
@@ -183,7 +182,7 @@ func route(model string, input json.RawMessage) (string, error) {
 		}
 	}
 	delete(fields, "images")
-	capability := capabilities(model)[0]
+	capability := Capabilities(model)[0]
 	minImages, maxImages := 1, 1
 	var allowed []string
 	switch model {
@@ -194,12 +193,12 @@ func route(model string, input json.RawMessage) (string, error) {
 			maxImages = 2
 			allowed = append(allowed, "bbox", "bbox_format", "parse_labels")
 		}
-	case outfitModel:
+	case OutfitModel:
 		minImages, maxImages = 2, 2
 		allowed = []string{"prompt"}
 	case bodyModel:
 		allowed = []string{"gender"}
-	case videoModel:
+	case VideoModel:
 		allowed = []string{"prompt", "motion_tips"}
 	}
 	if len(images) < minImages || len(images) > maxImages {
@@ -227,29 +226,4 @@ func route(model string, input json.RawMessage) (string, error) {
 		}
 	}
 	return capability, nil
-}
-
-// 注册和实际出站都限制到允许的字面 IP 与端口，健康地址可带明确路径。
-func validateEndpoint(endpoint string, health bool, networks []*net.IPNet, ports map[string]bool) error {
-	u, err := url.Parse(endpoint)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil ||
-		u.ForceQuery || u.RawQuery != "" || u.Fragment != "" || (!health && strings.Trim(u.Path, "/") != "") {
-		return errors.New("invalid endpoint")
-	}
-	ip := net.ParseIP(u.Hostname())
-	port := u.Port()
-	if port == "" && u.Scheme == "https" {
-		port = "443"
-	} else if port == "" {
-		port = "80"
-	}
-	if ip == nil || !ports[port] {
-		return errors.New("endpoint is outside the backend allowlist")
-	}
-	for _, network := range networks {
-		if network.Contains(ip) {
-			return nil
-		}
-	}
-	return errors.New("endpoint is outside the backend allowlist")
 }

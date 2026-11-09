@@ -1,4 +1,4 @@
-package gateway
+package integration
 
 import (
 	"context"
@@ -17,7 +17,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/internal/config"
+	"github.com/wgdl666/modelGateway/internal/protocol"
+	"github.com/wgdl666/modelGateway/internal/store"
 )
 
 const (
@@ -26,22 +30,22 @@ const (
 	adminToken  = "test-admin-token-at-least-24-chars"
 )
 
-func stores(t *testing.T) (*Store, *Store) {
+func stores(t *testing.T) (*store.Store, *store.Store, *ent.Client) {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL required for PostgreSQL integration tests")
 	}
-	config, err := pgx.ParseConfig(dsn)
-	if err != nil || !strings.HasSuffix(config.Database, "_test") {
+	pgConfig, err := pgx.ParseConfig(dsn)
+	if err != nil || !strings.HasSuffix(pgConfig.Database, "_test") {
 		t.Fatal("TEST_DATABASE_URL must point to a _test database")
 	}
 	// 预建 schema 的测试账号只需在该 schema 内建表，无需数据库级 CREATE 权限。
-	namespace := config.RuntimeParams["search_path"]
+	namespace := pgConfig.RuntimeParams["search_path"]
 	if namespace == "" {
 		namespace = "model_gateway"
 	}
-	admin := stdlib.OpenDB(*config)
+	admin := stdlib.OpenDB(*pgConfig)
 	defer admin.Close()
 	driver, err := postgres.Open(admin)
 	if err != nil {
@@ -54,7 +58,7 @@ func stores(t *testing.T) (*Store, *Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := OpenDatabase(t.Context(), dsn)
+	a, err := store.OpenDatabase(t.Context(), dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +66,7 @@ func stores(t *testing.T) (*Store, *Store) {
 	if err := a.Schema.Create(t.Context(), entschema.WithSchemaName(namespace), entschema.WithForeignKeys(false)); err != nil {
 		t.Fatal(err)
 	}
-	b, err := OpenDatabase(t.Context(), dsn)
+	b, err := store.OpenDatabase(t.Context(), dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,91 +77,95 @@ func stores(t *testing.T) (*Store, *Store) {
 	if _, err := a.ModelInstance.Delete().Exec(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	return &Store{DB: a}, &Store{DB: b}
+	return store.New(a), store.New(b), b
 }
 
-func testConfig() Config {
-	return Config{
+func testConfig() config.Config {
+	return config.Config{
 		APIToken: apiToken, WorkerToken: workerToken, AdminToken: adminToken,
 		AllowedNetworks: []string{"127.0.0.0/8"}, AllowedPorts: []string{"8001", "8002"},
 		BackendTimeout: 10 * time.Second, MaxWaiting: 64, MaxWaitingBytes: 128 << 20,
 	}
 }
 
-func testInstance(model, capability, endpoint string, capacity int) Instance {
-	return Instance{
+func testInstance(model, capability, endpoint string, capacity int) protocol.Instance {
+	return protocol.Instance{
 		ID: uuid.NewString(), ModelKey: model, Capability: capability, Endpoint: endpoint,
 		HealthURL: endpoint + "/health", Artifact: "sha256-" + strings.Repeat("a", 64),
 		ResourceGroup: "host/gpu0", Capacity: capacity, GroupCapacity: capacity,
 	}
 }
 
-func registerReady(t *testing.T, store *Store, spec Instance) {
+func registerReady(t *testing.T, replica *store.Store, spec protocol.Instance) {
 	t.Helper()
-	if err := store.Register(t.Context(), spec); err != nil {
+	if err := replica.Register(t.Context(), spec); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RecordProbe(t.Context(), spec.ID, time.Now().UTC(), true); err != nil {
+	if err := replica.RecordProbe(t.Context(), spec.ID, time.Now().UTC(), true); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func testAdmission(i Instance, id string, units int) admission {
+func testAdmission(i protocol.Instance, id string, units int) store.Admission {
 	input := json.RawMessage(`{"prompt":"same input","images":[{"mime_type":"image/png","data":"eA=="}]}`)
-	raw, _ := json.Marshal(Submission{Input: input})
-	return admission{id: id, model: i.ModelKey, capability: i.Capability, raw: raw, input: input, units: units, config: testConfig()}
+	raw, _ := json.Marshal(protocol.Submission{Input: input})
+	cfg := testConfig()
+	return store.Admission{
+		ID: id, ModelKey: i.ModelKey, Capability: i.Capability, Payload: raw, Input: input, Units: units,
+		MaxWaiting: cfg.MaxWaiting, MaxWaitingBytes: cfg.MaxWaitingBytes, BackendTimeout: cfg.BackendTimeout,
+	}
 }
 
-func succeeded(id string) ModelResponse {
-	return ModelResponse{Response: Response{RequestID: id, State: "succeeded", Result: &Result{
-		Files: []Object{{Provider: "s3", Region: "us-east-2", Bucket: "vmind-results", Key: id + "/result"}},
+func succeeded(id string) protocol.ModelResponse {
+	return protocol.ModelResponse{Response: protocol.Response{RequestID: id, State: "succeeded", Result: &protocol.Result{
+		Files: []protocol.Object{{Provider: "s3", Region: "us-east-2", Bucket: "vmind-results", Key: id + "/result"}},
 	}}}
 }
 
 func TestTwoReplicasQueueBudgetAndIdempotency(t *testing.T) {
-	a, b := stores(t)
-	i := testInstance(videoModel, "video", "http://127.0.0.1:8001", 1)
+	a, b, db := stores(t)
+	i := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8001", 1)
 	registerReady(t, a, i)
 	same := testAdmission(i, uuid.NewString(), 1)
-	same.config.MaxWaiting = 1
+	same.MaxWaiting = 1
 	var wg sync.WaitGroup
 	for n := range 20 {
 		wg.Go(func() {
-			store := []*Store{a, b}[n%2]
-			task, err := store.Admit(t.Context(), same)
-			if err != nil || task.ID != same.id {
+			replica := []*store.Store{a, b}[n%2]
+			task, err := replica.Admit(t.Context(), same)
+			if err != nil || task.ID != same.ID {
 				t.Errorf("concurrent duplicate: %v", err)
 			}
 		})
 	}
 	wg.Wait()
-	count, err := b.DB.Request.Query().Count(t.Context())
+	count, err := db.Request.Query().Count(t.Context())
 	if err != nil || count != 1 {
 		t.Fatalf("idempotency ledger count=%d err=%v", count, err)
 	}
 	different := same
-	different.input = json.RawMessage(`{"prompt":"changed"}`)
-	if _, err := b.Admit(t.Context(), different); !errors.Is(err, ErrConflict) {
+	different.Input = json.RawMessage(`{"prompt":"changed"}`)
+	if _, err := b.Admit(t.Context(), different); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("expected idempotency conflict, got %v", err)
 	}
 	newTask := same
-	newTask.id = uuid.NewString()
-	if _, err := b.Admit(t.Context(), newTask); !errors.Is(err, ErrFull) {
+	newTask.ID = uuid.NewString()
+	if _, err := b.Admit(t.Context(), newTask); !errors.Is(err, store.ErrFull) {
 		t.Fatalf("expected count limit, got %v", err)
 	}
-	newTask.config.MaxWaiting, newTask.config.MaxWaitingBytes = 64, int64(len(same.raw)+len(newTask.raw)-1)
-	if _, err := b.Admit(t.Context(), newTask); !errors.Is(err, ErrFull) {
+	newTask.MaxWaiting, newTask.MaxWaitingBytes = 64, int64(len(same.Payload)+len(newTask.Payload)-1)
+	if _, err := b.Admit(t.Context(), newTask); !errors.Is(err, store.ErrFull) {
 		t.Fatalf("expected byte limit, got %v", err)
 	}
 }
 
 func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
-	a, b := stores(t)
-	image := testInstance(outfitModel, "vton", "http://127.0.0.1:8001", 2)
-	video := testInstance(videoModel, "video", "http://127.0.0.1:8002", 2)
+	a, b, db := stores(t)
+	image := testInstance(protocol.OutfitModel, "vton", "http://127.0.0.1:8001", 2)
+	video := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8002", 2)
 	registerReady(t, a, image)
 	registerReady(t, b, video)
-	for _, instance := range []Instance{image, video} {
+	for _, instance := range []protocol.Instance{image, video} {
 		if _, err := a.Admit(t.Context(), testAdmission(instance, uuid.NewString(), 2)); err != nil {
 			t.Fatal(err)
 		}
@@ -167,7 +175,7 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	var wg sync.WaitGroup
 	for n := range 20 {
 		wg.Go(func() {
-			task, err := []*Store{a, b}[n%2].Claim(t.Context())
+			task, err := []*store.Store{a, b}[n%2].Claim(t.Context())
 			if err != nil {
 				t.Errorf("claim: %v", err)
 			}
@@ -198,7 +206,7 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	if err := a.RecordResponse(t.Context(), first, "", succeeded(first), time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
-	task, err := b.DB.Request.Get(t.Context(), first)
+	task, err := db.Request.Get(t.Context(), first)
 	if err != nil || task.State != request.StateFailed || task.SlotReserved {
 		t.Fatalf("late completion rewrote failed state or leaked capacity: %v %v", task, err)
 	}
@@ -209,15 +217,15 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 }
 
 func TestGroupRegistrationAndQueueExpiry(t *testing.T) {
-	a, b := stores(t)
-	i := testInstance(videoModel, "video", "http://127.0.0.1:8001", 1)
+	a, b, _ := stores(t)
+	i := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8001", 1)
 	registerReady(t, a, i)
-	inconsistent := testInstance(outfitModel, "vton", "http://127.0.0.1:8002", 2)
-	if err := b.Register(t.Context(), inconsistent); !errors.Is(err, ErrConflict) {
+	inconsistent := testInstance(protocol.OutfitModel, "vton", "http://127.0.0.1:8002", 2)
+	if err := b.Register(t.Context(), inconsistent); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("inconsistent group capacity accepted: %v", err)
 	}
 	in := testAdmission(i, uuid.NewString(), 1)
-	in.config.BackendTimeout = time.Millisecond
+	in.BackendTimeout = time.Millisecond
 	if _, err := b.Admit(t.Context(), in); err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +233,7 @@ func TestGroupRegistrationAndQueueExpiry(t *testing.T) {
 	if err := a.Expire(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	task, err := b.Get(t.Context(), in.id)
+	task, err := b.Get(t.Context(), in.ID)
 	if err != nil || task.State != request.StateFailed || task.ErrorCode != "queue_timeout" {
 		t.Fatalf("expired task: %v %v", task, err)
 	}

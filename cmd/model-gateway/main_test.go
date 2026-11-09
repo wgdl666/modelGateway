@@ -20,7 +20,7 @@ import (
 	entschema "entgo.io/ent/dialect/sql/schema"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/wgdl666/modelGateway/internal/gateway"
+	"github.com/wgdl666/modelGateway/internal/store"
 )
 
 func TestConfigCenterReloadsRunningServer(t *testing.T) {
@@ -58,7 +58,7 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	db, err := gateway.OpenDatabase(t.Context(), u.String())
+	db, err := store.OpenDatabase(t.Context(), u.String())
 	if err != nil {
 		t.Fatal(err)
 	}

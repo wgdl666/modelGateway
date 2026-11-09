@@ -409,7 +409,8 @@ async def ready(request: Request):
         if worker.video_protocol == "jobs" and "video" in worker.capabilities:
             ready = ready and any(item.get("name") == worker.video_target for item in data.get("instances", []))
         if "workers" in data:
-            ready = ready and any(item.get("healthy") is True for item in data["workers"])
+            # 国内图片服务以 ready 标记可接单的实例，外层 status 只代表服务进程存活。
+            ready = ready and any(item.get("ready", item.get("healthy")) is True for item in data["workers"])
     except (httpx.HTTPError, ValueError, AttributeError):
         ready = False
     return {"ready": ready}
