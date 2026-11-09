@@ -27,15 +27,111 @@ func (_c *RequestCreate) SetModelKey(v string) *RequestCreate {
 	return _c
 }
 
+// SetCapability sets the "capability" field.
+func (_c *RequestCreate) SetCapability(v string) *RequestCreate {
+	_c.mutation.SetCapability(v)
+	return _c
+}
+
 // SetRequestPayload sets the "request_payload" field.
 func (_c *RequestCreate) SetRequestPayload(v json.RawMessage) *RequestCreate {
 	_c.mutation.SetRequestPayload(v)
 	return _c
 }
 
+// SetPayloadBytes sets the "payload_bytes" field.
+func (_c *RequestCreate) SetPayloadBytes(v int64) *RequestCreate {
+	_c.mutation.SetPayloadBytes(v)
+	return _c
+}
+
+// SetUnits sets the "units" field.
+func (_c *RequestCreate) SetUnits(v int) *RequestCreate {
+	_c.mutation.SetUnits(v)
+	return _c
+}
+
+// SetState sets the "state" field.
+func (_c *RequestCreate) SetState(v request.State) *RequestCreate {
+	_c.mutation.SetState(v)
+	return _c
+}
+
+// SetNillableState sets the "state" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableState(v *request.State) *RequestCreate {
+	if v != nil {
+		_c.SetState(*v)
+	}
+	return _c
+}
+
+// SetSlotReserved sets the "slot_reserved" field.
+func (_c *RequestCreate) SetSlotReserved(v bool) *RequestCreate {
+	_c.mutation.SetSlotReserved(v)
+	return _c
+}
+
+// SetNillableSlotReserved sets the "slot_reserved" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableSlotReserved(v *bool) *RequestCreate {
+	if v != nil {
+		_c.SetSlotReserved(*v)
+	}
+	return _c
+}
+
 // SetInstanceID sets the "instance_id" field.
 func (_c *RequestCreate) SetInstanceID(v string) *RequestCreate {
 	_c.mutation.SetInstanceID(v)
+	return _c
+}
+
+// SetNillableInstanceID sets the "instance_id" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableInstanceID(v *string) *RequestCreate {
+	if v != nil {
+		_c.SetInstanceID(*v)
+	}
+	return _c
+}
+
+// SetResourceGroup sets the "resource_group" field.
+func (_c *RequestCreate) SetResourceGroup(v string) *RequestCreate {
+	_c.mutation.SetResourceGroup(v)
+	return _c
+}
+
+// SetNillableResourceGroup sets the "resource_group" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableResourceGroup(v *string) *RequestCreate {
+	if v != nil {
+		_c.SetResourceGroup(*v)
+	}
+	return _c
+}
+
+// SetEndpoint sets the "endpoint" field.
+func (_c *RequestCreate) SetEndpoint(v string) *RequestCreate {
+	_c.mutation.SetEndpoint(v)
+	return _c
+}
+
+// SetNillableEndpoint sets the "endpoint" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableEndpoint(v *string) *RequestCreate {
+	if v != nil {
+		_c.SetEndpoint(*v)
+	}
+	return _c
+}
+
+// SetArtifactDigest sets the "artifact_digest" field.
+func (_c *RequestCreate) SetArtifactDigest(v string) *RequestCreate {
+	_c.mutation.SetArtifactDigest(v)
+	return _c
+}
+
+// SetNillableArtifactDigest sets the "artifact_digest" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableArtifactDigest(v *string) *RequestCreate {
+	if v != nil {
+		_c.SetArtifactDigest(*v)
+	}
 	return _c
 }
 
@@ -53,22 +149,64 @@ func (_c *RequestCreate) SetNillableBackendTaskID(v *string) *RequestCreate {
 	return _c
 }
 
-// SetReservedUnits sets the "reserved_units" field.
-func (_c *RequestCreate) SetReservedUnits(v int) *RequestCreate {
-	_c.mutation.SetReservedUnits(v)
+// SetDeadlineAt sets the "deadline_at" field.
+func (_c *RequestCreate) SetDeadlineAt(v time.Time) *RequestCreate {
+	_c.mutation.SetDeadlineAt(v)
 	return _c
 }
 
-// SetStatus sets the "status" field.
-func (_c *RequestCreate) SetStatus(v request.Status) *RequestCreate {
-	_c.mutation.SetStatus(v)
+// SetStartedAt sets the "started_at" field.
+func (_c *RequestCreate) SetStartedAt(v time.Time) *RequestCreate {
+	_c.mutation.SetStartedAt(v)
 	return _c
 }
 
-// SetNillableStatus sets the "status" field if the given value is not nil.
-func (_c *RequestCreate) SetNillableStatus(v *request.Status) *RequestCreate {
+// SetNillableStartedAt sets the "started_at" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableStartedAt(v *time.Time) *RequestCreate {
 	if v != nil {
-		_c.SetStatus(*v)
+		_c.SetStartedAt(*v)
+	}
+	return _c
+}
+
+// SetFinishedAt sets the "finished_at" field.
+func (_c *RequestCreate) SetFinishedAt(v time.Time) *RequestCreate {
+	_c.mutation.SetFinishedAt(v)
+	return _c
+}
+
+// SetNillableFinishedAt sets the "finished_at" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableFinishedAt(v *time.Time) *RequestCreate {
+	if v != nil {
+		_c.SetFinishedAt(*v)
+	}
+	return _c
+}
+
+// SetNextPollAt sets the "next_poll_at" field.
+func (_c *RequestCreate) SetNextPollAt(v time.Time) *RequestCreate {
+	_c.mutation.SetNextPollAt(v)
+	return _c
+}
+
+// SetNillableNextPollAt sets the "next_poll_at" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableNextPollAt(v *time.Time) *RequestCreate {
+	if v != nil {
+		_c.SetNextPollAt(*v)
+	}
+	return _c
+}
+
+// SetPollClaim sets the "poll_claim" field.
+func (_c *RequestCreate) SetPollClaim(v string) *RequestCreate {
+	_c.mutation.SetPollClaim(v)
+	return _c
+}
+
+// SetNillablePollClaim sets the "poll_claim" field if the given value is not nil.
+func (_c *RequestCreate) SetNillablePollClaim(v *string) *RequestCreate {
+	if v != nil {
+		_c.SetPollClaim(*v)
 	}
 	return _c
 }
@@ -76,6 +214,48 @@ func (_c *RequestCreate) SetNillableStatus(v *request.Status) *RequestCreate {
 // SetResult sets the "result" field.
 func (_c *RequestCreate) SetResult(v json.RawMessage) *RequestCreate {
 	_c.mutation.SetResult(v)
+	return _c
+}
+
+// SetErrorCode sets the "error_code" field.
+func (_c *RequestCreate) SetErrorCode(v string) *RequestCreate {
+	_c.mutation.SetErrorCode(v)
+	return _c
+}
+
+// SetNillableErrorCode sets the "error_code" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableErrorCode(v *string) *RequestCreate {
+	if v != nil {
+		_c.SetErrorCode(*v)
+	}
+	return _c
+}
+
+// SetErrorMessage sets the "error_message" field.
+func (_c *RequestCreate) SetErrorMessage(v string) *RequestCreate {
+	_c.mutation.SetErrorMessage(v)
+	return _c
+}
+
+// SetNillableErrorMessage sets the "error_message" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableErrorMessage(v *string) *RequestCreate {
+	if v != nil {
+		_c.SetErrorMessage(*v)
+	}
+	return _c
+}
+
+// SetErrorStatus sets the "error_status" field.
+func (_c *RequestCreate) SetErrorStatus(v int) *RequestCreate {
+	_c.mutation.SetErrorStatus(v)
+	return _c
+}
+
+// SetNillableErrorStatus sets the "error_status" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableErrorStatus(v *int) *RequestCreate {
+	if v != nil {
+		_c.SetErrorStatus(*v)
+	}
 	return _c
 }
 
@@ -148,9 +328,49 @@ func (_c *RequestCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *RequestCreate) defaults() {
-	if _, ok := _c.mutation.Status(); !ok {
-		v := request.DefaultStatus
-		_c.mutation.SetStatus(v)
+	if _, ok := _c.mutation.State(); !ok {
+		v := request.DefaultState
+		_c.mutation.SetState(v)
+	}
+	if _, ok := _c.mutation.SlotReserved(); !ok {
+		v := request.DefaultSlotReserved
+		_c.mutation.SetSlotReserved(v)
+	}
+	if _, ok := _c.mutation.InstanceID(); !ok {
+		v := request.DefaultInstanceID
+		_c.mutation.SetInstanceID(v)
+	}
+	if _, ok := _c.mutation.ResourceGroup(); !ok {
+		v := request.DefaultResourceGroup
+		_c.mutation.SetResourceGroup(v)
+	}
+	if _, ok := _c.mutation.Endpoint(); !ok {
+		v := request.DefaultEndpoint
+		_c.mutation.SetEndpoint(v)
+	}
+	if _, ok := _c.mutation.ArtifactDigest(); !ok {
+		v := request.DefaultArtifactDigest
+		_c.mutation.SetArtifactDigest(v)
+	}
+	if _, ok := _c.mutation.BackendTaskID(); !ok {
+		v := request.DefaultBackendTaskID
+		_c.mutation.SetBackendTaskID(v)
+	}
+	if _, ok := _c.mutation.PollClaim(); !ok {
+		v := request.DefaultPollClaim
+		_c.mutation.SetPollClaim(v)
+	}
+	if _, ok := _c.mutation.ErrorCode(); !ok {
+		v := request.DefaultErrorCode
+		_c.mutation.SetErrorCode(v)
+	}
+	if _, ok := _c.mutation.ErrorMessage(); !ok {
+		v := request.DefaultErrorMessage
+		_c.mutation.SetErrorMessage(v)
+	}
+	if _, ok := _c.mutation.ErrorStatus(); !ok {
+		v := request.DefaultErrorStatus
+		_c.mutation.SetErrorStatus(v)
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := request.DefaultCreatedAt()
@@ -167,27 +387,74 @@ func (_c *RequestCreate) check() error {
 	if _, ok := _c.mutation.ModelKey(); !ok {
 		return &ValidationError{Name: "model_key", err: errors.New(`ent: missing required field "Request.model_key"`)}
 	}
+	if _, ok := _c.mutation.Capability(); !ok {
+		return &ValidationError{Name: "capability", err: errors.New(`ent: missing required field "Request.capability"`)}
+	}
 	if _, ok := _c.mutation.RequestPayload(); !ok {
 		return &ValidationError{Name: "request_payload", err: errors.New(`ent: missing required field "Request.request_payload"`)}
+	}
+	if _, ok := _c.mutation.PayloadBytes(); !ok {
+		return &ValidationError{Name: "payload_bytes", err: errors.New(`ent: missing required field "Request.payload_bytes"`)}
+	}
+	if v, ok := _c.mutation.PayloadBytes(); ok {
+		if err := request.PayloadBytesValidator(v); err != nil {
+			return &ValidationError{Name: "payload_bytes", err: fmt.Errorf(`ent: validator failed for field "Request.payload_bytes": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Units(); !ok {
+		return &ValidationError{Name: "units", err: errors.New(`ent: missing required field "Request.units"`)}
+	}
+	if v, ok := _c.mutation.Units(); ok {
+		if err := request.UnitsValidator(v); err != nil {
+			return &ValidationError{Name: "units", err: fmt.Errorf(`ent: validator failed for field "Request.units": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.State(); !ok {
+		return &ValidationError{Name: "state", err: errors.New(`ent: missing required field "Request.state"`)}
+	}
+	if v, ok := _c.mutation.State(); ok {
+		if err := request.StateValidator(v); err != nil {
+			return &ValidationError{Name: "state", err: fmt.Errorf(`ent: validator failed for field "Request.state": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.SlotReserved(); !ok {
+		return &ValidationError{Name: "slot_reserved", err: errors.New(`ent: missing required field "Request.slot_reserved"`)}
 	}
 	if _, ok := _c.mutation.InstanceID(); !ok {
 		return &ValidationError{Name: "instance_id", err: errors.New(`ent: missing required field "Request.instance_id"`)}
 	}
-	if _, ok := _c.mutation.ReservedUnits(); !ok {
-		return &ValidationError{Name: "reserved_units", err: errors.New(`ent: missing required field "Request.reserved_units"`)}
+	if _, ok := _c.mutation.ResourceGroup(); !ok {
+		return &ValidationError{Name: "resource_group", err: errors.New(`ent: missing required field "Request.resource_group"`)}
 	}
-	if v, ok := _c.mutation.ReservedUnits(); ok {
-		if err := request.ReservedUnitsValidator(v); err != nil {
-			return &ValidationError{Name: "reserved_units", err: fmt.Errorf(`ent: validator failed for field "Request.reserved_units": %w`, err)}
-		}
+	if _, ok := _c.mutation.Endpoint(); !ok {
+		return &ValidationError{Name: "endpoint", err: errors.New(`ent: missing required field "Request.endpoint"`)}
 	}
-	if _, ok := _c.mutation.Status(); !ok {
-		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Request.status"`)}
+	if _, ok := _c.mutation.ArtifactDigest(); !ok {
+		return &ValidationError{Name: "artifact_digest", err: errors.New(`ent: missing required field "Request.artifact_digest"`)}
 	}
-	if v, ok := _c.mutation.Status(); ok {
-		if err := request.StatusValidator(v); err != nil {
-			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Request.status": %w`, err)}
-		}
+	if _, ok := _c.mutation.BackendTaskID(); !ok {
+		return &ValidationError{Name: "backend_task_id", err: errors.New(`ent: missing required field "Request.backend_task_id"`)}
+	}
+	if _, ok := _c.mutation.DeadlineAt(); !ok {
+		return &ValidationError{Name: "deadline_at", err: errors.New(`ent: missing required field "Request.deadline_at"`)}
+	}
+	if _, ok := _c.mutation.PollClaim(); !ok {
+		return &ValidationError{Name: "poll_claim", err: errors.New(`ent: missing required field "Request.poll_claim"`)}
+	}
+	if _, ok := _c.mutation.ErrorCode(); !ok {
+		return &ValidationError{Name: "error_code", err: errors.New(`ent: missing required field "Request.error_code"`)}
+	}
+	if _, ok := _c.mutation.ErrorMessage(); !ok {
+		return &ValidationError{Name: "error_message", err: errors.New(`ent: missing required field "Request.error_message"`)}
+	}
+	if _, ok := _c.mutation.ErrorStatus(); !ok {
+		return &ValidationError{Name: "error_status", err: errors.New(`ent: missing required field "Request.error_status"`)}
+	}
+	if _, ok := _c.mutation.CreatedAt(); !ok {
+		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Request.created_at"`)}
+	}
+	if _, ok := _c.mutation.UpdatedAt(); !ok {
+		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "Request.updated_at"`)}
 	}
 	return nil
 }
@@ -228,29 +495,85 @@ func (_c *RequestCreate) createSpec() (*Request, *sqlgraph.CreateSpec) {
 		_spec.SetField(request.FieldModelKey, field.TypeString, value)
 		_node.ModelKey = value
 	}
+	if value, ok := _c.mutation.Capability(); ok {
+		_spec.SetField(request.FieldCapability, field.TypeString, value)
+		_node.Capability = value
+	}
 	if value, ok := _c.mutation.RequestPayload(); ok {
 		_spec.SetField(request.FieldRequestPayload, field.TypeJSON, value)
 		_node.RequestPayload = value
+	}
+	if value, ok := _c.mutation.PayloadBytes(); ok {
+		_spec.SetField(request.FieldPayloadBytes, field.TypeInt64, value)
+		_node.PayloadBytes = value
+	}
+	if value, ok := _c.mutation.Units(); ok {
+		_spec.SetField(request.FieldUnits, field.TypeInt, value)
+		_node.Units = value
+	}
+	if value, ok := _c.mutation.State(); ok {
+		_spec.SetField(request.FieldState, field.TypeEnum, value)
+		_node.State = value
+	}
+	if value, ok := _c.mutation.SlotReserved(); ok {
+		_spec.SetField(request.FieldSlotReserved, field.TypeBool, value)
+		_node.SlotReserved = value
 	}
 	if value, ok := _c.mutation.InstanceID(); ok {
 		_spec.SetField(request.FieldInstanceID, field.TypeString, value)
 		_node.InstanceID = value
 	}
+	if value, ok := _c.mutation.ResourceGroup(); ok {
+		_spec.SetField(request.FieldResourceGroup, field.TypeString, value)
+		_node.ResourceGroup = value
+	}
+	if value, ok := _c.mutation.Endpoint(); ok {
+		_spec.SetField(request.FieldEndpoint, field.TypeString, value)
+		_node.Endpoint = value
+	}
+	if value, ok := _c.mutation.ArtifactDigest(); ok {
+		_spec.SetField(request.FieldArtifactDigest, field.TypeString, value)
+		_node.ArtifactDigest = value
+	}
 	if value, ok := _c.mutation.BackendTaskID(); ok {
 		_spec.SetField(request.FieldBackendTaskID, field.TypeString, value)
-		_node.BackendTaskID = &value
+		_node.BackendTaskID = value
 	}
-	if value, ok := _c.mutation.ReservedUnits(); ok {
-		_spec.SetField(request.FieldReservedUnits, field.TypeInt, value)
-		_node.ReservedUnits = value
+	if value, ok := _c.mutation.DeadlineAt(); ok {
+		_spec.SetField(request.FieldDeadlineAt, field.TypeTime, value)
+		_node.DeadlineAt = value
 	}
-	if value, ok := _c.mutation.Status(); ok {
-		_spec.SetField(request.FieldStatus, field.TypeEnum, value)
-		_node.Status = value
+	if value, ok := _c.mutation.StartedAt(); ok {
+		_spec.SetField(request.FieldStartedAt, field.TypeTime, value)
+		_node.StartedAt = &value
+	}
+	if value, ok := _c.mutation.FinishedAt(); ok {
+		_spec.SetField(request.FieldFinishedAt, field.TypeTime, value)
+		_node.FinishedAt = &value
+	}
+	if value, ok := _c.mutation.NextPollAt(); ok {
+		_spec.SetField(request.FieldNextPollAt, field.TypeTime, value)
+		_node.NextPollAt = &value
+	}
+	if value, ok := _c.mutation.PollClaim(); ok {
+		_spec.SetField(request.FieldPollClaim, field.TypeString, value)
+		_node.PollClaim = value
 	}
 	if value, ok := _c.mutation.Result(); ok {
 		_spec.SetField(request.FieldResult, field.TypeJSON, value)
 		_node.Result = value
+	}
+	if value, ok := _c.mutation.ErrorCode(); ok {
+		_spec.SetField(request.FieldErrorCode, field.TypeString, value)
+		_node.ErrorCode = value
+	}
+	if value, ok := _c.mutation.ErrorMessage(); ok {
+		_spec.SetField(request.FieldErrorMessage, field.TypeString, value)
+		_node.ErrorMessage = value
+	}
+	if value, ok := _c.mutation.ErrorStatus(); ok {
+		_spec.SetField(request.FieldErrorStatus, field.TypeInt, value)
+		_node.ErrorStatus = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(request.FieldCreatedAt, field.TypeTime, value)

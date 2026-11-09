@@ -16,18 +16,46 @@ const (
 	FieldID = "request_id"
 	// FieldModelKey holds the string denoting the model_key field in the database.
 	FieldModelKey = "model_key"
+	// FieldCapability holds the string denoting the capability field in the database.
+	FieldCapability = "capability"
 	// FieldRequestPayload holds the string denoting the request_payload field in the database.
 	FieldRequestPayload = "request_payload"
+	// FieldPayloadBytes holds the string denoting the payload_bytes field in the database.
+	FieldPayloadBytes = "payload_bytes"
+	// FieldUnits holds the string denoting the units field in the database.
+	FieldUnits = "units"
+	// FieldState holds the string denoting the state field in the database.
+	FieldState = "state"
+	// FieldSlotReserved holds the string denoting the slot_reserved field in the database.
+	FieldSlotReserved = "slot_reserved"
 	// FieldInstanceID holds the string denoting the instance_id field in the database.
 	FieldInstanceID = "instance_id"
+	// FieldResourceGroup holds the string denoting the resource_group field in the database.
+	FieldResourceGroup = "resource_group"
+	// FieldEndpoint holds the string denoting the endpoint field in the database.
+	FieldEndpoint = "endpoint"
+	// FieldArtifactDigest holds the string denoting the artifact_digest field in the database.
+	FieldArtifactDigest = "artifact_digest"
 	// FieldBackendTaskID holds the string denoting the backend_task_id field in the database.
 	FieldBackendTaskID = "backend_task_id"
-	// FieldReservedUnits holds the string denoting the reserved_units field in the database.
-	FieldReservedUnits = "reserved_units"
-	// FieldStatus holds the string denoting the status field in the database.
-	FieldStatus = "status"
+	// FieldDeadlineAt holds the string denoting the deadline_at field in the database.
+	FieldDeadlineAt = "deadline_at"
+	// FieldStartedAt holds the string denoting the started_at field in the database.
+	FieldStartedAt = "started_at"
+	// FieldFinishedAt holds the string denoting the finished_at field in the database.
+	FieldFinishedAt = "finished_at"
+	// FieldNextPollAt holds the string denoting the next_poll_at field in the database.
+	FieldNextPollAt = "next_poll_at"
+	// FieldPollClaim holds the string denoting the poll_claim field in the database.
+	FieldPollClaim = "poll_claim"
 	// FieldResult holds the string denoting the result field in the database.
 	FieldResult = "result"
+	// FieldErrorCode holds the string denoting the error_code field in the database.
+	FieldErrorCode = "error_code"
+	// FieldErrorMessage holds the string denoting the error_message field in the database.
+	FieldErrorMessage = "error_message"
+	// FieldErrorStatus holds the string denoting the error_status field in the database.
+	FieldErrorStatus = "error_status"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -40,12 +68,26 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldModelKey,
+	FieldCapability,
 	FieldRequestPayload,
+	FieldPayloadBytes,
+	FieldUnits,
+	FieldState,
+	FieldSlotReserved,
 	FieldInstanceID,
+	FieldResourceGroup,
+	FieldEndpoint,
+	FieldArtifactDigest,
 	FieldBackendTaskID,
-	FieldReservedUnits,
-	FieldStatus,
+	FieldDeadlineAt,
+	FieldStartedAt,
+	FieldFinishedAt,
+	FieldNextPollAt,
+	FieldPollClaim,
 	FieldResult,
+	FieldErrorCode,
+	FieldErrorMessage,
+	FieldErrorStatus,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -61,8 +103,30 @@ func ValidColumn(column string) bool {
 }
 
 var (
-	// ReservedUnitsValidator is a validator for the "reserved_units" field. It is called by the builders before save.
-	ReservedUnitsValidator func(int) error
+	// PayloadBytesValidator is a validator for the "payload_bytes" field. It is called by the builders before save.
+	PayloadBytesValidator func(int64) error
+	// UnitsValidator is a validator for the "units" field. It is called by the builders before save.
+	UnitsValidator func(int) error
+	// DefaultSlotReserved holds the default value on creation for the "slot_reserved" field.
+	DefaultSlotReserved bool
+	// DefaultInstanceID holds the default value on creation for the "instance_id" field.
+	DefaultInstanceID string
+	// DefaultResourceGroup holds the default value on creation for the "resource_group" field.
+	DefaultResourceGroup string
+	// DefaultEndpoint holds the default value on creation for the "endpoint" field.
+	DefaultEndpoint string
+	// DefaultArtifactDigest holds the default value on creation for the "artifact_digest" field.
+	DefaultArtifactDigest string
+	// DefaultBackendTaskID holds the default value on creation for the "backend_task_id" field.
+	DefaultBackendTaskID string
+	// DefaultPollClaim holds the default value on creation for the "poll_claim" field.
+	DefaultPollClaim string
+	// DefaultErrorCode holds the default value on creation for the "error_code" field.
+	DefaultErrorCode string
+	// DefaultErrorMessage holds the default value on creation for the "error_message" field.
+	DefaultErrorMessage string
+	// DefaultErrorStatus holds the default value on creation for the "error_status" field.
+	DefaultErrorStatus int
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -71,33 +135,31 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 )
 
-// Status defines the type for the "status" enum field.
-type Status string
+// State defines the type for the "state" enum field.
+type State string
 
-// StatusReserved is the default value of the Status enum.
-const DefaultStatus = StatusReserved
+// StateQueued is the default value of the State enum.
+const DefaultState = StateQueued
 
-// Status values.
+// State values.
 const (
-	StatusReserved    Status = "reserved"
-	StatusDispatching Status = "dispatching"
-	StatusRunning     Status = "running"
-	StatusSucceeded   Status = "succeeded"
-	StatusFailed      Status = "failed"
-	StatusUnknown     Status = "unknown"
+	StateQueued     State = "queued"
+	StateProcessing State = "processing"
+	StateSucceeded  State = "succeeded"
+	StateFailed     State = "failed"
 )
 
-func (s Status) String() string {
+func (s State) String() string {
 	return string(s)
 }
 
-// StatusValidator is a validator for the "status" field enum values. It is called by the builders before save.
-func StatusValidator(s Status) error {
+// StateValidator is a validator for the "state" field enum values. It is called by the builders before save.
+func StateValidator(s State) error {
 	switch s {
-	case StatusReserved, StatusDispatching, StatusRunning, StatusSucceeded, StatusFailed, StatusUnknown:
+	case StateQueued, StateProcessing, StateSucceeded, StateFailed:
 		return nil
 	default:
-		return fmt.Errorf("request: invalid enum value for status field: %q", s)
+		return fmt.Errorf("request: invalid enum value for state field: %q", s)
 	}
 }
 
@@ -114,9 +176,49 @@ func ByModelKey(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldModelKey, opts...).ToFunc()
 }
 
+// ByCapability orders the results by the capability field.
+func ByCapability(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCapability, opts...).ToFunc()
+}
+
+// ByPayloadBytes orders the results by the payload_bytes field.
+func ByPayloadBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPayloadBytes, opts...).ToFunc()
+}
+
+// ByUnits orders the results by the units field.
+func ByUnits(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUnits, opts...).ToFunc()
+}
+
+// ByState orders the results by the state field.
+func ByState(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldState, opts...).ToFunc()
+}
+
+// BySlotReserved orders the results by the slot_reserved field.
+func BySlotReserved(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSlotReserved, opts...).ToFunc()
+}
+
 // ByInstanceID orders the results by the instance_id field.
 func ByInstanceID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldInstanceID, opts...).ToFunc()
+}
+
+// ByResourceGroup orders the results by the resource_group field.
+func ByResourceGroup(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldResourceGroup, opts...).ToFunc()
+}
+
+// ByEndpoint orders the results by the endpoint field.
+func ByEndpoint(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEndpoint, opts...).ToFunc()
+}
+
+// ByArtifactDigest orders the results by the artifact_digest field.
+func ByArtifactDigest(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldArtifactDigest, opts...).ToFunc()
 }
 
 // ByBackendTaskID orders the results by the backend_task_id field.
@@ -124,14 +226,44 @@ func ByBackendTaskID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBackendTaskID, opts...).ToFunc()
 }
 
-// ByReservedUnits orders the results by the reserved_units field.
-func ByReservedUnits(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldReservedUnits, opts...).ToFunc()
+// ByDeadlineAt orders the results by the deadline_at field.
+func ByDeadlineAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeadlineAt, opts...).ToFunc()
 }
 
-// ByStatus orders the results by the status field.
-func ByStatus(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+// ByStartedAt orders the results by the started_at field.
+func ByStartedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStartedAt, opts...).ToFunc()
+}
+
+// ByFinishedAt orders the results by the finished_at field.
+func ByFinishedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFinishedAt, opts...).ToFunc()
+}
+
+// ByNextPollAt orders the results by the next_poll_at field.
+func ByNextPollAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldNextPollAt, opts...).ToFunc()
+}
+
+// ByPollClaim orders the results by the poll_claim field.
+func ByPollClaim(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPollClaim, opts...).ToFunc()
+}
+
+// ByErrorCode orders the results by the error_code field.
+func ByErrorCode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldErrorCode, opts...).ToFunc()
+}
+
+// ByErrorMessage orders the results by the error_message field.
+func ByErrorMessage(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldErrorMessage, opts...).ToFunc()
+}
+
+// ByErrorStatus orders the results by the error_status field.
+func ByErrorStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldErrorStatus, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

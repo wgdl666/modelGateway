@@ -10,7 +10,6 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/lib/pq"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 )
 
@@ -27,9 +26,45 @@ func (_c *ModelInstanceCreate) SetModelKey(v string) *ModelInstanceCreate {
 	return _c
 }
 
+// SetCapability sets the "capability" field.
+func (_c *ModelInstanceCreate) SetCapability(v string) *ModelInstanceCreate {
+	_c.mutation.SetCapability(v)
+	return _c
+}
+
 // SetEndpoint sets the "endpoint" field.
 func (_c *ModelInstanceCreate) SetEndpoint(v string) *ModelInstanceCreate {
 	_c.mutation.SetEndpoint(v)
+	return _c
+}
+
+// SetHealthURL sets the "health_url" field.
+func (_c *ModelInstanceCreate) SetHealthURL(v string) *ModelInstanceCreate {
+	_c.mutation.SetHealthURL(v)
+	return _c
+}
+
+// SetArtifactDigest sets the "artifact_digest" field.
+func (_c *ModelInstanceCreate) SetArtifactDigest(v string) *ModelInstanceCreate {
+	_c.mutation.SetArtifactDigest(v)
+	return _c
+}
+
+// SetResourceGroup sets the "resource_group" field.
+func (_c *ModelInstanceCreate) SetResourceGroup(v string) *ModelInstanceCreate {
+	_c.mutation.SetResourceGroup(v)
+	return _c
+}
+
+// SetGroupCapacityUnits sets the "group_capacity_units" field.
+func (_c *ModelInstanceCreate) SetGroupCapacityUnits(v int) *ModelInstanceCreate {
+	_c.mutation.SetGroupCapacityUnits(v)
+	return _c
+}
+
+// SetCapacityUnits sets the "capacity_units" field.
+func (_c *ModelInstanceCreate) SetCapacityUnits(v int) *ModelInstanceCreate {
+	_c.mutation.SetCapacityUnits(v)
 	return _c
 }
 
@@ -48,28 +83,8 @@ func (_c *ModelInstanceCreate) SetNillableMachineID(v *string) *ModelInstanceCre
 }
 
 // SetGpuDevices sets the "gpu_devices" field.
-func (_c *ModelInstanceCreate) SetGpuDevices(v pq.Int64Array) *ModelInstanceCreate {
+func (_c *ModelInstanceCreate) SetGpuDevices(v []int) *ModelInstanceCreate {
 	_c.mutation.SetGpuDevices(v)
-	return _c
-}
-
-// SetCapacityUnits sets the "capacity_units" field.
-func (_c *ModelInstanceCreate) SetCapacityUnits(v int) *ModelInstanceCreate {
-	_c.mutation.SetCapacityUnits(v)
-	return _c
-}
-
-// SetUsedUnits sets the "used_units" field.
-func (_c *ModelInstanceCreate) SetUsedUnits(v int) *ModelInstanceCreate {
-	_c.mutation.SetUsedUnits(v)
-	return _c
-}
-
-// SetNillableUsedUnits sets the "used_units" field if the given value is not nil.
-func (_c *ModelInstanceCreate) SetNillableUsedUnits(v *int) *ModelInstanceCreate {
-	if v != nil {
-		_c.SetUsedUnits(*v)
-	}
 	return _c
 }
 
@@ -87,6 +102,20 @@ func (_c *ModelInstanceCreate) SetNillableReady(v *bool) *ModelInstanceCreate {
 	return _c
 }
 
+// SetHealthCheckedAt sets the "health_checked_at" field.
+func (_c *ModelInstanceCreate) SetHealthCheckedAt(v time.Time) *ModelInstanceCreate {
+	_c.mutation.SetHealthCheckedAt(v)
+	return _c
+}
+
+// SetNillableHealthCheckedAt sets the "health_checked_at" field if the given value is not nil.
+func (_c *ModelInstanceCreate) SetNillableHealthCheckedAt(v *time.Time) *ModelInstanceCreate {
+	if v != nil {
+		_c.SetHealthCheckedAt(*v)
+	}
+	return _c
+}
+
 // SetDraining sets the "draining" field.
 func (_c *ModelInstanceCreate) SetDraining(v bool) *ModelInstanceCreate {
 	_c.mutation.SetDraining(v)
@@ -98,12 +127,6 @@ func (_c *ModelInstanceCreate) SetNillableDraining(v *bool) *ModelInstanceCreate
 	if v != nil {
 		_c.SetDraining(*v)
 	}
-	return _c
-}
-
-// SetLeaseExpiresAt sets the "lease_expires_at" field.
-func (_c *ModelInstanceCreate) SetLeaseExpiresAt(v time.Time) *ModelInstanceCreate {
-	_c.mutation.SetLeaseExpiresAt(v)
 	return _c
 }
 
@@ -180,13 +203,13 @@ func (_c *ModelInstanceCreate) defaults() {
 		v := modelinstance.DefaultMachineID
 		_c.mutation.SetMachineID(v)
 	}
-	if _, ok := _c.mutation.UsedUnits(); !ok {
-		v := modelinstance.DefaultUsedUnits
-		_c.mutation.SetUsedUnits(v)
-	}
 	if _, ok := _c.mutation.Ready(); !ok {
 		v := modelinstance.DefaultReady
 		_c.mutation.SetReady(v)
+	}
+	if _, ok := _c.mutation.HealthCheckedAt(); !ok {
+		v := modelinstance.DefaultHealthCheckedAt()
+		_c.mutation.SetHealthCheckedAt(v)
 	}
 	if _, ok := _c.mutation.Draining(); !ok {
 		v := modelinstance.DefaultDraining
@@ -207,14 +230,28 @@ func (_c *ModelInstanceCreate) check() error {
 	if _, ok := _c.mutation.ModelKey(); !ok {
 		return &ValidationError{Name: "model_key", err: errors.New(`ent: missing required field "ModelInstance.model_key"`)}
 	}
+	if _, ok := _c.mutation.Capability(); !ok {
+		return &ValidationError{Name: "capability", err: errors.New(`ent: missing required field "ModelInstance.capability"`)}
+	}
 	if _, ok := _c.mutation.Endpoint(); !ok {
 		return &ValidationError{Name: "endpoint", err: errors.New(`ent: missing required field "ModelInstance.endpoint"`)}
 	}
-	if _, ok := _c.mutation.MachineID(); !ok {
-		return &ValidationError{Name: "machine_id", err: errors.New(`ent: missing required field "ModelInstance.machine_id"`)}
+	if _, ok := _c.mutation.HealthURL(); !ok {
+		return &ValidationError{Name: "health_url", err: errors.New(`ent: missing required field "ModelInstance.health_url"`)}
 	}
-	if _, ok := _c.mutation.GpuDevices(); !ok {
-		return &ValidationError{Name: "gpu_devices", err: errors.New(`ent: missing required field "ModelInstance.gpu_devices"`)}
+	if _, ok := _c.mutation.ArtifactDigest(); !ok {
+		return &ValidationError{Name: "artifact_digest", err: errors.New(`ent: missing required field "ModelInstance.artifact_digest"`)}
+	}
+	if _, ok := _c.mutation.ResourceGroup(); !ok {
+		return &ValidationError{Name: "resource_group", err: errors.New(`ent: missing required field "ModelInstance.resource_group"`)}
+	}
+	if _, ok := _c.mutation.GroupCapacityUnits(); !ok {
+		return &ValidationError{Name: "group_capacity_units", err: errors.New(`ent: missing required field "ModelInstance.group_capacity_units"`)}
+	}
+	if v, ok := _c.mutation.GroupCapacityUnits(); ok {
+		if err := modelinstance.GroupCapacityUnitsValidator(v); err != nil {
+			return &ValidationError{Name: "group_capacity_units", err: fmt.Errorf(`ent: validator failed for field "ModelInstance.group_capacity_units": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.CapacityUnits(); !ok {
 		return &ValidationError{Name: "capacity_units", err: errors.New(`ent: missing required field "ModelInstance.capacity_units"`)}
@@ -224,22 +261,23 @@ func (_c *ModelInstanceCreate) check() error {
 			return &ValidationError{Name: "capacity_units", err: fmt.Errorf(`ent: validator failed for field "ModelInstance.capacity_units": %w`, err)}
 		}
 	}
-	if _, ok := _c.mutation.UsedUnits(); !ok {
-		return &ValidationError{Name: "used_units", err: errors.New(`ent: missing required field "ModelInstance.used_units"`)}
-	}
-	if v, ok := _c.mutation.UsedUnits(); ok {
-		if err := modelinstance.UsedUnitsValidator(v); err != nil {
-			return &ValidationError{Name: "used_units", err: fmt.Errorf(`ent: validator failed for field "ModelInstance.used_units": %w`, err)}
-		}
+	if _, ok := _c.mutation.MachineID(); !ok {
+		return &ValidationError{Name: "machine_id", err: errors.New(`ent: missing required field "ModelInstance.machine_id"`)}
 	}
 	if _, ok := _c.mutation.Ready(); !ok {
 		return &ValidationError{Name: "ready", err: errors.New(`ent: missing required field "ModelInstance.ready"`)}
 	}
+	if _, ok := _c.mutation.HealthCheckedAt(); !ok {
+		return &ValidationError{Name: "health_checked_at", err: errors.New(`ent: missing required field "ModelInstance.health_checked_at"`)}
+	}
 	if _, ok := _c.mutation.Draining(); !ok {
 		return &ValidationError{Name: "draining", err: errors.New(`ent: missing required field "ModelInstance.draining"`)}
 	}
-	if _, ok := _c.mutation.LeaseExpiresAt(); !ok {
-		return &ValidationError{Name: "lease_expires_at", err: errors.New(`ent: missing required field "ModelInstance.lease_expires_at"`)}
+	if _, ok := _c.mutation.CreatedAt(); !ok {
+		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "ModelInstance.created_at"`)}
+	}
+	if _, ok := _c.mutation.UpdatedAt(); !ok {
+		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "ModelInstance.updated_at"`)}
 	}
 	return nil
 }
@@ -280,37 +318,53 @@ func (_c *ModelInstanceCreate) createSpec() (*ModelInstance, *sqlgraph.CreateSpe
 		_spec.SetField(modelinstance.FieldModelKey, field.TypeString, value)
 		_node.ModelKey = value
 	}
+	if value, ok := _c.mutation.Capability(); ok {
+		_spec.SetField(modelinstance.FieldCapability, field.TypeString, value)
+		_node.Capability = value
+	}
 	if value, ok := _c.mutation.Endpoint(); ok {
 		_spec.SetField(modelinstance.FieldEndpoint, field.TypeString, value)
 		_node.Endpoint = value
+	}
+	if value, ok := _c.mutation.HealthURL(); ok {
+		_spec.SetField(modelinstance.FieldHealthURL, field.TypeString, value)
+		_node.HealthURL = value
+	}
+	if value, ok := _c.mutation.ArtifactDigest(); ok {
+		_spec.SetField(modelinstance.FieldArtifactDigest, field.TypeString, value)
+		_node.ArtifactDigest = value
+	}
+	if value, ok := _c.mutation.ResourceGroup(); ok {
+		_spec.SetField(modelinstance.FieldResourceGroup, field.TypeString, value)
+		_node.ResourceGroup = value
+	}
+	if value, ok := _c.mutation.GroupCapacityUnits(); ok {
+		_spec.SetField(modelinstance.FieldGroupCapacityUnits, field.TypeInt, value)
+		_node.GroupCapacityUnits = value
+	}
+	if value, ok := _c.mutation.CapacityUnits(); ok {
+		_spec.SetField(modelinstance.FieldCapacityUnits, field.TypeInt, value)
+		_node.CapacityUnits = value
 	}
 	if value, ok := _c.mutation.MachineID(); ok {
 		_spec.SetField(modelinstance.FieldMachineID, field.TypeString, value)
 		_node.MachineID = value
 	}
 	if value, ok := _c.mutation.GpuDevices(); ok {
-		_spec.SetField(modelinstance.FieldGpuDevices, field.TypeOther, value)
+		_spec.SetField(modelinstance.FieldGpuDevices, field.TypeJSON, value)
 		_node.GpuDevices = value
-	}
-	if value, ok := _c.mutation.CapacityUnits(); ok {
-		_spec.SetField(modelinstance.FieldCapacityUnits, field.TypeInt, value)
-		_node.CapacityUnits = value
-	}
-	if value, ok := _c.mutation.UsedUnits(); ok {
-		_spec.SetField(modelinstance.FieldUsedUnits, field.TypeInt, value)
-		_node.UsedUnits = value
 	}
 	if value, ok := _c.mutation.Ready(); ok {
 		_spec.SetField(modelinstance.FieldReady, field.TypeBool, value)
 		_node.Ready = value
 	}
+	if value, ok := _c.mutation.HealthCheckedAt(); ok {
+		_spec.SetField(modelinstance.FieldHealthCheckedAt, field.TypeTime, value)
+		_node.HealthCheckedAt = value
+	}
 	if value, ok := _c.mutation.Draining(); ok {
 		_spec.SetField(modelinstance.FieldDraining, field.TypeBool, value)
 		_node.Draining = value
-	}
-	if value, ok := _c.mutation.LeaseExpiresAt(); ok {
-		_spec.SetField(modelinstance.FieldLeaseExpiresAt, field.TypeTime, value)
-		_node.LeaseExpiresAt = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(modelinstance.FieldCreatedAt, field.TypeTime, value)

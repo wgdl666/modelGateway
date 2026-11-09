@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
-	"github.com/lib/pq"
 	"github.com/wgdl666/modelGateway/ent/predicate"
 )
 
@@ -70,19 +69,34 @@ func ModelKey(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldModelKey, v))
 }
 
+// Capability applies equality check predicate on the "capability" field. It's identical to CapabilityEQ.
+func Capability(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldCapability, v))
+}
+
 // Endpoint applies equality check predicate on the "endpoint" field. It's identical to EndpointEQ.
 func Endpoint(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldEndpoint, v))
 }
 
-// MachineID applies equality check predicate on the "machine_id" field. It's identical to MachineIDEQ.
-func MachineID(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEQ(FieldMachineID, v))
+// HealthURL applies equality check predicate on the "health_url" field. It's identical to HealthURLEQ.
+func HealthURL(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldHealthURL, v))
 }
 
-// GpuDevices applies equality check predicate on the "gpu_devices" field. It's identical to GpuDevicesEQ.
-func GpuDevices(v pq.Int64Array) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEQ(FieldGpuDevices, v))
+// ArtifactDigest applies equality check predicate on the "artifact_digest" field. It's identical to ArtifactDigestEQ.
+func ArtifactDigest(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldArtifactDigest, v))
+}
+
+// ResourceGroup applies equality check predicate on the "resource_group" field. It's identical to ResourceGroupEQ.
+func ResourceGroup(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldResourceGroup, v))
+}
+
+// GroupCapacityUnits applies equality check predicate on the "group_capacity_units" field. It's identical to GroupCapacityUnitsEQ.
+func GroupCapacityUnits(v int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldGroupCapacityUnits, v))
 }
 
 // CapacityUnits applies equality check predicate on the "capacity_units" field. It's identical to CapacityUnitsEQ.
@@ -90,9 +104,9 @@ func CapacityUnits(v int) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldCapacityUnits, v))
 }
 
-// UsedUnits applies equality check predicate on the "used_units" field. It's identical to UsedUnitsEQ.
-func UsedUnits(v int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEQ(FieldUsedUnits, v))
+// MachineID applies equality check predicate on the "machine_id" field. It's identical to MachineIDEQ.
+func MachineID(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldMachineID, v))
 }
 
 // Ready applies equality check predicate on the "ready" field. It's identical to ReadyEQ.
@@ -100,14 +114,14 @@ func Ready(v bool) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldReady, v))
 }
 
+// HealthCheckedAt applies equality check predicate on the "health_checked_at" field. It's identical to HealthCheckedAtEQ.
+func HealthCheckedAt(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldHealthCheckedAt, v))
+}
+
 // Draining applies equality check predicate on the "draining" field. It's identical to DrainingEQ.
 func Draining(v bool) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldDraining, v))
-}
-
-// LeaseExpiresAt applies equality check predicate on the "lease_expires_at" field. It's identical to LeaseExpiresAtEQ.
-func LeaseExpiresAt(v time.Time) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEQ(FieldLeaseExpiresAt, v))
 }
 
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
@@ -185,6 +199,71 @@ func ModelKeyContainsFold(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldContainsFold(FieldModelKey, v))
 }
 
+// CapabilityEQ applies the EQ predicate on the "capability" field.
+func CapabilityEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldCapability, v))
+}
+
+// CapabilityNEQ applies the NEQ predicate on the "capability" field.
+func CapabilityNEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNEQ(FieldCapability, v))
+}
+
+// CapabilityIn applies the In predicate on the "capability" field.
+func CapabilityIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIn(FieldCapability, vs...))
+}
+
+// CapabilityNotIn applies the NotIn predicate on the "capability" field.
+func CapabilityNotIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotIn(FieldCapability, vs...))
+}
+
+// CapabilityGT applies the GT predicate on the "capability" field.
+func CapabilityGT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGT(FieldCapability, v))
+}
+
+// CapabilityGTE applies the GTE predicate on the "capability" field.
+func CapabilityGTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGTE(FieldCapability, v))
+}
+
+// CapabilityLT applies the LT predicate on the "capability" field.
+func CapabilityLT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLT(FieldCapability, v))
+}
+
+// CapabilityLTE applies the LTE predicate on the "capability" field.
+func CapabilityLTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLTE(FieldCapability, v))
+}
+
+// CapabilityContains applies the Contains predicate on the "capability" field.
+func CapabilityContains(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContains(FieldCapability, v))
+}
+
+// CapabilityHasPrefix applies the HasPrefix predicate on the "capability" field.
+func CapabilityHasPrefix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasPrefix(FieldCapability, v))
+}
+
+// CapabilityHasSuffix applies the HasSuffix predicate on the "capability" field.
+func CapabilityHasSuffix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasSuffix(FieldCapability, v))
+}
+
+// CapabilityEqualFold applies the EqualFold predicate on the "capability" field.
+func CapabilityEqualFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEqualFold(FieldCapability, v))
+}
+
+// CapabilityContainsFold applies the ContainsFold predicate on the "capability" field.
+func CapabilityContainsFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContainsFold(FieldCapability, v))
+}
+
 // EndpointEQ applies the EQ predicate on the "endpoint" field.
 func EndpointEQ(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldEndpoint, v))
@@ -248,6 +327,281 @@ func EndpointEqualFold(v string) predicate.ModelInstance {
 // EndpointContainsFold applies the ContainsFold predicate on the "endpoint" field.
 func EndpointContainsFold(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldContainsFold(FieldEndpoint, v))
+}
+
+// HealthURLEQ applies the EQ predicate on the "health_url" field.
+func HealthURLEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldHealthURL, v))
+}
+
+// HealthURLNEQ applies the NEQ predicate on the "health_url" field.
+func HealthURLNEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNEQ(FieldHealthURL, v))
+}
+
+// HealthURLIn applies the In predicate on the "health_url" field.
+func HealthURLIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIn(FieldHealthURL, vs...))
+}
+
+// HealthURLNotIn applies the NotIn predicate on the "health_url" field.
+func HealthURLNotIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotIn(FieldHealthURL, vs...))
+}
+
+// HealthURLGT applies the GT predicate on the "health_url" field.
+func HealthURLGT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGT(FieldHealthURL, v))
+}
+
+// HealthURLGTE applies the GTE predicate on the "health_url" field.
+func HealthURLGTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGTE(FieldHealthURL, v))
+}
+
+// HealthURLLT applies the LT predicate on the "health_url" field.
+func HealthURLLT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLT(FieldHealthURL, v))
+}
+
+// HealthURLLTE applies the LTE predicate on the "health_url" field.
+func HealthURLLTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLTE(FieldHealthURL, v))
+}
+
+// HealthURLContains applies the Contains predicate on the "health_url" field.
+func HealthURLContains(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContains(FieldHealthURL, v))
+}
+
+// HealthURLHasPrefix applies the HasPrefix predicate on the "health_url" field.
+func HealthURLHasPrefix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasPrefix(FieldHealthURL, v))
+}
+
+// HealthURLHasSuffix applies the HasSuffix predicate on the "health_url" field.
+func HealthURLHasSuffix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasSuffix(FieldHealthURL, v))
+}
+
+// HealthURLEqualFold applies the EqualFold predicate on the "health_url" field.
+func HealthURLEqualFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEqualFold(FieldHealthURL, v))
+}
+
+// HealthURLContainsFold applies the ContainsFold predicate on the "health_url" field.
+func HealthURLContainsFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContainsFold(FieldHealthURL, v))
+}
+
+// ArtifactDigestEQ applies the EQ predicate on the "artifact_digest" field.
+func ArtifactDigestEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldArtifactDigest, v))
+}
+
+// ArtifactDigestNEQ applies the NEQ predicate on the "artifact_digest" field.
+func ArtifactDigestNEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNEQ(FieldArtifactDigest, v))
+}
+
+// ArtifactDigestIn applies the In predicate on the "artifact_digest" field.
+func ArtifactDigestIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIn(FieldArtifactDigest, vs...))
+}
+
+// ArtifactDigestNotIn applies the NotIn predicate on the "artifact_digest" field.
+func ArtifactDigestNotIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotIn(FieldArtifactDigest, vs...))
+}
+
+// ArtifactDigestGT applies the GT predicate on the "artifact_digest" field.
+func ArtifactDigestGT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGT(FieldArtifactDigest, v))
+}
+
+// ArtifactDigestGTE applies the GTE predicate on the "artifact_digest" field.
+func ArtifactDigestGTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGTE(FieldArtifactDigest, v))
+}
+
+// ArtifactDigestLT applies the LT predicate on the "artifact_digest" field.
+func ArtifactDigestLT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLT(FieldArtifactDigest, v))
+}
+
+// ArtifactDigestLTE applies the LTE predicate on the "artifact_digest" field.
+func ArtifactDigestLTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLTE(FieldArtifactDigest, v))
+}
+
+// ArtifactDigestContains applies the Contains predicate on the "artifact_digest" field.
+func ArtifactDigestContains(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContains(FieldArtifactDigest, v))
+}
+
+// ArtifactDigestHasPrefix applies the HasPrefix predicate on the "artifact_digest" field.
+func ArtifactDigestHasPrefix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasPrefix(FieldArtifactDigest, v))
+}
+
+// ArtifactDigestHasSuffix applies the HasSuffix predicate on the "artifact_digest" field.
+func ArtifactDigestHasSuffix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasSuffix(FieldArtifactDigest, v))
+}
+
+// ArtifactDigestEqualFold applies the EqualFold predicate on the "artifact_digest" field.
+func ArtifactDigestEqualFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEqualFold(FieldArtifactDigest, v))
+}
+
+// ArtifactDigestContainsFold applies the ContainsFold predicate on the "artifact_digest" field.
+func ArtifactDigestContainsFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContainsFold(FieldArtifactDigest, v))
+}
+
+// ResourceGroupEQ applies the EQ predicate on the "resource_group" field.
+func ResourceGroupEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldResourceGroup, v))
+}
+
+// ResourceGroupNEQ applies the NEQ predicate on the "resource_group" field.
+func ResourceGroupNEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNEQ(FieldResourceGroup, v))
+}
+
+// ResourceGroupIn applies the In predicate on the "resource_group" field.
+func ResourceGroupIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIn(FieldResourceGroup, vs...))
+}
+
+// ResourceGroupNotIn applies the NotIn predicate on the "resource_group" field.
+func ResourceGroupNotIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotIn(FieldResourceGroup, vs...))
+}
+
+// ResourceGroupGT applies the GT predicate on the "resource_group" field.
+func ResourceGroupGT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGT(FieldResourceGroup, v))
+}
+
+// ResourceGroupGTE applies the GTE predicate on the "resource_group" field.
+func ResourceGroupGTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGTE(FieldResourceGroup, v))
+}
+
+// ResourceGroupLT applies the LT predicate on the "resource_group" field.
+func ResourceGroupLT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLT(FieldResourceGroup, v))
+}
+
+// ResourceGroupLTE applies the LTE predicate on the "resource_group" field.
+func ResourceGroupLTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLTE(FieldResourceGroup, v))
+}
+
+// ResourceGroupContains applies the Contains predicate on the "resource_group" field.
+func ResourceGroupContains(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContains(FieldResourceGroup, v))
+}
+
+// ResourceGroupHasPrefix applies the HasPrefix predicate on the "resource_group" field.
+func ResourceGroupHasPrefix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasPrefix(FieldResourceGroup, v))
+}
+
+// ResourceGroupHasSuffix applies the HasSuffix predicate on the "resource_group" field.
+func ResourceGroupHasSuffix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasSuffix(FieldResourceGroup, v))
+}
+
+// ResourceGroupEqualFold applies the EqualFold predicate on the "resource_group" field.
+func ResourceGroupEqualFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEqualFold(FieldResourceGroup, v))
+}
+
+// ResourceGroupContainsFold applies the ContainsFold predicate on the "resource_group" field.
+func ResourceGroupContainsFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContainsFold(FieldResourceGroup, v))
+}
+
+// GroupCapacityUnitsEQ applies the EQ predicate on the "group_capacity_units" field.
+func GroupCapacityUnitsEQ(v int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldGroupCapacityUnits, v))
+}
+
+// GroupCapacityUnitsNEQ applies the NEQ predicate on the "group_capacity_units" field.
+func GroupCapacityUnitsNEQ(v int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNEQ(FieldGroupCapacityUnits, v))
+}
+
+// GroupCapacityUnitsIn applies the In predicate on the "group_capacity_units" field.
+func GroupCapacityUnitsIn(vs ...int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIn(FieldGroupCapacityUnits, vs...))
+}
+
+// GroupCapacityUnitsNotIn applies the NotIn predicate on the "group_capacity_units" field.
+func GroupCapacityUnitsNotIn(vs ...int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotIn(FieldGroupCapacityUnits, vs...))
+}
+
+// GroupCapacityUnitsGT applies the GT predicate on the "group_capacity_units" field.
+func GroupCapacityUnitsGT(v int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGT(FieldGroupCapacityUnits, v))
+}
+
+// GroupCapacityUnitsGTE applies the GTE predicate on the "group_capacity_units" field.
+func GroupCapacityUnitsGTE(v int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGTE(FieldGroupCapacityUnits, v))
+}
+
+// GroupCapacityUnitsLT applies the LT predicate on the "group_capacity_units" field.
+func GroupCapacityUnitsLT(v int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLT(FieldGroupCapacityUnits, v))
+}
+
+// GroupCapacityUnitsLTE applies the LTE predicate on the "group_capacity_units" field.
+func GroupCapacityUnitsLTE(v int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLTE(FieldGroupCapacityUnits, v))
+}
+
+// CapacityUnitsEQ applies the EQ predicate on the "capacity_units" field.
+func CapacityUnitsEQ(v int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldCapacityUnits, v))
+}
+
+// CapacityUnitsNEQ applies the NEQ predicate on the "capacity_units" field.
+func CapacityUnitsNEQ(v int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNEQ(FieldCapacityUnits, v))
+}
+
+// CapacityUnitsIn applies the In predicate on the "capacity_units" field.
+func CapacityUnitsIn(vs ...int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIn(FieldCapacityUnits, vs...))
+}
+
+// CapacityUnitsNotIn applies the NotIn predicate on the "capacity_units" field.
+func CapacityUnitsNotIn(vs ...int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotIn(FieldCapacityUnits, vs...))
+}
+
+// CapacityUnitsGT applies the GT predicate on the "capacity_units" field.
+func CapacityUnitsGT(v int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGT(FieldCapacityUnits, v))
+}
+
+// CapacityUnitsGTE applies the GTE predicate on the "capacity_units" field.
+func CapacityUnitsGTE(v int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGTE(FieldCapacityUnits, v))
+}
+
+// CapacityUnitsLT applies the LT predicate on the "capacity_units" field.
+func CapacityUnitsLT(v int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLT(FieldCapacityUnits, v))
+}
+
+// CapacityUnitsLTE applies the LTE predicate on the "capacity_units" field.
+func CapacityUnitsLTE(v int) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLTE(FieldCapacityUnits, v))
 }
 
 // MachineIDEQ applies the EQ predicate on the "machine_id" field.
@@ -315,124 +669,14 @@ func MachineIDContainsFold(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldContainsFold(FieldMachineID, v))
 }
 
-// GpuDevicesEQ applies the EQ predicate on the "gpu_devices" field.
-func GpuDevicesEQ(v pq.Int64Array) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEQ(FieldGpuDevices, v))
+// GpuDevicesIsNil applies the IsNil predicate on the "gpu_devices" field.
+func GpuDevicesIsNil() predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIsNull(FieldGpuDevices))
 }
 
-// GpuDevicesNEQ applies the NEQ predicate on the "gpu_devices" field.
-func GpuDevicesNEQ(v pq.Int64Array) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldNEQ(FieldGpuDevices, v))
-}
-
-// GpuDevicesIn applies the In predicate on the "gpu_devices" field.
-func GpuDevicesIn(vs ...pq.Int64Array) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldIn(FieldGpuDevices, vs...))
-}
-
-// GpuDevicesNotIn applies the NotIn predicate on the "gpu_devices" field.
-func GpuDevicesNotIn(vs ...pq.Int64Array) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldNotIn(FieldGpuDevices, vs...))
-}
-
-// GpuDevicesGT applies the GT predicate on the "gpu_devices" field.
-func GpuDevicesGT(v pq.Int64Array) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldGT(FieldGpuDevices, v))
-}
-
-// GpuDevicesGTE applies the GTE predicate on the "gpu_devices" field.
-func GpuDevicesGTE(v pq.Int64Array) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldGTE(FieldGpuDevices, v))
-}
-
-// GpuDevicesLT applies the LT predicate on the "gpu_devices" field.
-func GpuDevicesLT(v pq.Int64Array) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldLT(FieldGpuDevices, v))
-}
-
-// GpuDevicesLTE applies the LTE predicate on the "gpu_devices" field.
-func GpuDevicesLTE(v pq.Int64Array) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldLTE(FieldGpuDevices, v))
-}
-
-// CapacityUnitsEQ applies the EQ predicate on the "capacity_units" field.
-func CapacityUnitsEQ(v int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEQ(FieldCapacityUnits, v))
-}
-
-// CapacityUnitsNEQ applies the NEQ predicate on the "capacity_units" field.
-func CapacityUnitsNEQ(v int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldNEQ(FieldCapacityUnits, v))
-}
-
-// CapacityUnitsIn applies the In predicate on the "capacity_units" field.
-func CapacityUnitsIn(vs ...int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldIn(FieldCapacityUnits, vs...))
-}
-
-// CapacityUnitsNotIn applies the NotIn predicate on the "capacity_units" field.
-func CapacityUnitsNotIn(vs ...int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldNotIn(FieldCapacityUnits, vs...))
-}
-
-// CapacityUnitsGT applies the GT predicate on the "capacity_units" field.
-func CapacityUnitsGT(v int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldGT(FieldCapacityUnits, v))
-}
-
-// CapacityUnitsGTE applies the GTE predicate on the "capacity_units" field.
-func CapacityUnitsGTE(v int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldGTE(FieldCapacityUnits, v))
-}
-
-// CapacityUnitsLT applies the LT predicate on the "capacity_units" field.
-func CapacityUnitsLT(v int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldLT(FieldCapacityUnits, v))
-}
-
-// CapacityUnitsLTE applies the LTE predicate on the "capacity_units" field.
-func CapacityUnitsLTE(v int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldLTE(FieldCapacityUnits, v))
-}
-
-// UsedUnitsEQ applies the EQ predicate on the "used_units" field.
-func UsedUnitsEQ(v int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEQ(FieldUsedUnits, v))
-}
-
-// UsedUnitsNEQ applies the NEQ predicate on the "used_units" field.
-func UsedUnitsNEQ(v int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldNEQ(FieldUsedUnits, v))
-}
-
-// UsedUnitsIn applies the In predicate on the "used_units" field.
-func UsedUnitsIn(vs ...int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldIn(FieldUsedUnits, vs...))
-}
-
-// UsedUnitsNotIn applies the NotIn predicate on the "used_units" field.
-func UsedUnitsNotIn(vs ...int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldNotIn(FieldUsedUnits, vs...))
-}
-
-// UsedUnitsGT applies the GT predicate on the "used_units" field.
-func UsedUnitsGT(v int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldGT(FieldUsedUnits, v))
-}
-
-// UsedUnitsGTE applies the GTE predicate on the "used_units" field.
-func UsedUnitsGTE(v int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldGTE(FieldUsedUnits, v))
-}
-
-// UsedUnitsLT applies the LT predicate on the "used_units" field.
-func UsedUnitsLT(v int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldLT(FieldUsedUnits, v))
-}
-
-// UsedUnitsLTE applies the LTE predicate on the "used_units" field.
-func UsedUnitsLTE(v int) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldLTE(FieldUsedUnits, v))
+// GpuDevicesNotNil applies the NotNil predicate on the "gpu_devices" field.
+func GpuDevicesNotNil() predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotNull(FieldGpuDevices))
 }
 
 // ReadyEQ applies the EQ predicate on the "ready" field.
@@ -445,6 +689,46 @@ func ReadyNEQ(v bool) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldNEQ(FieldReady, v))
 }
 
+// HealthCheckedAtEQ applies the EQ predicate on the "health_checked_at" field.
+func HealthCheckedAtEQ(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldHealthCheckedAt, v))
+}
+
+// HealthCheckedAtNEQ applies the NEQ predicate on the "health_checked_at" field.
+func HealthCheckedAtNEQ(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNEQ(FieldHealthCheckedAt, v))
+}
+
+// HealthCheckedAtIn applies the In predicate on the "health_checked_at" field.
+func HealthCheckedAtIn(vs ...time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIn(FieldHealthCheckedAt, vs...))
+}
+
+// HealthCheckedAtNotIn applies the NotIn predicate on the "health_checked_at" field.
+func HealthCheckedAtNotIn(vs ...time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotIn(FieldHealthCheckedAt, vs...))
+}
+
+// HealthCheckedAtGT applies the GT predicate on the "health_checked_at" field.
+func HealthCheckedAtGT(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGT(FieldHealthCheckedAt, v))
+}
+
+// HealthCheckedAtGTE applies the GTE predicate on the "health_checked_at" field.
+func HealthCheckedAtGTE(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGTE(FieldHealthCheckedAt, v))
+}
+
+// HealthCheckedAtLT applies the LT predicate on the "health_checked_at" field.
+func HealthCheckedAtLT(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLT(FieldHealthCheckedAt, v))
+}
+
+// HealthCheckedAtLTE applies the LTE predicate on the "health_checked_at" field.
+func HealthCheckedAtLTE(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLTE(FieldHealthCheckedAt, v))
+}
+
 // DrainingEQ applies the EQ predicate on the "draining" field.
 func DrainingEQ(v bool) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldDraining, v))
@@ -453,46 +737,6 @@ func DrainingEQ(v bool) predicate.ModelInstance {
 // DrainingNEQ applies the NEQ predicate on the "draining" field.
 func DrainingNEQ(v bool) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldNEQ(FieldDraining, v))
-}
-
-// LeaseExpiresAtEQ applies the EQ predicate on the "lease_expires_at" field.
-func LeaseExpiresAtEQ(v time.Time) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEQ(FieldLeaseExpiresAt, v))
-}
-
-// LeaseExpiresAtNEQ applies the NEQ predicate on the "lease_expires_at" field.
-func LeaseExpiresAtNEQ(v time.Time) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldNEQ(FieldLeaseExpiresAt, v))
-}
-
-// LeaseExpiresAtIn applies the In predicate on the "lease_expires_at" field.
-func LeaseExpiresAtIn(vs ...time.Time) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldIn(FieldLeaseExpiresAt, vs...))
-}
-
-// LeaseExpiresAtNotIn applies the NotIn predicate on the "lease_expires_at" field.
-func LeaseExpiresAtNotIn(vs ...time.Time) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldNotIn(FieldLeaseExpiresAt, vs...))
-}
-
-// LeaseExpiresAtGT applies the GT predicate on the "lease_expires_at" field.
-func LeaseExpiresAtGT(v time.Time) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldGT(FieldLeaseExpiresAt, v))
-}
-
-// LeaseExpiresAtGTE applies the GTE predicate on the "lease_expires_at" field.
-func LeaseExpiresAtGTE(v time.Time) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldGTE(FieldLeaseExpiresAt, v))
-}
-
-// LeaseExpiresAtLT applies the LT predicate on the "lease_expires_at" field.
-func LeaseExpiresAtLT(v time.Time) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldLT(FieldLeaseExpiresAt, v))
-}
-
-// LeaseExpiresAtLTE applies the LTE predicate on the "lease_expires_at" field.
-func LeaseExpiresAtLTE(v time.Time) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldLTE(FieldLeaseExpiresAt, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

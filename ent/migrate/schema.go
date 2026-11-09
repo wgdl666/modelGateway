@@ -13,16 +13,20 @@ var (
 	ModelInstancesColumns = []*schema.Column{
 		{Name: "instance_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "model_key", Type: field.TypeString, Size: 2147483647},
+		{Name: "capability", Type: field.TypeString, Size: 2147483647},
 		{Name: "endpoint", Type: field.TypeString, Size: 2147483647},
+		{Name: "health_url", Type: field.TypeString, Size: 2147483647},
+		{Name: "artifact_digest", Type: field.TypeString, Size: 2147483647},
+		{Name: "resource_group", Type: field.TypeString, Size: 2147483647},
+		{Name: "group_capacity_units", Type: field.TypeInt},
+		{Name: "capacity_units", Type: field.TypeInt},
 		{Name: "machine_id", Type: field.TypeString, Size: 2147483647, Default: ""},
-		{Name: "gpu_devices", Type: field.TypeOther, SchemaType: map[string]string{"postgres": "integer[]"}},
-		{Name: "capacity_units", Type: field.TypeInt, SchemaType: map[string]string{"postgres": "integer"}},
-		{Name: "used_units", Type: field.TypeInt, Default: 0, SchemaType: map[string]string{"postgres": "integer"}},
+		{Name: "gpu_devices", Type: field.TypeJSON, Nullable: true},
 		{Name: "ready", Type: field.TypeBool, Default: false},
+		{Name: "health_checked_at", Type: field.TypeTime},
 		{Name: "draining", Type: field.TypeBool, Default: false},
-		{Name: "lease_expires_at", Type: field.TypeTime},
-		{Name: "created_at", Type: field.TypeTime, Default: schema.Expr("CURRENT_TIMESTAMP")},
-		{Name: "updated_at", Type: field.TypeTime, Default: schema.Expr("CURRENT_TIMESTAMP")},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
 	}
 	// ModelInstancesTable holds the schema information for the "model_instances" table.
 	ModelInstancesTable = &schema.Table{
@@ -31,9 +35,14 @@ var (
 		PrimaryKey: []*schema.Column{ModelInstancesColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "instances_model_idx",
+				Name:    "modelinstance_model_key_capability",
 				Unique:  false,
-				Columns: []*schema.Column{ModelInstancesColumns[1]},
+				Columns: []*schema.Column{ModelInstancesColumns[1], ModelInstancesColumns[2]},
+			},
+			{
+				Name:    "modelinstance_resource_group",
+				Unique:  false,
+				Columns: []*schema.Column{ModelInstancesColumns[6]},
 			},
 		},
 	}
@@ -41,14 +50,28 @@ var (
 	RequestsColumns = []*schema.Column{
 		{Name: "request_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "model_key", Type: field.TypeString, Size: 2147483647},
+		{Name: "capability", Type: field.TypeString, Size: 2147483647},
 		{Name: "request_payload", Type: field.TypeJSON},
-		{Name: "instance_id", Type: field.TypeString, Size: 2147483647},
-		{Name: "backend_task_id", Type: field.TypeString, Nullable: true, Size: 2147483647},
-		{Name: "reserved_units", Type: field.TypeInt, SchemaType: map[string]string{"postgres": "integer"}},
-		{Name: "status", Type: field.TypeEnum, Enums: []string{"reserved", "dispatching", "running", "succeeded", "failed", "unknown"}, Default: "reserved", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "payload_bytes", Type: field.TypeInt64},
+		{Name: "units", Type: field.TypeInt},
+		{Name: "state", Type: field.TypeEnum, Enums: []string{"queued", "processing", "succeeded", "failed"}, Default: "queued"},
+		{Name: "slot_reserved", Type: field.TypeBool, Default: false},
+		{Name: "instance_id", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "resource_group", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "endpoint", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "artifact_digest", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "backend_task_id", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "deadline_at", Type: field.TypeTime},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
+		{Name: "next_poll_at", Type: field.TypeTime, Nullable: true},
+		{Name: "poll_claim", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "result", Type: field.TypeJSON, Nullable: true},
-		{Name: "created_at", Type: field.TypeTime, Default: schema.Expr("CURRENT_TIMESTAMP")},
-		{Name: "updated_at", Type: field.TypeTime, Default: schema.Expr("CURRENT_TIMESTAMP")},
+		{Name: "error_code", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "error_message", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "error_status", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
 	}
 	// RequestsTable holds the schema information for the "requests" table.
 	RequestsTable = &schema.Table{
@@ -57,16 +80,35 @@ var (
 		PrimaryKey: []*schema.Column{RequestsColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "requests_instance_idx",
+				Name:    "request_model_key_capability_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[3]},
+				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[2], RequestsColumns[22], RequestsColumns[0]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "state = 'queued'",
+				},
 			},
 			{
-				Name:    "requests_pending_idx",
+				Name:    "request_deadline_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[9]},
+				Columns: []*schema.Column{RequestsColumns[13]},
 				Annotation: &entsql.IndexAnnotation{
-					Where: "status IN ('reserved','dispatching','running','unknown')",
+					Where: "state = 'queued'",
+				},
+			},
+			{
+				Name:    "request_resource_group_instance_id",
+				Unique:  false,
+				Columns: []*schema.Column{RequestsColumns[9], RequestsColumns[8]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "slot_reserved",
+				},
+			},
+			{
+				Name:    "request_next_poll_at",
+				Unique:  false,
+				Columns: []*schema.Column{RequestsColumns[16]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "slot_reserved",
 				},
 			},
 		},
@@ -83,14 +125,14 @@ func init() {
 		Table: "model_instances",
 	}
 	ModelInstancesTable.Annotation.Checks = map[string]string{
-		"model_instances_capacity_check": "capacity_units > 0",
-		"model_instances_used_check":     "used_units >= 0 AND used_units <= capacity_units",
+		"model_instances_capacity_check": "capacity_units > 0 AND group_capacity_units > 0",
 	}
 	RequestsTable.Annotation = &entsql.Annotation{
 		Table: "requests",
 	}
 	RequestsTable.Annotation.Checks = map[string]string{
-		"requests_status_check": "status IN ('reserved','dispatching','running','succeeded','failed','unknown')",
-		"requests_units_check":  "reserved_units > 0",
+		"requests_slot_check":  "NOT slot_reserved OR (state IN ('processing','failed') AND instance_id <> '' AND resource_group <> '' AND endpoint <> '')",
+		"requests_state_check": "state IN ('queued','processing','succeeded','failed')",
+		"requests_units_check": "units > 0 AND payload_bytes > 0",
 	}
 }

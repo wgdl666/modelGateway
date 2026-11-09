@@ -66,7 +66,7 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 		return listener.Addr().String()
 	}
 	first, second := address(), address()
-	values := map[string]any{"database_url": u.String(), "listen": first, "api_token": "test-api-token-at-least-24-characters", "worker_token": "test-worker-token-at-least-24-characters", "admin_token": "test-admin-token-at-least-24-characters", "backend_cidrs": []string{"127.0.0.0/8"}, "backend_ports": []string{"8001"}, "backend_timeout": "120s", "poll_interval": "5s", "instance_lease": "30s"}
+	values := map[string]any{"database_url": u.String(), "listen": first, "api_token": "test-api-token-at-least-24-characters", "worker_token": "test-worker-token-at-least-24-characters", "admin_token": "test-admin-token-at-least-24-characters", "backend_cidrs": []string{"127.0.0.0/8"}, "backend_ports": []string{"8001"}, "backend_timeout": "120s", "poll_interval": "5s"}
 	var content atomic.Value
 	setContent := func() { raw, _ := json.Marshal(values); content.Store(raw) }
 	setContent()
@@ -109,14 +109,14 @@ func TestConfigCenterReloadsRunningServer(t *testing.T) {
 		}
 		t.Fatal("running server did not apply configuration")
 	}
-	wait(func() bool { return status(first, "/health/ready", "") == 200 })
+	wait(func() bool { return status(first, "/_gateway/ready", "") == 200 })
 	oldToken := values["api_token"].(string)
 	values["listen"], values["api_token"] = second, oldToken+"-new"
 	setContent()
 	wait(func() bool {
-		return status(second, "/v1/requests/not-a-uuid", oldToken+"-new") == 400 && status(first, "/health/ready", "") == 0
+		return status(second, "/v1/gateway/requests", oldToken+"-new") == 400 && status(first, "/_gateway/ready", "") == 0
 	})
-	if status(second, "/v1/requests/not-a-uuid", oldToken) != 401 {
+	if status(second, "/v1/gateway/requests", oldToken) != 401 {
 		t.Fatal("old token remains active after center update")
 	}
 }

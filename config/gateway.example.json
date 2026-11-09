@@ -4,11 +4,17 @@
   "api_token": "replace-with-a-distinct-api-token",
   "worker_token": "replace-with-a-distinct-worker-token",
   "admin_token": "replace-with-a-distinct-admin-token",
-  "backend_token": "replace-with-the-backend-token",
-  "backend_cidrs": ["10.0.0.0/8"],
-  "backend_ports": ["8001", "8002"],
+  "backend_token": "replace-with-the-worker-adapter-bearer",
+  "backend_cidrs": [
+    "10.0.0.0/8"
+  ],
+  "backend_ports": [
+    "8001",
+    "8002"
+  ],
   "backend_timeout": "120s",
-  "poll_interval": "5s",
-  "instance_lease": "30s",
-  "max_body_bytes": 16777216
+  "poll_interval": "1s",
+  "max_body_bytes": 67108864,
+  "max_waiting": 64,
+  "max_waiting_bytes": 134217728
 }

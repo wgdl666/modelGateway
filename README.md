@@ -1,163 +1,75 @@
 # modelGateway
 
-Go 模型网关，HTTP 服务使用 Hertz，数据库访问使用 Ent。一个服务可部署多个副本，共享 PostgreSQL。只使用 `model_instances` 和 `requests` 两张业务表。
+一个模型网关可运行多个 Go 副本，共享 PostgreSQL。Hertz 处理 HTTP，Ent 定义两张业务表 `model_instances` 和 `requests`。网关持有队列和容量，模型执行端确认终态并上传成品，ModelHub 使用 OSS/S3 对象引用读取。
 
-模型由人工指定机器和 GPU 后启动，向统一入口注册。网关按 `model_key` 选择实例，在 PG 事务内预留 N 个容量单位并保存原始请求，随后调用后端。模型服务负责上传生成文件，网关只保存和返回 OSS/S3 对象位置。
+## 调用协议
 
-## 请求路径
+生成接口为 `POST /v1/gateway/requests/{model_key}`。请求使用 `Authorization: Bearer <api_token>`、`Content-Type: application/json` 和 UUID `Idempotency-Key`。UUID 同时是请求表主键和模型端查询 ID。
 
-1. 模型服务注册实例，定期发送就绪状态和心跳。
-2. 调用方生成 string UUID `request_id`，提交 `model_key`、`units` 和 `input`。
-3. PG 按请求 ID 去重，原子占用实例容量并保存完整业务 JSON；容量不足返回 503，不排队。
-4. 新请求返回 202，网关立即调用后端。调用方断开不取消已受理执行。
-5. 后端同步返回结果，或返回异步任务 ID。网关后台按 `request_id` 查询后端状态。
-6. 后端生成并上传完成后，网关在同一事务内写入终态和结果、释放 N。
-7. 调用方通过 `GET /v1/requests/{request_id}` 获取状态和结果。重复提交返回已有记录，不再次派发或覆盖原始请求。
+请求体包含 `input` 和可选的 `metadata`。图片按顺序放入 `input.images`，每项为 `mime_type` 和 base64 `data`。同一键和相同业务输入复用原任务，改模型或业务输入返回 409。追踪字段变化不改变任务身份。
 
-提交接口统一返回请求记录，尚未完成返回 202，已结束返回 200。它不透传长时间运行的 HTTP 响应流。后端是否同步完成，不改变上游的请求查询协议。
+| 模型 | 输入 |
+|---|---|
+| `Vmind_wardrobe_v1.0` | 原图与衣物名称，可带角色、框、解析标签或第二张解析掩码。按业务输入选择商品图或拆衣。 |
+| `Vmind_outfit_v1.0` | 人物图、衣物图和提示词。 |
+| `Vmind_bodymodel_v1.0` | 人物图与性别。 |
+| `Vmind_outfit_video_v1.0` | 首帧、提示词和可选动作参数。 |
 
-## 两张表
+图片持久入队后同步等待结果。视频持久入队后立即返回 202 和 `request_id`、`state`。使用相同请求头调用 `GET /v1/gateway/requests` 查询。成功响应为 `result.files[]`，每项只有 `provider`、`region`、`bucket` 和 `key`。在排队时可用 `POST /v1/gateway/requests/cancel` 取消，已经派发返回 409。
 
-`model_instances`：`instance_id`、`model_key`、`endpoint`、`machine_id`、`gpu_devices`、`capacity_units`、`used_units`、`ready`、`draining`、`lease_expires_at`、创建和更新时间。
+队列按模型限等待条数和字节数，默认 64 条、128 MiB。队列满返回 429。没有健康实例或 PG 不可用返回 503。排队与首次模型调用共用默认 120 秒。
 
-`requests`：`request_id`、`model_key`、`request_payload`、`instance_id`、`backend_task_id`、`reserved_units`、`status`、`result`、创建和更新时间。
+## 实例管理
 
-表结构定义见 [ent/schema](ent/schema)，客户端和迁移代码由 Ent 生成。表间使用业务 ID 关联，建表时关闭外键。没有结果过期时间或自动清理请求的任务。请求 JSONB 保留业务内容，不保证原 JSON 的空格、字段顺序。认证头不入库；输入应使用对象引用，不支持 multipart 文件上传。
+`POST /v1/instances/register` 使用注册或管理凭据，提交以下字段。
 
-`model_key` 包含版本含义。机器和 GPU 清单仅用于展示；多个模型共享 GPU 时，本机调度器仍须限制实际合计并发。实例 ID 使用规范的小写带连字符 UUID，每次模型进程重启使用新 ID。模型与 endpoint 不允许原地替换，旧实例记录保留。
+```json
+{
+  "instance_id": "g7e-vton-a",
+  "model_key": "Vmind_outfit_v1.0",
+  "capability": "vton",
+  "endpoint": "http://10.0.1.10:8001",
+  "health_url": "http://10.0.1.10:8001/health/ready",
+  "artifact_digest": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "resource_group": "g7e/gpu0",
+  "group_capacity_units": 1,
+  "capacity_units": 1
+}
+```
 
-容量单位由模型接口与可信调用方约定。`units` 是调用方声明的正整数，网关校验范围并检查总容量；它不估算显存或自动推导 GPU 成本。
+网关主动探测。探针返回 `ready: true` 后实例可以接单。使用管理凭据调用 `GET /v1/instances` 查询和 `POST /v1/instances/{id}/drain` 设置 `{"draining":true}`。同一卡的模型登记同一个资源组和组容量。部署身份变化时先排空旧实例，再登记新实例。
 
-## 运行
+## 处理和恢复
 
-需要 Go 1.26.4 和 PostgreSQL。AWS 使用 AppConfig，阿里云使用 Nacos。运行配置从配置中心读取，应用不读取业务环境变量。
+`requests` 保存原始业务 JSON、四态、截止时间、实际派发实例和制品、容量预留、后端任务及对象结果。实例和组占用从仍预留槽位的请求汇总。并发受理与派发使用可串行化事务。消费者在持有任务行锁时提交归属和容量，再调用模型。
 
-配置中心保存完整 JSON，字段见 [config/gateway.example.json](config/gateway.example.json)。数据库连接串、监听地址、各类令牌、后端网段和端口、调用超时、状态查询间隔、实例租约和请求体上限均支持热加载。
+派发使用 `POST {endpoint}/requests`。模型端接收 `request_id`、`model_key`、`capability`、`input` 和 `metadata`。返回同一 `request_id`，状态为 `processing`、`succeeded` 或 `failed`。未受理的输入校验和鉴权错误使用 HTTP 400、413、415、401 或 403。已经受理的任务通过 `GET {endpoint}/requests/{request_id}` 查询，完成状态必须提供对象结果或结构化错误。
 
-应用每 5 秒读取一次。AWS 通过本地 AppConfig Agent 获取缓存，实际生效时间还取决于 Agent 拉取和 AppConfig 发布进度。Nacos 使用 2.x OpenAPI 获取配置正文。读取、解析或应用失败时继续使用上一份配置，日志不输出配置正文或凭据。只保留必要的解析和既有鉴权、后端地址限制。
+网关的状态为 `queued`、`processing`、`succeeded`、`failed`。副本退出后其他副本接管队列和状态查询。派发结果未知时保留槽位，查询原实例，禁止重发生成。确认终态后原子释放，迟到的确认不会改写已经对外失败的状态。
 
-将对应引导文件挂载为 `/etc/model-gateway/bootstrap.json`：
+## 模型侧适配器
 
-- AWS 示例：[config/bootstrap.aws.example.json](config/bootstrap.aws.example.json)。AppConfig Agent 使用 ECS Task Role 或 EKS 工作负载身份访问 AWS。
-- 阿里云示例：[config/bootstrap.aliyun.example.json](config/bootstrap.aliyun.example.json)。URL 中的 `tenant` 填 namespace ID。启用 Nacos 用户认证时，在受保护的引导文件中增加 `username` 和 `password`，应用自动登录和刷新令牌。
+`worker_adapter/app.py` 在模型服务旁运行，复用 VMind-Image 的图片 multipart 路由和 LTX 的执行、任务查询及视频读取。适配器在本地目录保存受理和结果记录，上传成功后返回对象引用。用同一部署实例身份重启时保留该目录，每个目录只运行一个适配器进程。已发送图片请求在适配器自身中断且缺少后端终态时保持占槽，需核对模型执行事实。
 
-引导文件只保存中心入口和必要凭据，不提交实际引导文件。应用每轮也重新读取引导文件，中心地址和凭据变化无需重启。配置中心 JSON 中的时长使用 `120s`、`5s` 等格式。
+部署配置提供 `VMIND_WORKER_STATE_DIR`、`VMIND_WORKER_BEARER`、`VMIND_WORKER_CAPABILITIES`、`VMIND_WORKER_INSTANCE_ID`、`VMIND_WORKER_ARTIFACT_DIGEST`、`VMIND_NATIVE_ORIGIN` 和 `VMIND_NATIVE_HEALTH_URL`。按模型服务需要配置 `VMIND_NATIVE_TOKEN`。对象存储使用 `VMIND_RESULT_PROVIDER`、`VMIND_RESULT_REGION`、`VMIND_RESULT_BUCKET` 和可选端点 `VMIND_RESULT_ENDPOINT`。OSS 配置端点和运行时 OSS 凭据。S3 使用 AWS 凭据链。
 
-更新后，新操作使用新配置。在途请求继续使用受理时的配置，完成后释放原数据库连接池。监听地址变化时先启用新监听，再排空旧监听。更换数据库连接串不会迁移历史请求和实例数据，目标数据库须已有对应数据及表结构。
+```sh
+python -m pip install -r worker_adapter/requirements.txt
+python -m uvicorn app:app --app-dir worker_adapter --host 127.0.0.1 --port 8001
+```
+
+## 网关启动
+
+业务配置通过 AppConfig Agent 或 Nacos 加载。示例见 [gateway.example.json](config/gateway.example.json)。多个副本使用同一份 PG schema。换库前需要排空任务并重启。
 
 ```sh
 go build -o bin/model-gateway ./cmd/model-gateway
-# 显式初始化新 schema；服务启动不执行 DDL。
 bin/model-gateway -config /etc/model-gateway/bootstrap.json -migrate
 bin/model-gateway -config /etc/model-gateway/bootstrap.json
 ```
 
-API、Worker 和 Admin 三种令牌分别对应可信调用方、模型注册和排空管理，必须各不相同且至少 24 字符。`backend_token` 用于调用模型服务，可留空。后端地址仍须使用允许网段中的字面 IP 和允许端口。应用调用配置中心及模型后端时均禁用环境 HTTP 代理。
-
-接口依据：[AWS AppConfig Agent](https://docs.aws.amazon.com/appconfig/latest/userguide/appconfig-integration-containers-agent-retrieving-data.html)、[Nacos OpenAPI 认证](https://nacos.io/en/docs/v2/guide/user/auth/)。
-
-`GET /health/live` 检查进程，`GET /health/ready` 检查 PG。就绪不代表所有模型都已注册。
-
-## 模型注册接口
-
-以下接口使用 Worker 令牌，格式为 `Authorization: Bearer <worker_token>`。
-
-`POST /v1/instances/register`：
-
-```json
-{
-  "instance_id": "b48601dc-121e-4e79-9c46-b0d50ec5fd38",
-  "model_key": "vton_v3",
-  "endpoint": "http://10.0.1.10:8001",
-  "machine_id": "machine-a",
-  "gpu_devices": [0, 1],
-  "capacity_units": 4,
-  "ready": true
-}
-```
-
-`POST /v1/instances/{instance_id}/heartbeat`：`{"ready":true}`。建议每 10 秒发送一次，默认租约为 30 秒。网关使用服务端时间计算租约，各副本的系统时钟应保持同步。重复注册和心跳不能清零占用或解除排空。相同模型和地址仍有活跃实例或未完成占用时，不能用新实例 ID 重新注册来绕过容量限制。
-
-`POST /v1/instances/{instance_id}/drain`：`{"draining":true}`，使用 Admin 令牌。排空只停止新请求，不取消在途任务。
-
-## 请求接口
-
-使用 `Authorization: Bearer <api_token>`。本版本面向互信的服务调用方，不实现多租户数据隔离。
-
-`POST /v1/requests`：
-
-```json
-{
-  "request_id": "63565d4a-45b1-419e-bfbf-4ecb78cd34d4",
-  "model_key": "vton_v3",
-  "units": 2,
-  "input": {
-    "prompt": "换成红色上衣",
-    "image": {
-      "provider": "s3",
-      "region": "us-east-2",
-      "bucket": "input-bucket",
-      "key": "inputs/person.png"
-    }
-  }
-}
-```
-
-同一个请求 ID 的内容必须保持不变。网关按 ID 返回第一次提交的记录，不额外计算输入指纹。没有容量时不保存请求，可以复用同一个 ID 稍后重试。
-
-`GET /v1/requests/{request_id}` 返回记录，包括 `request_payload`、`status`、`reserved_units` 和 `result`。
-
-## 模型后端协议
-
-模型实例必须提供以下接口。本仓库定义新协议，不假定现有图片或视频服务已经支持。
-
-- `POST {endpoint}/requests`：接收完整原始业务 JSON，必须按 `request_id` 保留可查询状态。
-- `GET {endpoint}/requests/{request_id}`：返回同一任务的最新状态，包括受理响应丢失后的查询。
-
-成功响应为 HTTP 2xx：
-
-```json
-{
-  "status": "succeeded",
-  "result": {
-    "files": [
-      {
-        "provider": "s3",
-        "region": "us-east-2",
-        "bucket": "output-bucket",
-        "key": "outputs/request-id/video.mp4"
-      }
-    ]
-  }
-}
-```
-
-阿里云使用 `provider: "oss"`。每个文件只返回 provider、region、bucket、key，不返回 URL。多个结果使用 files 数组。后端必须在上传成功后才返回 succeeded。
-
-异步受理返回 `{"status":"running","backend_task_id":"task-1"}`，保留容量。确认执行结束且失败时，返回 HTTP 2xx 和 `{"status":"failed","result":{"error_code":"generation_failed","message":"原因"}}`。
-
-非 2xx、无效响应、超时和读取断连均标记 unknown，不自动重试 POST。HTTP 404 也不能单独证明后端未执行。连接建立前的明确 dial 失败可记录 failed 并释放。
-
-## 故障处理
-
-没有全局单活锁。请求唯一键保证跨副本去重，实例行锁保护容量预留。注册和心跳通过可串行化事务检查地址归属。业务读写均使用 Ent，容量比较和排序使用 Ent 查询构造器。事务在模型 HTTP 调用前提交，重复完成通知只会释放一次容量。
-
-状态为 reserved、dispatching、running、succeeded、failed、unknown。只有已确认的 succeeded / failed 释放容量。unknown 继续占用并查询原后端。
-
-后台默认每 5 秒处理一批状态查询，各副本用 PG 行锁认领。状态查询超时 3 秒；提交后端默认超时 120 秒。未派发的 reserved 超过 30 秒可原子失败并释放；dispatching 超过调用预算后按请求 ID 核对。后台查询是状态恢复，不重新派发生成请求。
-
-后端不支持按请求 ID 查询时，无法自动解决结果未知。实例丢失、文件丢失、共享 GPU 的直接调用，也不是网关 PG 计数能够自动修复的。本版本不提供强制清零接口。
-
-## 本地验证
+`/_gateway/live` 检查进程，`/_gateway/ready` 检查 PG 表。使用名称以 `_test` 结尾的独立 PostgreSQL 运行集成测试。
 
 ```sh
-# 修改 ent/schema 后重新生成客户端。
-go generate ./ent
-# 必须使用独立测试数据库，名称以 _test 结尾。
-TEST_DATABASE_URL=postgresql://postgres:local-test-only@127.0.0.1:55439/model_gateway_test go test -race ./... -count=1
-go vet ./...
+TEST_DATABASE_URL=<test-dsn> go test -race ./...
 ```
-
-`TEST_DATABASE_URL` 仅供测试使用。测试会清空该测试库中这两张表，配置热加载测试还会创建并清理独立临时命名空间。CI 使用临时 PG 18；没有 TEST_DATABASE_URL 时集成测试会跳过，不代表 PG 验收通过。
-
-此仓库本轮只实现和本地验证新网关。旧服务、线上数据库和流量入口均不改动。旧数据转换、真实模型协议适配及部署必须在后续单独验收。

@@ -15,22 +15,30 @@ const (
 	FieldID = "instance_id"
 	// FieldModelKey holds the string denoting the model_key field in the database.
 	FieldModelKey = "model_key"
+	// FieldCapability holds the string denoting the capability field in the database.
+	FieldCapability = "capability"
 	// FieldEndpoint holds the string denoting the endpoint field in the database.
 	FieldEndpoint = "endpoint"
+	// FieldHealthURL holds the string denoting the health_url field in the database.
+	FieldHealthURL = "health_url"
+	// FieldArtifactDigest holds the string denoting the artifact_digest field in the database.
+	FieldArtifactDigest = "artifact_digest"
+	// FieldResourceGroup holds the string denoting the resource_group field in the database.
+	FieldResourceGroup = "resource_group"
+	// FieldGroupCapacityUnits holds the string denoting the group_capacity_units field in the database.
+	FieldGroupCapacityUnits = "group_capacity_units"
+	// FieldCapacityUnits holds the string denoting the capacity_units field in the database.
+	FieldCapacityUnits = "capacity_units"
 	// FieldMachineID holds the string denoting the machine_id field in the database.
 	FieldMachineID = "machine_id"
 	// FieldGpuDevices holds the string denoting the gpu_devices field in the database.
 	FieldGpuDevices = "gpu_devices"
-	// FieldCapacityUnits holds the string denoting the capacity_units field in the database.
-	FieldCapacityUnits = "capacity_units"
-	// FieldUsedUnits holds the string denoting the used_units field in the database.
-	FieldUsedUnits = "used_units"
 	// FieldReady holds the string denoting the ready field in the database.
 	FieldReady = "ready"
+	// FieldHealthCheckedAt holds the string denoting the health_checked_at field in the database.
+	FieldHealthCheckedAt = "health_checked_at"
 	// FieldDraining holds the string denoting the draining field in the database.
 	FieldDraining = "draining"
-	// FieldLeaseExpiresAt holds the string denoting the lease_expires_at field in the database.
-	FieldLeaseExpiresAt = "lease_expires_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -43,14 +51,18 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldModelKey,
+	FieldCapability,
 	FieldEndpoint,
+	FieldHealthURL,
+	FieldArtifactDigest,
+	FieldResourceGroup,
+	FieldGroupCapacityUnits,
+	FieldCapacityUnits,
 	FieldMachineID,
 	FieldGpuDevices,
-	FieldCapacityUnits,
-	FieldUsedUnits,
 	FieldReady,
+	FieldHealthCheckedAt,
 	FieldDraining,
-	FieldLeaseExpiresAt,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -66,16 +78,16 @@ func ValidColumn(column string) bool {
 }
 
 var (
-	// DefaultMachineID holds the default value on creation for the "machine_id" field.
-	DefaultMachineID string
+	// GroupCapacityUnitsValidator is a validator for the "group_capacity_units" field. It is called by the builders before save.
+	GroupCapacityUnitsValidator func(int) error
 	// CapacityUnitsValidator is a validator for the "capacity_units" field. It is called by the builders before save.
 	CapacityUnitsValidator func(int) error
-	// DefaultUsedUnits holds the default value on creation for the "used_units" field.
-	DefaultUsedUnits int
-	// UsedUnitsValidator is a validator for the "used_units" field. It is called by the builders before save.
-	UsedUnitsValidator func(int) error
+	// DefaultMachineID holds the default value on creation for the "machine_id" field.
+	DefaultMachineID string
 	// DefaultReady holds the default value on creation for the "ready" field.
 	DefaultReady bool
+	// DefaultHealthCheckedAt holds the default value on creation for the "health_checked_at" field.
+	DefaultHealthCheckedAt func() time.Time
 	// DefaultDraining holds the default value on creation for the "draining" field.
 	DefaultDraining bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -99,19 +111,34 @@ func ByModelKey(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldModelKey, opts...).ToFunc()
 }
 
+// ByCapability orders the results by the capability field.
+func ByCapability(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCapability, opts...).ToFunc()
+}
+
 // ByEndpoint orders the results by the endpoint field.
 func ByEndpoint(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEndpoint, opts...).ToFunc()
 }
 
-// ByMachineID orders the results by the machine_id field.
-func ByMachineID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldMachineID, opts...).ToFunc()
+// ByHealthURL orders the results by the health_url field.
+func ByHealthURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHealthURL, opts...).ToFunc()
 }
 
-// ByGpuDevices orders the results by the gpu_devices field.
-func ByGpuDevices(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldGpuDevices, opts...).ToFunc()
+// ByArtifactDigest orders the results by the artifact_digest field.
+func ByArtifactDigest(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldArtifactDigest, opts...).ToFunc()
+}
+
+// ByResourceGroup orders the results by the resource_group field.
+func ByResourceGroup(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldResourceGroup, opts...).ToFunc()
+}
+
+// ByGroupCapacityUnits orders the results by the group_capacity_units field.
+func ByGroupCapacityUnits(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGroupCapacityUnits, opts...).ToFunc()
 }
 
 // ByCapacityUnits orders the results by the capacity_units field.
@@ -119,9 +146,9 @@ func ByCapacityUnits(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCapacityUnits, opts...).ToFunc()
 }
 
-// ByUsedUnits orders the results by the used_units field.
-func ByUsedUnits(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldUsedUnits, opts...).ToFunc()
+// ByMachineID orders the results by the machine_id field.
+func ByMachineID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMachineID, opts...).ToFunc()
 }
 
 // ByReady orders the results by the ready field.
@@ -129,14 +156,14 @@ func ByReady(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldReady, opts...).ToFunc()
 }
 
+// ByHealthCheckedAt orders the results by the health_checked_at field.
+func ByHealthCheckedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHealthCheckedAt, opts...).ToFunc()
+}
+
 // ByDraining orders the results by the draining field.
 func ByDraining(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDraining, opts...).ToFunc()
-}
-
-// ByLeaseExpiresAt orders the results by the lease_expires_at field.
-func ByLeaseExpiresAt(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldLeaseExpiresAt, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

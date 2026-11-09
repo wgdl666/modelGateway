@@ -3,13 +3,13 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/lib/pq"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 )
 
@@ -20,22 +20,30 @@ type ModelInstance struct {
 	ID string `json:"id,omitempty"`
 	// ModelKey holds the value of the "model_key" field.
 	ModelKey string `json:"model_key,omitempty"`
+	// Capability holds the value of the "capability" field.
+	Capability string `json:"capability,omitempty"`
 	// Endpoint holds the value of the "endpoint" field.
 	Endpoint string `json:"endpoint,omitempty"`
+	// HealthURL holds the value of the "health_url" field.
+	HealthURL string `json:"health_url,omitempty"`
+	// ArtifactDigest holds the value of the "artifact_digest" field.
+	ArtifactDigest string `json:"artifact_digest,omitempty"`
+	// ResourceGroup holds the value of the "resource_group" field.
+	ResourceGroup string `json:"resource_group,omitempty"`
+	// GroupCapacityUnits holds the value of the "group_capacity_units" field.
+	GroupCapacityUnits int `json:"group_capacity_units,omitempty"`
+	// CapacityUnits holds the value of the "capacity_units" field.
+	CapacityUnits int `json:"capacity_units,omitempty"`
 	// MachineID holds the value of the "machine_id" field.
 	MachineID string `json:"machine_id,omitempty"`
 	// GpuDevices holds the value of the "gpu_devices" field.
-	GpuDevices pq.Int64Array `json:"gpu_devices,omitempty"`
-	// CapacityUnits holds the value of the "capacity_units" field.
-	CapacityUnits int `json:"capacity_units,omitempty"`
-	// UsedUnits holds the value of the "used_units" field.
-	UsedUnits int `json:"used_units,omitempty"`
+	GpuDevices []int `json:"gpu_devices,omitempty"`
 	// Ready holds the value of the "ready" field.
 	Ready bool `json:"ready,omitempty"`
+	// HealthCheckedAt holds the value of the "health_checked_at" field.
+	HealthCheckedAt time.Time `json:"health_checked_at,omitempty"`
 	// Draining holds the value of the "draining" field.
 	Draining bool `json:"draining,omitempty"`
-	// LeaseExpiresAt holds the value of the "lease_expires_at" field.
-	LeaseExpiresAt time.Time `json:"lease_expires_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -49,14 +57,14 @@ func (*ModelInstance) scanValues(columns []string) ([]any, error) {
 	for i := range columns {
 		switch columns[i] {
 		case modelinstance.FieldGpuDevices:
-			values[i] = new(pq.Int64Array)
+			values[i] = new([]byte)
 		case modelinstance.FieldReady, modelinstance.FieldDraining:
 			values[i] = new(sql.NullBool)
-		case modelinstance.FieldCapacityUnits, modelinstance.FieldUsedUnits:
+		case modelinstance.FieldGroupCapacityUnits, modelinstance.FieldCapacityUnits:
 			values[i] = new(sql.NullInt64)
-		case modelinstance.FieldID, modelinstance.FieldModelKey, modelinstance.FieldEndpoint, modelinstance.FieldMachineID:
+		case modelinstance.FieldID, modelinstance.FieldModelKey, modelinstance.FieldCapability, modelinstance.FieldEndpoint, modelinstance.FieldHealthURL, modelinstance.FieldArtifactDigest, modelinstance.FieldResourceGroup, modelinstance.FieldMachineID:
 			values[i] = new(sql.NullString)
-		case modelinstance.FieldLeaseExpiresAt, modelinstance.FieldCreatedAt, modelinstance.FieldUpdatedAt:
+		case modelinstance.FieldHealthCheckedAt, modelinstance.FieldCreatedAt, modelinstance.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -85,11 +93,47 @@ func (_m *ModelInstance) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ModelKey = value.String
 			}
+		case modelinstance.FieldCapability:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field capability", values[i])
+			} else if value.Valid {
+				_m.Capability = value.String
+			}
 		case modelinstance.FieldEndpoint:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field endpoint", values[i])
 			} else if value.Valid {
 				_m.Endpoint = value.String
+			}
+		case modelinstance.FieldHealthURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field health_url", values[i])
+			} else if value.Valid {
+				_m.HealthURL = value.String
+			}
+		case modelinstance.FieldArtifactDigest:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field artifact_digest", values[i])
+			} else if value.Valid {
+				_m.ArtifactDigest = value.String
+			}
+		case modelinstance.FieldResourceGroup:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field resource_group", values[i])
+			} else if value.Valid {
+				_m.ResourceGroup = value.String
+			}
+		case modelinstance.FieldGroupCapacityUnits:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field group_capacity_units", values[i])
+			} else if value.Valid {
+				_m.GroupCapacityUnits = int(value.Int64)
+			}
+		case modelinstance.FieldCapacityUnits:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field capacity_units", values[i])
+			} else if value.Valid {
+				_m.CapacityUnits = int(value.Int64)
 			}
 		case modelinstance.FieldMachineID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -98,22 +142,12 @@ func (_m *ModelInstance) assignValues(columns []string, values []any) error {
 				_m.MachineID = value.String
 			}
 		case modelinstance.FieldGpuDevices:
-			if value, ok := values[i].(*pq.Int64Array); !ok {
+			if value, ok := values[i].(*[]byte); !ok {
 				return fmt.Errorf("unexpected type %T for field gpu_devices", values[i])
-			} else if value != nil {
-				_m.GpuDevices = *value
-			}
-		case modelinstance.FieldCapacityUnits:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field capacity_units", values[i])
-			} else if value.Valid {
-				_m.CapacityUnits = int(value.Int64)
-			}
-		case modelinstance.FieldUsedUnits:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field used_units", values[i])
-			} else if value.Valid {
-				_m.UsedUnits = int(value.Int64)
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.GpuDevices); err != nil {
+					return fmt.Errorf("unmarshal field gpu_devices: %w", err)
+				}
 			}
 		case modelinstance.FieldReady:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -121,17 +155,17 @@ func (_m *ModelInstance) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Ready = value.Bool
 			}
+		case modelinstance.FieldHealthCheckedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field health_checked_at", values[i])
+			} else if value.Valid {
+				_m.HealthCheckedAt = value.Time
+			}
 		case modelinstance.FieldDraining:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field draining", values[i])
 			} else if value.Valid {
 				_m.Draining = value.Bool
-			}
-		case modelinstance.FieldLeaseExpiresAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field lease_expires_at", values[i])
-			} else if value.Valid {
-				_m.LeaseExpiresAt = value.Time
 			}
 		case modelinstance.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -184,8 +218,26 @@ func (_m *ModelInstance) String() string {
 	builder.WriteString("model_key=")
 	builder.WriteString(_m.ModelKey)
 	builder.WriteString(", ")
+	builder.WriteString("capability=")
+	builder.WriteString(_m.Capability)
+	builder.WriteString(", ")
 	builder.WriteString("endpoint=")
 	builder.WriteString(_m.Endpoint)
+	builder.WriteString(", ")
+	builder.WriteString("health_url=")
+	builder.WriteString(_m.HealthURL)
+	builder.WriteString(", ")
+	builder.WriteString("artifact_digest=")
+	builder.WriteString(_m.ArtifactDigest)
+	builder.WriteString(", ")
+	builder.WriteString("resource_group=")
+	builder.WriteString(_m.ResourceGroup)
+	builder.WriteString(", ")
+	builder.WriteString("group_capacity_units=")
+	builder.WriteString(fmt.Sprintf("%v", _m.GroupCapacityUnits))
+	builder.WriteString(", ")
+	builder.WriteString("capacity_units=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CapacityUnits))
 	builder.WriteString(", ")
 	builder.WriteString("machine_id=")
 	builder.WriteString(_m.MachineID)
@@ -193,20 +245,14 @@ func (_m *ModelInstance) String() string {
 	builder.WriteString("gpu_devices=")
 	builder.WriteString(fmt.Sprintf("%v", _m.GpuDevices))
 	builder.WriteString(", ")
-	builder.WriteString("capacity_units=")
-	builder.WriteString(fmt.Sprintf("%v", _m.CapacityUnits))
-	builder.WriteString(", ")
-	builder.WriteString("used_units=")
-	builder.WriteString(fmt.Sprintf("%v", _m.UsedUnits))
-	builder.WriteString(", ")
 	builder.WriteString("ready=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Ready))
 	builder.WriteString(", ")
+	builder.WriteString("health_checked_at=")
+	builder.WriteString(_m.HealthCheckedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
 	builder.WriteString("draining=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Draining))
-	builder.WriteString(", ")
-	builder.WriteString("lease_expires_at=")
-	builder.WriteString(_m.LeaseExpiresAt.Format(time.ANSIC))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

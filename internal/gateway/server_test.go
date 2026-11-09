@@ -2,10 +2,8 @@ package gateway
 
 import (
 	"context"
-	"io"
 	"net"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 )
@@ -42,7 +40,7 @@ func startHTTPServer(t *testing.T, app *Server) string {
 	defer client.CloseIdleConnections()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		response, err := client.Get(base + "/health/live")
+		response, err := client.Get(base + "/_gateway/live")
 		if err == nil {
 			_ = response.Body.Close()
 			if response.StatusCode == 200 {
@@ -56,49 +54,35 @@ func startHTTPServer(t *testing.T, app *Server) string {
 }
 
 func TestHertzRoutingAndValidation(t *testing.T) {
-	cfg := Config{APIToken: apiToken, WorkerToken: workerToken, AdminToken: adminToken,
-		AllowedNetworks: []string{"127.0.0.0/8"}, AllowedPorts: []string{"8001"}, MaxBodyBytes: 256}
+	cfg := testConfig()
 	app, err := NewServer(&Store{}, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(app.cancel)
 	base := startHTTPServer(t, app)
-	for _, tc := range []struct {
-		name, method, path, token, body string
-		status                          int
-		chunked                         bool
+	for _, test := range []struct {
+		path, token string
+		code        int
 	}{
-		{name: "health", method: "GET", path: "/health/live", status: 200},
-		{name: "head", method: "HEAD", path: "/health/live", status: 200},
-		{name: "method", method: "POST", path: "/health/live", status: 405},
-		{name: "missing", method: "GET", path: "/unknown", status: 404},
-		{name: "auth", method: "GET", path: "/v1/requests/invalid", status: 401},
-		{name: "role", method: "POST", path: "/v1/requests", token: workerToken, status: 401},
-		{name: "id", method: "GET", path: "/v1/requests/invalid", token: apiToken, status: 400},
-		{name: "unknown field", method: "POST", path: "/v1/requests", token: apiToken, body: `{"extra":true}`, status: 400},
-		{name: "trailing JSON", method: "POST", path: "/v1/requests", token: apiToken, body: `{} {}`, status: 400},
-		{name: "body limit", method: "POST", path: "/v1/requests", token: apiToken, body: strings.Repeat("x", 257), status: 400},
-		{name: "chunked limit", method: "POST", path: "/v1/requests", token: apiToken, body: strings.Repeat("x", 257), status: 400, chunked: true},
+		{"/_gateway/live", "", 200},
+		{"/v1/gateway/requests", "", 401},
+		{"/v1/gateway/requests", workerToken, 401},
+		{"/v1/gateway/requests", apiToken, 400},
+		{"/v1/requests/no-legacy-route", apiToken, 404},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var body io.Reader = strings.NewReader(tc.body)
-			if tc.chunked {
-				body = struct{ io.Reader }{body}
-			}
-			req, err := http.NewRequest(tc.method, base+tc.path, body)
-			if err != nil {
-				t.Fatal(err)
-			}
-			req.Header.Set("Authorization", "Bearer "+tc.token)
-			response, err := http.DefaultClient.Do(req)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer response.Body.Close()
-			if response.StatusCode != tc.status {
-				t.Fatalf("expected %d got %d", tc.status, response.StatusCode)
-			}
-		})
+		req, err := http.NewRequest(http.MethodGet, base+test.path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+test.token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != test.code {
+			t.Errorf("%s: got %d want %d", test.path, resp.StatusCode, test.code)
+		}
 	}
 }

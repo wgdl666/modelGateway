@@ -20,18 +20,46 @@ type Request struct {
 	ID string `json:"id,omitempty"`
 	// ModelKey holds the value of the "model_key" field.
 	ModelKey string `json:"model_key,omitempty"`
+	// Capability holds the value of the "capability" field.
+	Capability string `json:"capability,omitempty"`
 	// RequestPayload holds the value of the "request_payload" field.
 	RequestPayload json.RawMessage `json:"request_payload,omitempty"`
+	// PayloadBytes holds the value of the "payload_bytes" field.
+	PayloadBytes int64 `json:"payload_bytes,omitempty"`
+	// Units holds the value of the "units" field.
+	Units int `json:"units,omitempty"`
+	// State holds the value of the "state" field.
+	State request.State `json:"state,omitempty"`
+	// SlotReserved holds the value of the "slot_reserved" field.
+	SlotReserved bool `json:"slot_reserved,omitempty"`
 	// InstanceID holds the value of the "instance_id" field.
 	InstanceID string `json:"instance_id,omitempty"`
+	// ResourceGroup holds the value of the "resource_group" field.
+	ResourceGroup string `json:"resource_group,omitempty"`
+	// Endpoint holds the value of the "endpoint" field.
+	Endpoint string `json:"endpoint,omitempty"`
+	// ArtifactDigest holds the value of the "artifact_digest" field.
+	ArtifactDigest string `json:"artifact_digest,omitempty"`
 	// BackendTaskID holds the value of the "backend_task_id" field.
-	BackendTaskID *string `json:"backend_task_id,omitempty"`
-	// ReservedUnits holds the value of the "reserved_units" field.
-	ReservedUnits int `json:"reserved_units,omitempty"`
-	// Status holds the value of the "status" field.
-	Status request.Status `json:"status,omitempty"`
+	BackendTaskID string `json:"backend_task_id,omitempty"`
+	// DeadlineAt holds the value of the "deadline_at" field.
+	DeadlineAt time.Time `json:"deadline_at,omitempty"`
+	// StartedAt holds the value of the "started_at" field.
+	StartedAt *time.Time `json:"started_at,omitempty"`
+	// FinishedAt holds the value of the "finished_at" field.
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	// NextPollAt holds the value of the "next_poll_at" field.
+	NextPollAt *time.Time `json:"next_poll_at,omitempty"`
+	// PollClaim holds the value of the "poll_claim" field.
+	PollClaim string `json:"poll_claim,omitempty"`
 	// Result holds the value of the "result" field.
 	Result json.RawMessage `json:"result,omitempty"`
+	// ErrorCode holds the value of the "error_code" field.
+	ErrorCode string `json:"error_code,omitempty"`
+	// ErrorMessage holds the value of the "error_message" field.
+	ErrorMessage string `json:"error_message,omitempty"`
+	// ErrorStatus holds the value of the "error_status" field.
+	ErrorStatus int `json:"error_status,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -46,11 +74,13 @@ func (*Request) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case request.FieldRequestPayload, request.FieldResult:
 			values[i] = new([]byte)
-		case request.FieldReservedUnits:
+		case request.FieldSlotReserved:
+			values[i] = new(sql.NullBool)
+		case request.FieldPayloadBytes, request.FieldUnits, request.FieldErrorStatus:
 			values[i] = new(sql.NullInt64)
-		case request.FieldID, request.FieldModelKey, request.FieldInstanceID, request.FieldBackendTaskID, request.FieldStatus:
+		case request.FieldID, request.FieldModelKey, request.FieldCapability, request.FieldState, request.FieldInstanceID, request.FieldResourceGroup, request.FieldEndpoint, request.FieldArtifactDigest, request.FieldBackendTaskID, request.FieldPollClaim, request.FieldErrorCode, request.FieldErrorMessage:
 			values[i] = new(sql.NullString)
-		case request.FieldCreatedAt, request.FieldUpdatedAt:
+		case request.FieldDeadlineAt, request.FieldStartedAt, request.FieldFinishedAt, request.FieldNextPollAt, request.FieldCreatedAt, request.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -79,6 +109,12 @@ func (_m *Request) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ModelKey = value.String
 			}
+		case request.FieldCapability:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field capability", values[i])
+			} else if value.Valid {
+				_m.Capability = value.String
+			}
 		case request.FieldRequestPayload:
 			if value, ok := values[i].(*[]byte); !ok {
 				return fmt.Errorf("unexpected type %T for field request_payload", values[i])
@@ -87,30 +123,92 @@ func (_m *Request) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field request_payload: %w", err)
 				}
 			}
+		case request.FieldPayloadBytes:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field payload_bytes", values[i])
+			} else if value.Valid {
+				_m.PayloadBytes = value.Int64
+			}
+		case request.FieldUnits:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field units", values[i])
+			} else if value.Valid {
+				_m.Units = int(value.Int64)
+			}
+		case request.FieldState:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field state", values[i])
+			} else if value.Valid {
+				_m.State = request.State(value.String)
+			}
+		case request.FieldSlotReserved:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field slot_reserved", values[i])
+			} else if value.Valid {
+				_m.SlotReserved = value.Bool
+			}
 		case request.FieldInstanceID:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field instance_id", values[i])
 			} else if value.Valid {
 				_m.InstanceID = value.String
 			}
+		case request.FieldResourceGroup:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field resource_group", values[i])
+			} else if value.Valid {
+				_m.ResourceGroup = value.String
+			}
+		case request.FieldEndpoint:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field endpoint", values[i])
+			} else if value.Valid {
+				_m.Endpoint = value.String
+			}
+		case request.FieldArtifactDigest:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field artifact_digest", values[i])
+			} else if value.Valid {
+				_m.ArtifactDigest = value.String
+			}
 		case request.FieldBackendTaskID:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field backend_task_id", values[i])
 			} else if value.Valid {
-				_m.BackendTaskID = new(string)
-				*_m.BackendTaskID = value.String
+				_m.BackendTaskID = value.String
 			}
-		case request.FieldReservedUnits:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field reserved_units", values[i])
+		case request.FieldDeadlineAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field deadline_at", values[i])
 			} else if value.Valid {
-				_m.ReservedUnits = int(value.Int64)
+				_m.DeadlineAt = value.Time
 			}
-		case request.FieldStatus:
+		case request.FieldStartedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field started_at", values[i])
+			} else if value.Valid {
+				_m.StartedAt = new(time.Time)
+				*_m.StartedAt = value.Time
+			}
+		case request.FieldFinishedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field finished_at", values[i])
+			} else if value.Valid {
+				_m.FinishedAt = new(time.Time)
+				*_m.FinishedAt = value.Time
+			}
+		case request.FieldNextPollAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field next_poll_at", values[i])
+			} else if value.Valid {
+				_m.NextPollAt = new(time.Time)
+				*_m.NextPollAt = value.Time
+			}
+		case request.FieldPollClaim:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field status", values[i])
+				return fmt.Errorf("unexpected type %T for field poll_claim", values[i])
 			} else if value.Valid {
-				_m.Status = request.Status(value.String)
+				_m.PollClaim = value.String
 			}
 		case request.FieldResult:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -119,6 +217,24 @@ func (_m *Request) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.Result); err != nil {
 					return fmt.Errorf("unmarshal field result: %w", err)
 				}
+			}
+		case request.FieldErrorCode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field error_code", values[i])
+			} else if value.Valid {
+				_m.ErrorCode = value.String
+			}
+		case request.FieldErrorMessage:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field error_message", values[i])
+			} else if value.Valid {
+				_m.ErrorMessage = value.String
+			}
+		case request.FieldErrorStatus:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field error_status", values[i])
+			} else if value.Valid {
+				_m.ErrorStatus = int(value.Int64)
 			}
 		case request.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -171,25 +287,71 @@ func (_m *Request) String() string {
 	builder.WriteString("model_key=")
 	builder.WriteString(_m.ModelKey)
 	builder.WriteString(", ")
+	builder.WriteString("capability=")
+	builder.WriteString(_m.Capability)
+	builder.WriteString(", ")
 	builder.WriteString("request_payload=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RequestPayload))
+	builder.WriteString(", ")
+	builder.WriteString("payload_bytes=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PayloadBytes))
+	builder.WriteString(", ")
+	builder.WriteString("units=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Units))
+	builder.WriteString(", ")
+	builder.WriteString("state=")
+	builder.WriteString(fmt.Sprintf("%v", _m.State))
+	builder.WriteString(", ")
+	builder.WriteString("slot_reserved=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SlotReserved))
 	builder.WriteString(", ")
 	builder.WriteString("instance_id=")
 	builder.WriteString(_m.InstanceID)
 	builder.WriteString(", ")
-	if v := _m.BackendTaskID; v != nil {
-		builder.WriteString("backend_task_id=")
-		builder.WriteString(*v)
+	builder.WriteString("resource_group=")
+	builder.WriteString(_m.ResourceGroup)
+	builder.WriteString(", ")
+	builder.WriteString("endpoint=")
+	builder.WriteString(_m.Endpoint)
+	builder.WriteString(", ")
+	builder.WriteString("artifact_digest=")
+	builder.WriteString(_m.ArtifactDigest)
+	builder.WriteString(", ")
+	builder.WriteString("backend_task_id=")
+	builder.WriteString(_m.BackendTaskID)
+	builder.WriteString(", ")
+	builder.WriteString("deadline_at=")
+	builder.WriteString(_m.DeadlineAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	if v := _m.StartedAt; v != nil {
+		builder.WriteString("started_at=")
+		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")
-	builder.WriteString("reserved_units=")
-	builder.WriteString(fmt.Sprintf("%v", _m.ReservedUnits))
+	if v := _m.FinishedAt; v != nil {
+		builder.WriteString("finished_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteString(", ")
-	builder.WriteString("status=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Status))
+	if v := _m.NextPollAt; v != nil {
+		builder.WriteString("next_poll_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("poll_claim=")
+	builder.WriteString(_m.PollClaim)
 	builder.WriteString(", ")
 	builder.WriteString("result=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Result))
+	builder.WriteString(", ")
+	builder.WriteString("error_code=")
+	builder.WriteString(_m.ErrorCode)
+	builder.WriteString(", ")
+	builder.WriteString("error_message=")
+	builder.WriteString(_m.ErrorMessage)
+	builder.WriteString(", ")
+	builder.WriteString("error_status=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ErrorStatus))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

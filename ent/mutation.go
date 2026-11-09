@@ -12,7 +12,6 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/lib/pq"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/predicate"
 	"github.com/wgdl666/modelGateway/ent/request"
@@ -34,26 +33,31 @@ const (
 // ModelInstanceMutation represents an operation that mutates the ModelInstance nodes in the graph.
 type ModelInstanceMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *string
-	model_key         *string
-	endpoint          *string
-	machine_id        *string
-	gpu_devices       *pq.Int64Array
-	capacity_units    *int
-	addcapacity_units *int
-	used_units        *int
-	addused_units     *int
-	ready             *bool
-	draining          *bool
-	lease_expires_at  *time.Time
-	created_at        *time.Time
-	updated_at        *time.Time
-	clearedFields     map[string]struct{}
-	done              bool
-	oldValue          func(context.Context) (*ModelInstance, error)
-	predicates        []predicate.ModelInstance
+	op                      Op
+	typ                     string
+	id                      *string
+	model_key               *string
+	capability              *string
+	endpoint                *string
+	health_url              *string
+	artifact_digest         *string
+	resource_group          *string
+	group_capacity_units    *int
+	addgroup_capacity_units *int
+	capacity_units          *int
+	addcapacity_units       *int
+	machine_id              *string
+	gpu_devices             *[]int
+	appendgpu_devices       []int
+	ready                   *bool
+	health_checked_at       *time.Time
+	draining                *bool
+	created_at              *time.Time
+	updated_at              *time.Time
+	clearedFields           map[string]struct{}
+	done                    bool
+	oldValue                func(context.Context) (*ModelInstance, error)
+	predicates              []predicate.ModelInstance
 }
 
 var _ ent.Mutation = (*ModelInstanceMutation)(nil)
@@ -196,6 +200,42 @@ func (m *ModelInstanceMutation) ResetModelKey() {
 	m.model_key = nil
 }
 
+// SetCapability sets the "capability" field.
+func (m *ModelInstanceMutation) SetCapability(s string) {
+	m.capability = &s
+}
+
+// Capability returns the value of the "capability" field in the mutation.
+func (m *ModelInstanceMutation) Capability() (r string, exists bool) {
+	v := m.capability
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCapability returns the old "capability" field's value of the ModelInstance entity.
+// If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelInstanceMutation) OldCapability(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCapability is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCapability requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCapability: %w", err)
+	}
+	return oldValue.Capability, nil
+}
+
+// ResetCapability resets all changes to the "capability" field.
+func (m *ModelInstanceMutation) ResetCapability() {
+	m.capability = nil
+}
+
 // SetEndpoint sets the "endpoint" field.
 func (m *ModelInstanceMutation) SetEndpoint(s string) {
 	m.endpoint = &s
@@ -232,76 +272,168 @@ func (m *ModelInstanceMutation) ResetEndpoint() {
 	m.endpoint = nil
 }
 
-// SetMachineID sets the "machine_id" field.
-func (m *ModelInstanceMutation) SetMachineID(s string) {
-	m.machine_id = &s
+// SetHealthURL sets the "health_url" field.
+func (m *ModelInstanceMutation) SetHealthURL(s string) {
+	m.health_url = &s
 }
 
-// MachineID returns the value of the "machine_id" field in the mutation.
-func (m *ModelInstanceMutation) MachineID() (r string, exists bool) {
-	v := m.machine_id
+// HealthURL returns the value of the "health_url" field in the mutation.
+func (m *ModelInstanceMutation) HealthURL() (r string, exists bool) {
+	v := m.health_url
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldMachineID returns the old "machine_id" field's value of the ModelInstance entity.
+// OldHealthURL returns the old "health_url" field's value of the ModelInstance entity.
 // If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelInstanceMutation) OldMachineID(ctx context.Context) (v string, err error) {
+func (m *ModelInstanceMutation) OldHealthURL(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldMachineID is only allowed on UpdateOne operations")
+		return v, errors.New("OldHealthURL is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldMachineID requires an ID field in the mutation")
+		return v, errors.New("OldHealthURL requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldMachineID: %w", err)
+		return v, fmt.Errorf("querying old value for OldHealthURL: %w", err)
 	}
-	return oldValue.MachineID, nil
+	return oldValue.HealthURL, nil
 }
 
-// ResetMachineID resets all changes to the "machine_id" field.
-func (m *ModelInstanceMutation) ResetMachineID() {
-	m.machine_id = nil
+// ResetHealthURL resets all changes to the "health_url" field.
+func (m *ModelInstanceMutation) ResetHealthURL() {
+	m.health_url = nil
 }
 
-// SetGpuDevices sets the "gpu_devices" field.
-func (m *ModelInstanceMutation) SetGpuDevices(pq pq.Int64Array) {
-	m.gpu_devices = &pq
+// SetArtifactDigest sets the "artifact_digest" field.
+func (m *ModelInstanceMutation) SetArtifactDigest(s string) {
+	m.artifact_digest = &s
 }
 
-// GpuDevices returns the value of the "gpu_devices" field in the mutation.
-func (m *ModelInstanceMutation) GpuDevices() (r pq.Int64Array, exists bool) {
-	v := m.gpu_devices
+// ArtifactDigest returns the value of the "artifact_digest" field in the mutation.
+func (m *ModelInstanceMutation) ArtifactDigest() (r string, exists bool) {
+	v := m.artifact_digest
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldGpuDevices returns the old "gpu_devices" field's value of the ModelInstance entity.
+// OldArtifactDigest returns the old "artifact_digest" field's value of the ModelInstance entity.
 // If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelInstanceMutation) OldGpuDevices(ctx context.Context) (v pq.Int64Array, err error) {
+func (m *ModelInstanceMutation) OldArtifactDigest(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldGpuDevices is only allowed on UpdateOne operations")
+		return v, errors.New("OldArtifactDigest is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldGpuDevices requires an ID field in the mutation")
+		return v, errors.New("OldArtifactDigest requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldGpuDevices: %w", err)
+		return v, fmt.Errorf("querying old value for OldArtifactDigest: %w", err)
 	}
-	return oldValue.GpuDevices, nil
+	return oldValue.ArtifactDigest, nil
 }
 
-// ResetGpuDevices resets all changes to the "gpu_devices" field.
-func (m *ModelInstanceMutation) ResetGpuDevices() {
-	m.gpu_devices = nil
+// ResetArtifactDigest resets all changes to the "artifact_digest" field.
+func (m *ModelInstanceMutation) ResetArtifactDigest() {
+	m.artifact_digest = nil
+}
+
+// SetResourceGroup sets the "resource_group" field.
+func (m *ModelInstanceMutation) SetResourceGroup(s string) {
+	m.resource_group = &s
+}
+
+// ResourceGroup returns the value of the "resource_group" field in the mutation.
+func (m *ModelInstanceMutation) ResourceGroup() (r string, exists bool) {
+	v := m.resource_group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResourceGroup returns the old "resource_group" field's value of the ModelInstance entity.
+// If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelInstanceMutation) OldResourceGroup(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResourceGroup is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResourceGroup requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResourceGroup: %w", err)
+	}
+	return oldValue.ResourceGroup, nil
+}
+
+// ResetResourceGroup resets all changes to the "resource_group" field.
+func (m *ModelInstanceMutation) ResetResourceGroup() {
+	m.resource_group = nil
+}
+
+// SetGroupCapacityUnits sets the "group_capacity_units" field.
+func (m *ModelInstanceMutation) SetGroupCapacityUnits(i int) {
+	m.group_capacity_units = &i
+	m.addgroup_capacity_units = nil
+}
+
+// GroupCapacityUnits returns the value of the "group_capacity_units" field in the mutation.
+func (m *ModelInstanceMutation) GroupCapacityUnits() (r int, exists bool) {
+	v := m.group_capacity_units
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupCapacityUnits returns the old "group_capacity_units" field's value of the ModelInstance entity.
+// If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelInstanceMutation) OldGroupCapacityUnits(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupCapacityUnits is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupCapacityUnits requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupCapacityUnits: %w", err)
+	}
+	return oldValue.GroupCapacityUnits, nil
+}
+
+// AddGroupCapacityUnits adds i to the "group_capacity_units" field.
+func (m *ModelInstanceMutation) AddGroupCapacityUnits(i int) {
+	if m.addgroup_capacity_units != nil {
+		*m.addgroup_capacity_units += i
+	} else {
+		m.addgroup_capacity_units = &i
+	}
+}
+
+// AddedGroupCapacityUnits returns the value that was added to the "group_capacity_units" field in this mutation.
+func (m *ModelInstanceMutation) AddedGroupCapacityUnits() (r int, exists bool) {
+	v := m.addgroup_capacity_units
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetGroupCapacityUnits resets all changes to the "group_capacity_units" field.
+func (m *ModelInstanceMutation) ResetGroupCapacityUnits() {
+	m.group_capacity_units = nil
+	m.addgroup_capacity_units = nil
 }
 
 // SetCapacityUnits sets the "capacity_units" field.
@@ -360,60 +492,105 @@ func (m *ModelInstanceMutation) ResetCapacityUnits() {
 	m.addcapacity_units = nil
 }
 
-// SetUsedUnits sets the "used_units" field.
-func (m *ModelInstanceMutation) SetUsedUnits(i int) {
-	m.used_units = &i
-	m.addused_units = nil
+// SetMachineID sets the "machine_id" field.
+func (m *ModelInstanceMutation) SetMachineID(s string) {
+	m.machine_id = &s
 }
 
-// UsedUnits returns the value of the "used_units" field in the mutation.
-func (m *ModelInstanceMutation) UsedUnits() (r int, exists bool) {
-	v := m.used_units
+// MachineID returns the value of the "machine_id" field in the mutation.
+func (m *ModelInstanceMutation) MachineID() (r string, exists bool) {
+	v := m.machine_id
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldUsedUnits returns the old "used_units" field's value of the ModelInstance entity.
+// OldMachineID returns the old "machine_id" field's value of the ModelInstance entity.
 // If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelInstanceMutation) OldUsedUnits(ctx context.Context) (v int, err error) {
+func (m *ModelInstanceMutation) OldMachineID(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldUsedUnits is only allowed on UpdateOne operations")
+		return v, errors.New("OldMachineID is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldUsedUnits requires an ID field in the mutation")
+		return v, errors.New("OldMachineID requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldUsedUnits: %w", err)
+		return v, fmt.Errorf("querying old value for OldMachineID: %w", err)
 	}
-	return oldValue.UsedUnits, nil
+	return oldValue.MachineID, nil
 }
 
-// AddUsedUnits adds i to the "used_units" field.
-func (m *ModelInstanceMutation) AddUsedUnits(i int) {
-	if m.addused_units != nil {
-		*m.addused_units += i
-	} else {
-		m.addused_units = &i
-	}
+// ResetMachineID resets all changes to the "machine_id" field.
+func (m *ModelInstanceMutation) ResetMachineID() {
+	m.machine_id = nil
 }
 
-// AddedUsedUnits returns the value that was added to the "used_units" field in this mutation.
-func (m *ModelInstanceMutation) AddedUsedUnits() (r int, exists bool) {
-	v := m.addused_units
+// SetGpuDevices sets the "gpu_devices" field.
+func (m *ModelInstanceMutation) SetGpuDevices(i []int) {
+	m.gpu_devices = &i
+	m.appendgpu_devices = nil
+}
+
+// GpuDevices returns the value of the "gpu_devices" field in the mutation.
+func (m *ModelInstanceMutation) GpuDevices() (r []int, exists bool) {
+	v := m.gpu_devices
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// ResetUsedUnits resets all changes to the "used_units" field.
-func (m *ModelInstanceMutation) ResetUsedUnits() {
-	m.used_units = nil
-	m.addused_units = nil
+// OldGpuDevices returns the old "gpu_devices" field's value of the ModelInstance entity.
+// If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelInstanceMutation) OldGpuDevices(ctx context.Context) (v []int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGpuDevices is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGpuDevices requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGpuDevices: %w", err)
+	}
+	return oldValue.GpuDevices, nil
+}
+
+// AppendGpuDevices adds i to the "gpu_devices" field.
+func (m *ModelInstanceMutation) AppendGpuDevices(i []int) {
+	m.appendgpu_devices = append(m.appendgpu_devices, i...)
+}
+
+// AppendedGpuDevices returns the list of values that were appended to the "gpu_devices" field in this mutation.
+func (m *ModelInstanceMutation) AppendedGpuDevices() ([]int, bool) {
+	if len(m.appendgpu_devices) == 0 {
+		return nil, false
+	}
+	return m.appendgpu_devices, true
+}
+
+// ClearGpuDevices clears the value of the "gpu_devices" field.
+func (m *ModelInstanceMutation) ClearGpuDevices() {
+	m.gpu_devices = nil
+	m.appendgpu_devices = nil
+	m.clearedFields[modelinstance.FieldGpuDevices] = struct{}{}
+}
+
+// GpuDevicesCleared returns if the "gpu_devices" field was cleared in this mutation.
+func (m *ModelInstanceMutation) GpuDevicesCleared() bool {
+	_, ok := m.clearedFields[modelinstance.FieldGpuDevices]
+	return ok
+}
+
+// ResetGpuDevices resets all changes to the "gpu_devices" field.
+func (m *ModelInstanceMutation) ResetGpuDevices() {
+	m.gpu_devices = nil
+	m.appendgpu_devices = nil
+	delete(m.clearedFields, modelinstance.FieldGpuDevices)
 }
 
 // SetReady sets the "ready" field.
@@ -452,6 +629,42 @@ func (m *ModelInstanceMutation) ResetReady() {
 	m.ready = nil
 }
 
+// SetHealthCheckedAt sets the "health_checked_at" field.
+func (m *ModelInstanceMutation) SetHealthCheckedAt(t time.Time) {
+	m.health_checked_at = &t
+}
+
+// HealthCheckedAt returns the value of the "health_checked_at" field in the mutation.
+func (m *ModelInstanceMutation) HealthCheckedAt() (r time.Time, exists bool) {
+	v := m.health_checked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHealthCheckedAt returns the old "health_checked_at" field's value of the ModelInstance entity.
+// If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelInstanceMutation) OldHealthCheckedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHealthCheckedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHealthCheckedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHealthCheckedAt: %w", err)
+	}
+	return oldValue.HealthCheckedAt, nil
+}
+
+// ResetHealthCheckedAt resets all changes to the "health_checked_at" field.
+func (m *ModelInstanceMutation) ResetHealthCheckedAt() {
+	m.health_checked_at = nil
+}
+
 // SetDraining sets the "draining" field.
 func (m *ModelInstanceMutation) SetDraining(b bool) {
 	m.draining = &b
@@ -486,42 +699,6 @@ func (m *ModelInstanceMutation) OldDraining(ctx context.Context) (v bool, err er
 // ResetDraining resets all changes to the "draining" field.
 func (m *ModelInstanceMutation) ResetDraining() {
 	m.draining = nil
-}
-
-// SetLeaseExpiresAt sets the "lease_expires_at" field.
-func (m *ModelInstanceMutation) SetLeaseExpiresAt(t time.Time) {
-	m.lease_expires_at = &t
-}
-
-// LeaseExpiresAt returns the value of the "lease_expires_at" field in the mutation.
-func (m *ModelInstanceMutation) LeaseExpiresAt() (r time.Time, exists bool) {
-	v := m.lease_expires_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLeaseExpiresAt returns the old "lease_expires_at" field's value of the ModelInstance entity.
-// If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelInstanceMutation) OldLeaseExpiresAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLeaseExpiresAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLeaseExpiresAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLeaseExpiresAt: %w", err)
-	}
-	return oldValue.LeaseExpiresAt, nil
-}
-
-// ResetLeaseExpiresAt resets all changes to the "lease_expires_at" field.
-func (m *ModelInstanceMutation) ResetLeaseExpiresAt() {
-	m.lease_expires_at = nil
 }
 
 // SetCreatedAt sets the "created_at" field.
@@ -630,12 +807,30 @@ func (m *ModelInstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelInstanceMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 15)
 	if m.model_key != nil {
 		fields = append(fields, modelinstance.FieldModelKey)
 	}
+	if m.capability != nil {
+		fields = append(fields, modelinstance.FieldCapability)
+	}
 	if m.endpoint != nil {
 		fields = append(fields, modelinstance.FieldEndpoint)
+	}
+	if m.health_url != nil {
+		fields = append(fields, modelinstance.FieldHealthURL)
+	}
+	if m.artifact_digest != nil {
+		fields = append(fields, modelinstance.FieldArtifactDigest)
+	}
+	if m.resource_group != nil {
+		fields = append(fields, modelinstance.FieldResourceGroup)
+	}
+	if m.group_capacity_units != nil {
+		fields = append(fields, modelinstance.FieldGroupCapacityUnits)
+	}
+	if m.capacity_units != nil {
+		fields = append(fields, modelinstance.FieldCapacityUnits)
 	}
 	if m.machine_id != nil {
 		fields = append(fields, modelinstance.FieldMachineID)
@@ -643,20 +838,14 @@ func (m *ModelInstanceMutation) Fields() []string {
 	if m.gpu_devices != nil {
 		fields = append(fields, modelinstance.FieldGpuDevices)
 	}
-	if m.capacity_units != nil {
-		fields = append(fields, modelinstance.FieldCapacityUnits)
-	}
-	if m.used_units != nil {
-		fields = append(fields, modelinstance.FieldUsedUnits)
-	}
 	if m.ready != nil {
 		fields = append(fields, modelinstance.FieldReady)
 	}
+	if m.health_checked_at != nil {
+		fields = append(fields, modelinstance.FieldHealthCheckedAt)
+	}
 	if m.draining != nil {
 		fields = append(fields, modelinstance.FieldDraining)
-	}
-	if m.lease_expires_at != nil {
-		fields = append(fields, modelinstance.FieldLeaseExpiresAt)
 	}
 	if m.created_at != nil {
 		fields = append(fields, modelinstance.FieldCreatedAt)
@@ -674,22 +863,30 @@ func (m *ModelInstanceMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case modelinstance.FieldModelKey:
 		return m.ModelKey()
+	case modelinstance.FieldCapability:
+		return m.Capability()
 	case modelinstance.FieldEndpoint:
 		return m.Endpoint()
+	case modelinstance.FieldHealthURL:
+		return m.HealthURL()
+	case modelinstance.FieldArtifactDigest:
+		return m.ArtifactDigest()
+	case modelinstance.FieldResourceGroup:
+		return m.ResourceGroup()
+	case modelinstance.FieldGroupCapacityUnits:
+		return m.GroupCapacityUnits()
+	case modelinstance.FieldCapacityUnits:
+		return m.CapacityUnits()
 	case modelinstance.FieldMachineID:
 		return m.MachineID()
 	case modelinstance.FieldGpuDevices:
 		return m.GpuDevices()
-	case modelinstance.FieldCapacityUnits:
-		return m.CapacityUnits()
-	case modelinstance.FieldUsedUnits:
-		return m.UsedUnits()
 	case modelinstance.FieldReady:
 		return m.Ready()
+	case modelinstance.FieldHealthCheckedAt:
+		return m.HealthCheckedAt()
 	case modelinstance.FieldDraining:
 		return m.Draining()
-	case modelinstance.FieldLeaseExpiresAt:
-		return m.LeaseExpiresAt()
 	case modelinstance.FieldCreatedAt:
 		return m.CreatedAt()
 	case modelinstance.FieldUpdatedAt:
@@ -705,22 +902,30 @@ func (m *ModelInstanceMutation) OldField(ctx context.Context, name string) (ent.
 	switch name {
 	case modelinstance.FieldModelKey:
 		return m.OldModelKey(ctx)
+	case modelinstance.FieldCapability:
+		return m.OldCapability(ctx)
 	case modelinstance.FieldEndpoint:
 		return m.OldEndpoint(ctx)
+	case modelinstance.FieldHealthURL:
+		return m.OldHealthURL(ctx)
+	case modelinstance.FieldArtifactDigest:
+		return m.OldArtifactDigest(ctx)
+	case modelinstance.FieldResourceGroup:
+		return m.OldResourceGroup(ctx)
+	case modelinstance.FieldGroupCapacityUnits:
+		return m.OldGroupCapacityUnits(ctx)
+	case modelinstance.FieldCapacityUnits:
+		return m.OldCapacityUnits(ctx)
 	case modelinstance.FieldMachineID:
 		return m.OldMachineID(ctx)
 	case modelinstance.FieldGpuDevices:
 		return m.OldGpuDevices(ctx)
-	case modelinstance.FieldCapacityUnits:
-		return m.OldCapacityUnits(ctx)
-	case modelinstance.FieldUsedUnits:
-		return m.OldUsedUnits(ctx)
 	case modelinstance.FieldReady:
 		return m.OldReady(ctx)
+	case modelinstance.FieldHealthCheckedAt:
+		return m.OldHealthCheckedAt(ctx)
 	case modelinstance.FieldDraining:
 		return m.OldDraining(ctx)
-	case modelinstance.FieldLeaseExpiresAt:
-		return m.OldLeaseExpiresAt(ctx)
 	case modelinstance.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case modelinstance.FieldUpdatedAt:
@@ -741,12 +946,54 @@ func (m *ModelInstanceMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetModelKey(v)
 		return nil
+	case modelinstance.FieldCapability:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCapability(v)
+		return nil
 	case modelinstance.FieldEndpoint:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEndpoint(v)
+		return nil
+	case modelinstance.FieldHealthURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHealthURL(v)
+		return nil
+	case modelinstance.FieldArtifactDigest:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetArtifactDigest(v)
+		return nil
+	case modelinstance.FieldResourceGroup:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResourceGroup(v)
+		return nil
+	case modelinstance.FieldGroupCapacityUnits:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupCapacityUnits(v)
+		return nil
+	case modelinstance.FieldCapacityUnits:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCapacityUnits(v)
 		return nil
 	case modelinstance.FieldMachineID:
 		v, ok := value.(string)
@@ -756,25 +1003,11 @@ func (m *ModelInstanceMutation) SetField(name string, value ent.Value) error {
 		m.SetMachineID(v)
 		return nil
 	case modelinstance.FieldGpuDevices:
-		v, ok := value.(pq.Int64Array)
+		v, ok := value.([]int)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetGpuDevices(v)
-		return nil
-	case modelinstance.FieldCapacityUnits:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCapacityUnits(v)
-		return nil
-	case modelinstance.FieldUsedUnits:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetUsedUnits(v)
 		return nil
 	case modelinstance.FieldReady:
 		v, ok := value.(bool)
@@ -783,19 +1016,19 @@ func (m *ModelInstanceMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetReady(v)
 		return nil
+	case modelinstance.FieldHealthCheckedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHealthCheckedAt(v)
+		return nil
 	case modelinstance.FieldDraining:
 		v, ok := value.(bool)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDraining(v)
-		return nil
-	case modelinstance.FieldLeaseExpiresAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLeaseExpiresAt(v)
 		return nil
 	case modelinstance.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -819,11 +1052,11 @@ func (m *ModelInstanceMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *ModelInstanceMutation) AddedFields() []string {
 	var fields []string
+	if m.addgroup_capacity_units != nil {
+		fields = append(fields, modelinstance.FieldGroupCapacityUnits)
+	}
 	if m.addcapacity_units != nil {
 		fields = append(fields, modelinstance.FieldCapacityUnits)
-	}
-	if m.addused_units != nil {
-		fields = append(fields, modelinstance.FieldUsedUnits)
 	}
 	return fields
 }
@@ -833,10 +1066,10 @@ func (m *ModelInstanceMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *ModelInstanceMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case modelinstance.FieldGroupCapacityUnits:
+		return m.AddedGroupCapacityUnits()
 	case modelinstance.FieldCapacityUnits:
 		return m.AddedCapacityUnits()
-	case modelinstance.FieldUsedUnits:
-		return m.AddedUsedUnits()
 	}
 	return nil, false
 }
@@ -846,19 +1079,19 @@ func (m *ModelInstanceMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *ModelInstanceMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case modelinstance.FieldGroupCapacityUnits:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGroupCapacityUnits(v)
+		return nil
 	case modelinstance.FieldCapacityUnits:
 		v, ok := value.(int)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddCapacityUnits(v)
-		return nil
-	case modelinstance.FieldUsedUnits:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddUsedUnits(v)
 		return nil
 	}
 	return fmt.Errorf("unknown ModelInstance numeric field %s", name)
@@ -867,7 +1100,11 @@ func (m *ModelInstanceMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *ModelInstanceMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(modelinstance.FieldGpuDevices) {
+		fields = append(fields, modelinstance.FieldGpuDevices)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -880,6 +1117,11 @@ func (m *ModelInstanceMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *ModelInstanceMutation) ClearField(name string) error {
+	switch name {
+	case modelinstance.FieldGpuDevices:
+		m.ClearGpuDevices()
+		return nil
+	}
 	return fmt.Errorf("unknown ModelInstance nullable field %s", name)
 }
 
@@ -890,8 +1132,26 @@ func (m *ModelInstanceMutation) ResetField(name string) error {
 	case modelinstance.FieldModelKey:
 		m.ResetModelKey()
 		return nil
+	case modelinstance.FieldCapability:
+		m.ResetCapability()
+		return nil
 	case modelinstance.FieldEndpoint:
 		m.ResetEndpoint()
+		return nil
+	case modelinstance.FieldHealthURL:
+		m.ResetHealthURL()
+		return nil
+	case modelinstance.FieldArtifactDigest:
+		m.ResetArtifactDigest()
+		return nil
+	case modelinstance.FieldResourceGroup:
+		m.ResetResourceGroup()
+		return nil
+	case modelinstance.FieldGroupCapacityUnits:
+		m.ResetGroupCapacityUnits()
+		return nil
+	case modelinstance.FieldCapacityUnits:
+		m.ResetCapacityUnits()
 		return nil
 	case modelinstance.FieldMachineID:
 		m.ResetMachineID()
@@ -899,20 +1159,14 @@ func (m *ModelInstanceMutation) ResetField(name string) error {
 	case modelinstance.FieldGpuDevices:
 		m.ResetGpuDevices()
 		return nil
-	case modelinstance.FieldCapacityUnits:
-		m.ResetCapacityUnits()
-		return nil
-	case modelinstance.FieldUsedUnits:
-		m.ResetUsedUnits()
-		return nil
 	case modelinstance.FieldReady:
 		m.ResetReady()
 		return nil
+	case modelinstance.FieldHealthCheckedAt:
+		m.ResetHealthCheckedAt()
+		return nil
 	case modelinstance.FieldDraining:
 		m.ResetDraining()
-		return nil
-	case modelinstance.FieldLeaseExpiresAt:
-		m.ResetLeaseExpiresAt()
 		return nil
 	case modelinstance.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -979,15 +1233,31 @@ type RequestMutation struct {
 	typ                   string
 	id                    *string
 	model_key             *string
+	capability            *string
 	request_payload       *json.RawMessage
 	appendrequest_payload json.RawMessage
+	payload_bytes         *int64
+	addpayload_bytes      *int64
+	units                 *int
+	addunits              *int
+	state                 *request.State
+	slot_reserved         *bool
 	instance_id           *string
+	resource_group        *string
+	endpoint              *string
+	artifact_digest       *string
 	backend_task_id       *string
-	reserved_units        *int
-	addreserved_units     *int
-	status                *request.Status
+	deadline_at           *time.Time
+	started_at            *time.Time
+	finished_at           *time.Time
+	next_poll_at          *time.Time
+	poll_claim            *string
 	result                *json.RawMessage
 	appendresult          json.RawMessage
+	error_code            *string
+	error_message         *string
+	error_status          *int
+	adderror_status       *int
 	created_at            *time.Time
 	updated_at            *time.Time
 	clearedFields         map[string]struct{}
@@ -1136,6 +1406,42 @@ func (m *RequestMutation) ResetModelKey() {
 	m.model_key = nil
 }
 
+// SetCapability sets the "capability" field.
+func (m *RequestMutation) SetCapability(s string) {
+	m.capability = &s
+}
+
+// Capability returns the value of the "capability" field in the mutation.
+func (m *RequestMutation) Capability() (r string, exists bool) {
+	v := m.capability
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCapability returns the old "capability" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldCapability(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCapability is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCapability requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCapability: %w", err)
+	}
+	return oldValue.Capability, nil
+}
+
+// ResetCapability resets all changes to the "capability" field.
+func (m *RequestMutation) ResetCapability() {
+	m.capability = nil
+}
+
 // SetRequestPayload sets the "request_payload" field.
 func (m *RequestMutation) SetRequestPayload(jm json.RawMessage) {
 	m.request_payload = &jm
@@ -1187,6 +1493,190 @@ func (m *RequestMutation) ResetRequestPayload() {
 	m.appendrequest_payload = nil
 }
 
+// SetPayloadBytes sets the "payload_bytes" field.
+func (m *RequestMutation) SetPayloadBytes(i int64) {
+	m.payload_bytes = &i
+	m.addpayload_bytes = nil
+}
+
+// PayloadBytes returns the value of the "payload_bytes" field in the mutation.
+func (m *RequestMutation) PayloadBytes() (r int64, exists bool) {
+	v := m.payload_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadBytes returns the old "payload_bytes" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldPayloadBytes(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadBytes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadBytes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadBytes: %w", err)
+	}
+	return oldValue.PayloadBytes, nil
+}
+
+// AddPayloadBytes adds i to the "payload_bytes" field.
+func (m *RequestMutation) AddPayloadBytes(i int64) {
+	if m.addpayload_bytes != nil {
+		*m.addpayload_bytes += i
+	} else {
+		m.addpayload_bytes = &i
+	}
+}
+
+// AddedPayloadBytes returns the value that was added to the "payload_bytes" field in this mutation.
+func (m *RequestMutation) AddedPayloadBytes() (r int64, exists bool) {
+	v := m.addpayload_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPayloadBytes resets all changes to the "payload_bytes" field.
+func (m *RequestMutation) ResetPayloadBytes() {
+	m.payload_bytes = nil
+	m.addpayload_bytes = nil
+}
+
+// SetUnits sets the "units" field.
+func (m *RequestMutation) SetUnits(i int) {
+	m.units = &i
+	m.addunits = nil
+}
+
+// Units returns the value of the "units" field in the mutation.
+func (m *RequestMutation) Units() (r int, exists bool) {
+	v := m.units
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUnits returns the old "units" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldUnits(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUnits is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUnits requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUnits: %w", err)
+	}
+	return oldValue.Units, nil
+}
+
+// AddUnits adds i to the "units" field.
+func (m *RequestMutation) AddUnits(i int) {
+	if m.addunits != nil {
+		*m.addunits += i
+	} else {
+		m.addunits = &i
+	}
+}
+
+// AddedUnits returns the value that was added to the "units" field in this mutation.
+func (m *RequestMutation) AddedUnits() (r int, exists bool) {
+	v := m.addunits
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUnits resets all changes to the "units" field.
+func (m *RequestMutation) ResetUnits() {
+	m.units = nil
+	m.addunits = nil
+}
+
+// SetState sets the "state" field.
+func (m *RequestMutation) SetState(r request.State) {
+	m.state = &r
+}
+
+// State returns the value of the "state" field in the mutation.
+func (m *RequestMutation) State() (r request.State, exists bool) {
+	v := m.state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldState returns the old "state" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldState(ctx context.Context) (v request.State, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldState: %w", err)
+	}
+	return oldValue.State, nil
+}
+
+// ResetState resets all changes to the "state" field.
+func (m *RequestMutation) ResetState() {
+	m.state = nil
+}
+
+// SetSlotReserved sets the "slot_reserved" field.
+func (m *RequestMutation) SetSlotReserved(b bool) {
+	m.slot_reserved = &b
+}
+
+// SlotReserved returns the value of the "slot_reserved" field in the mutation.
+func (m *RequestMutation) SlotReserved() (r bool, exists bool) {
+	v := m.slot_reserved
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSlotReserved returns the old "slot_reserved" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldSlotReserved(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSlotReserved is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSlotReserved requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSlotReserved: %w", err)
+	}
+	return oldValue.SlotReserved, nil
+}
+
+// ResetSlotReserved resets all changes to the "slot_reserved" field.
+func (m *RequestMutation) ResetSlotReserved() {
+	m.slot_reserved = nil
+}
+
 // SetInstanceID sets the "instance_id" field.
 func (m *RequestMutation) SetInstanceID(s string) {
 	m.instance_id = &s
@@ -1223,6 +1713,114 @@ func (m *RequestMutation) ResetInstanceID() {
 	m.instance_id = nil
 }
 
+// SetResourceGroup sets the "resource_group" field.
+func (m *RequestMutation) SetResourceGroup(s string) {
+	m.resource_group = &s
+}
+
+// ResourceGroup returns the value of the "resource_group" field in the mutation.
+func (m *RequestMutation) ResourceGroup() (r string, exists bool) {
+	v := m.resource_group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResourceGroup returns the old "resource_group" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldResourceGroup(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResourceGroup is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResourceGroup requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResourceGroup: %w", err)
+	}
+	return oldValue.ResourceGroup, nil
+}
+
+// ResetResourceGroup resets all changes to the "resource_group" field.
+func (m *RequestMutation) ResetResourceGroup() {
+	m.resource_group = nil
+}
+
+// SetEndpoint sets the "endpoint" field.
+func (m *RequestMutation) SetEndpoint(s string) {
+	m.endpoint = &s
+}
+
+// Endpoint returns the value of the "endpoint" field in the mutation.
+func (m *RequestMutation) Endpoint() (r string, exists bool) {
+	v := m.endpoint
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEndpoint returns the old "endpoint" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldEndpoint(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEndpoint is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEndpoint requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEndpoint: %w", err)
+	}
+	return oldValue.Endpoint, nil
+}
+
+// ResetEndpoint resets all changes to the "endpoint" field.
+func (m *RequestMutation) ResetEndpoint() {
+	m.endpoint = nil
+}
+
+// SetArtifactDigest sets the "artifact_digest" field.
+func (m *RequestMutation) SetArtifactDigest(s string) {
+	m.artifact_digest = &s
+}
+
+// ArtifactDigest returns the value of the "artifact_digest" field in the mutation.
+func (m *RequestMutation) ArtifactDigest() (r string, exists bool) {
+	v := m.artifact_digest
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldArtifactDigest returns the old "artifact_digest" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldArtifactDigest(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldArtifactDigest is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldArtifactDigest requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldArtifactDigest: %w", err)
+	}
+	return oldValue.ArtifactDigest, nil
+}
+
+// ResetArtifactDigest resets all changes to the "artifact_digest" field.
+func (m *RequestMutation) ResetArtifactDigest() {
+	m.artifact_digest = nil
+}
+
 // SetBackendTaskID sets the "backend_task_id" field.
 func (m *RequestMutation) SetBackendTaskID(s string) {
 	m.backend_task_id = &s
@@ -1240,7 +1838,7 @@ func (m *RequestMutation) BackendTaskID() (r string, exists bool) {
 // OldBackendTaskID returns the old "backend_task_id" field's value of the Request entity.
 // If the Request object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *RequestMutation) OldBackendTaskID(ctx context.Context) (v *string, err error) {
+func (m *RequestMutation) OldBackendTaskID(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldBackendTaskID is only allowed on UpdateOne operations")
 	}
@@ -1254,114 +1852,228 @@ func (m *RequestMutation) OldBackendTaskID(ctx context.Context) (v *string, err 
 	return oldValue.BackendTaskID, nil
 }
 
-// ClearBackendTaskID clears the value of the "backend_task_id" field.
-func (m *RequestMutation) ClearBackendTaskID() {
-	m.backend_task_id = nil
-	m.clearedFields[request.FieldBackendTaskID] = struct{}{}
-}
-
-// BackendTaskIDCleared returns if the "backend_task_id" field was cleared in this mutation.
-func (m *RequestMutation) BackendTaskIDCleared() bool {
-	_, ok := m.clearedFields[request.FieldBackendTaskID]
-	return ok
-}
-
 // ResetBackendTaskID resets all changes to the "backend_task_id" field.
 func (m *RequestMutation) ResetBackendTaskID() {
 	m.backend_task_id = nil
-	delete(m.clearedFields, request.FieldBackendTaskID)
 }
 
-// SetReservedUnits sets the "reserved_units" field.
-func (m *RequestMutation) SetReservedUnits(i int) {
-	m.reserved_units = &i
-	m.addreserved_units = nil
+// SetDeadlineAt sets the "deadline_at" field.
+func (m *RequestMutation) SetDeadlineAt(t time.Time) {
+	m.deadline_at = &t
 }
 
-// ReservedUnits returns the value of the "reserved_units" field in the mutation.
-func (m *RequestMutation) ReservedUnits() (r int, exists bool) {
-	v := m.reserved_units
+// DeadlineAt returns the value of the "deadline_at" field in the mutation.
+func (m *RequestMutation) DeadlineAt() (r time.Time, exists bool) {
+	v := m.deadline_at
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldReservedUnits returns the old "reserved_units" field's value of the Request entity.
+// OldDeadlineAt returns the old "deadline_at" field's value of the Request entity.
 // If the Request object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *RequestMutation) OldReservedUnits(ctx context.Context) (v int, err error) {
+func (m *RequestMutation) OldDeadlineAt(ctx context.Context) (v time.Time, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldReservedUnits is only allowed on UpdateOne operations")
+		return v, errors.New("OldDeadlineAt is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldReservedUnits requires an ID field in the mutation")
+		return v, errors.New("OldDeadlineAt requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldReservedUnits: %w", err)
+		return v, fmt.Errorf("querying old value for OldDeadlineAt: %w", err)
 	}
-	return oldValue.ReservedUnits, nil
+	return oldValue.DeadlineAt, nil
 }
 
-// AddReservedUnits adds i to the "reserved_units" field.
-func (m *RequestMutation) AddReservedUnits(i int) {
-	if m.addreserved_units != nil {
-		*m.addreserved_units += i
-	} else {
-		m.addreserved_units = &i
-	}
+// ResetDeadlineAt resets all changes to the "deadline_at" field.
+func (m *RequestMutation) ResetDeadlineAt() {
+	m.deadline_at = nil
 }
 
-// AddedReservedUnits returns the value that was added to the "reserved_units" field in this mutation.
-func (m *RequestMutation) AddedReservedUnits() (r int, exists bool) {
-	v := m.addreserved_units
+// SetStartedAt sets the "started_at" field.
+func (m *RequestMutation) SetStartedAt(t time.Time) {
+	m.started_at = &t
+}
+
+// StartedAt returns the value of the "started_at" field in the mutation.
+func (m *RequestMutation) StartedAt() (r time.Time, exists bool) {
+	v := m.started_at
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// ResetReservedUnits resets all changes to the "reserved_units" field.
-func (m *RequestMutation) ResetReservedUnits() {
-	m.reserved_units = nil
-	m.addreserved_units = nil
-}
-
-// SetStatus sets the "status" field.
-func (m *RequestMutation) SetStatus(r request.Status) {
-	m.status = &r
-}
-
-// Status returns the value of the "status" field in the mutation.
-func (m *RequestMutation) Status() (r request.Status, exists bool) {
-	v := m.status
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldStatus returns the old "status" field's value of the Request entity.
+// OldStartedAt returns the old "started_at" field's value of the Request entity.
 // If the Request object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *RequestMutation) OldStatus(ctx context.Context) (v request.Status, err error) {
+func (m *RequestMutation) OldStartedAt(ctx context.Context) (v *time.Time, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+		return v, errors.New("OldStartedAt is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldStatus requires an ID field in the mutation")
+		return v, errors.New("OldStartedAt requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+		return v, fmt.Errorf("querying old value for OldStartedAt: %w", err)
 	}
-	return oldValue.Status, nil
+	return oldValue.StartedAt, nil
 }
 
-// ResetStatus resets all changes to the "status" field.
-func (m *RequestMutation) ResetStatus() {
-	m.status = nil
+// ClearStartedAt clears the value of the "started_at" field.
+func (m *RequestMutation) ClearStartedAt() {
+	m.started_at = nil
+	m.clearedFields[request.FieldStartedAt] = struct{}{}
+}
+
+// StartedAtCleared returns if the "started_at" field was cleared in this mutation.
+func (m *RequestMutation) StartedAtCleared() bool {
+	_, ok := m.clearedFields[request.FieldStartedAt]
+	return ok
+}
+
+// ResetStartedAt resets all changes to the "started_at" field.
+func (m *RequestMutation) ResetStartedAt() {
+	m.started_at = nil
+	delete(m.clearedFields, request.FieldStartedAt)
+}
+
+// SetFinishedAt sets the "finished_at" field.
+func (m *RequestMutation) SetFinishedAt(t time.Time) {
+	m.finished_at = &t
+}
+
+// FinishedAt returns the value of the "finished_at" field in the mutation.
+func (m *RequestMutation) FinishedAt() (r time.Time, exists bool) {
+	v := m.finished_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFinishedAt returns the old "finished_at" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldFinishedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFinishedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFinishedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFinishedAt: %w", err)
+	}
+	return oldValue.FinishedAt, nil
+}
+
+// ClearFinishedAt clears the value of the "finished_at" field.
+func (m *RequestMutation) ClearFinishedAt() {
+	m.finished_at = nil
+	m.clearedFields[request.FieldFinishedAt] = struct{}{}
+}
+
+// FinishedAtCleared returns if the "finished_at" field was cleared in this mutation.
+func (m *RequestMutation) FinishedAtCleared() bool {
+	_, ok := m.clearedFields[request.FieldFinishedAt]
+	return ok
+}
+
+// ResetFinishedAt resets all changes to the "finished_at" field.
+func (m *RequestMutation) ResetFinishedAt() {
+	m.finished_at = nil
+	delete(m.clearedFields, request.FieldFinishedAt)
+}
+
+// SetNextPollAt sets the "next_poll_at" field.
+func (m *RequestMutation) SetNextPollAt(t time.Time) {
+	m.next_poll_at = &t
+}
+
+// NextPollAt returns the value of the "next_poll_at" field in the mutation.
+func (m *RequestMutation) NextPollAt() (r time.Time, exists bool) {
+	v := m.next_poll_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNextPollAt returns the old "next_poll_at" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldNextPollAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNextPollAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNextPollAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNextPollAt: %w", err)
+	}
+	return oldValue.NextPollAt, nil
+}
+
+// ClearNextPollAt clears the value of the "next_poll_at" field.
+func (m *RequestMutation) ClearNextPollAt() {
+	m.next_poll_at = nil
+	m.clearedFields[request.FieldNextPollAt] = struct{}{}
+}
+
+// NextPollAtCleared returns if the "next_poll_at" field was cleared in this mutation.
+func (m *RequestMutation) NextPollAtCleared() bool {
+	_, ok := m.clearedFields[request.FieldNextPollAt]
+	return ok
+}
+
+// ResetNextPollAt resets all changes to the "next_poll_at" field.
+func (m *RequestMutation) ResetNextPollAt() {
+	m.next_poll_at = nil
+	delete(m.clearedFields, request.FieldNextPollAt)
+}
+
+// SetPollClaim sets the "poll_claim" field.
+func (m *RequestMutation) SetPollClaim(s string) {
+	m.poll_claim = &s
+}
+
+// PollClaim returns the value of the "poll_claim" field in the mutation.
+func (m *RequestMutation) PollClaim() (r string, exists bool) {
+	v := m.poll_claim
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPollClaim returns the old "poll_claim" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldPollClaim(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPollClaim is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPollClaim requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPollClaim: %w", err)
+	}
+	return oldValue.PollClaim, nil
+}
+
+// ResetPollClaim resets all changes to the "poll_claim" field.
+func (m *RequestMutation) ResetPollClaim() {
+	m.poll_claim = nil
 }
 
 // SetResult sets the "result" field.
@@ -1427,6 +2139,134 @@ func (m *RequestMutation) ResetResult() {
 	m.result = nil
 	m.appendresult = nil
 	delete(m.clearedFields, request.FieldResult)
+}
+
+// SetErrorCode sets the "error_code" field.
+func (m *RequestMutation) SetErrorCode(s string) {
+	m.error_code = &s
+}
+
+// ErrorCode returns the value of the "error_code" field in the mutation.
+func (m *RequestMutation) ErrorCode() (r string, exists bool) {
+	v := m.error_code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorCode returns the old "error_code" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldErrorCode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorCode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorCode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorCode: %w", err)
+	}
+	return oldValue.ErrorCode, nil
+}
+
+// ResetErrorCode resets all changes to the "error_code" field.
+func (m *RequestMutation) ResetErrorCode() {
+	m.error_code = nil
+}
+
+// SetErrorMessage sets the "error_message" field.
+func (m *RequestMutation) SetErrorMessage(s string) {
+	m.error_message = &s
+}
+
+// ErrorMessage returns the value of the "error_message" field in the mutation.
+func (m *RequestMutation) ErrorMessage() (r string, exists bool) {
+	v := m.error_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorMessage returns the old "error_message" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldErrorMessage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorMessage: %w", err)
+	}
+	return oldValue.ErrorMessage, nil
+}
+
+// ResetErrorMessage resets all changes to the "error_message" field.
+func (m *RequestMutation) ResetErrorMessage() {
+	m.error_message = nil
+}
+
+// SetErrorStatus sets the "error_status" field.
+func (m *RequestMutation) SetErrorStatus(i int) {
+	m.error_status = &i
+	m.adderror_status = nil
+}
+
+// ErrorStatus returns the value of the "error_status" field in the mutation.
+func (m *RequestMutation) ErrorStatus() (r int, exists bool) {
+	v := m.error_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorStatus returns the old "error_status" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldErrorStatus(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorStatus: %w", err)
+	}
+	return oldValue.ErrorStatus, nil
+}
+
+// AddErrorStatus adds i to the "error_status" field.
+func (m *RequestMutation) AddErrorStatus(i int) {
+	if m.adderror_status != nil {
+		*m.adderror_status += i
+	} else {
+		m.adderror_status = &i
+	}
+}
+
+// AddedErrorStatus returns the value that was added to the "error_status" field in this mutation.
+func (m *RequestMutation) AddedErrorStatus() (r int, exists bool) {
+	v := m.adderror_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetErrorStatus resets all changes to the "error_status" field.
+func (m *RequestMutation) ResetErrorStatus() {
+	m.error_status = nil
+	m.adderror_status = nil
 }
 
 // SetCreatedAt sets the "created_at" field.
@@ -1535,27 +2375,69 @@ func (m *RequestMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RequestMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 23)
 	if m.model_key != nil {
 		fields = append(fields, request.FieldModelKey)
+	}
+	if m.capability != nil {
+		fields = append(fields, request.FieldCapability)
 	}
 	if m.request_payload != nil {
 		fields = append(fields, request.FieldRequestPayload)
 	}
+	if m.payload_bytes != nil {
+		fields = append(fields, request.FieldPayloadBytes)
+	}
+	if m.units != nil {
+		fields = append(fields, request.FieldUnits)
+	}
+	if m.state != nil {
+		fields = append(fields, request.FieldState)
+	}
+	if m.slot_reserved != nil {
+		fields = append(fields, request.FieldSlotReserved)
+	}
 	if m.instance_id != nil {
 		fields = append(fields, request.FieldInstanceID)
+	}
+	if m.resource_group != nil {
+		fields = append(fields, request.FieldResourceGroup)
+	}
+	if m.endpoint != nil {
+		fields = append(fields, request.FieldEndpoint)
+	}
+	if m.artifact_digest != nil {
+		fields = append(fields, request.FieldArtifactDigest)
 	}
 	if m.backend_task_id != nil {
 		fields = append(fields, request.FieldBackendTaskID)
 	}
-	if m.reserved_units != nil {
-		fields = append(fields, request.FieldReservedUnits)
+	if m.deadline_at != nil {
+		fields = append(fields, request.FieldDeadlineAt)
 	}
-	if m.status != nil {
-		fields = append(fields, request.FieldStatus)
+	if m.started_at != nil {
+		fields = append(fields, request.FieldStartedAt)
+	}
+	if m.finished_at != nil {
+		fields = append(fields, request.FieldFinishedAt)
+	}
+	if m.next_poll_at != nil {
+		fields = append(fields, request.FieldNextPollAt)
+	}
+	if m.poll_claim != nil {
+		fields = append(fields, request.FieldPollClaim)
 	}
 	if m.result != nil {
 		fields = append(fields, request.FieldResult)
+	}
+	if m.error_code != nil {
+		fields = append(fields, request.FieldErrorCode)
+	}
+	if m.error_message != nil {
+		fields = append(fields, request.FieldErrorMessage)
+	}
+	if m.error_status != nil {
+		fields = append(fields, request.FieldErrorStatus)
 	}
 	if m.created_at != nil {
 		fields = append(fields, request.FieldCreatedAt)
@@ -1573,18 +2455,46 @@ func (m *RequestMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case request.FieldModelKey:
 		return m.ModelKey()
+	case request.FieldCapability:
+		return m.Capability()
 	case request.FieldRequestPayload:
 		return m.RequestPayload()
+	case request.FieldPayloadBytes:
+		return m.PayloadBytes()
+	case request.FieldUnits:
+		return m.Units()
+	case request.FieldState:
+		return m.State()
+	case request.FieldSlotReserved:
+		return m.SlotReserved()
 	case request.FieldInstanceID:
 		return m.InstanceID()
+	case request.FieldResourceGroup:
+		return m.ResourceGroup()
+	case request.FieldEndpoint:
+		return m.Endpoint()
+	case request.FieldArtifactDigest:
+		return m.ArtifactDigest()
 	case request.FieldBackendTaskID:
 		return m.BackendTaskID()
-	case request.FieldReservedUnits:
-		return m.ReservedUnits()
-	case request.FieldStatus:
-		return m.Status()
+	case request.FieldDeadlineAt:
+		return m.DeadlineAt()
+	case request.FieldStartedAt:
+		return m.StartedAt()
+	case request.FieldFinishedAt:
+		return m.FinishedAt()
+	case request.FieldNextPollAt:
+		return m.NextPollAt()
+	case request.FieldPollClaim:
+		return m.PollClaim()
 	case request.FieldResult:
 		return m.Result()
+	case request.FieldErrorCode:
+		return m.ErrorCode()
+	case request.FieldErrorMessage:
+		return m.ErrorMessage()
+	case request.FieldErrorStatus:
+		return m.ErrorStatus()
 	case request.FieldCreatedAt:
 		return m.CreatedAt()
 	case request.FieldUpdatedAt:
@@ -1600,18 +2510,46 @@ func (m *RequestMutation) OldField(ctx context.Context, name string) (ent.Value,
 	switch name {
 	case request.FieldModelKey:
 		return m.OldModelKey(ctx)
+	case request.FieldCapability:
+		return m.OldCapability(ctx)
 	case request.FieldRequestPayload:
 		return m.OldRequestPayload(ctx)
+	case request.FieldPayloadBytes:
+		return m.OldPayloadBytes(ctx)
+	case request.FieldUnits:
+		return m.OldUnits(ctx)
+	case request.FieldState:
+		return m.OldState(ctx)
+	case request.FieldSlotReserved:
+		return m.OldSlotReserved(ctx)
 	case request.FieldInstanceID:
 		return m.OldInstanceID(ctx)
+	case request.FieldResourceGroup:
+		return m.OldResourceGroup(ctx)
+	case request.FieldEndpoint:
+		return m.OldEndpoint(ctx)
+	case request.FieldArtifactDigest:
+		return m.OldArtifactDigest(ctx)
 	case request.FieldBackendTaskID:
 		return m.OldBackendTaskID(ctx)
-	case request.FieldReservedUnits:
-		return m.OldReservedUnits(ctx)
-	case request.FieldStatus:
-		return m.OldStatus(ctx)
+	case request.FieldDeadlineAt:
+		return m.OldDeadlineAt(ctx)
+	case request.FieldStartedAt:
+		return m.OldStartedAt(ctx)
+	case request.FieldFinishedAt:
+		return m.OldFinishedAt(ctx)
+	case request.FieldNextPollAt:
+		return m.OldNextPollAt(ctx)
+	case request.FieldPollClaim:
+		return m.OldPollClaim(ctx)
 	case request.FieldResult:
 		return m.OldResult(ctx)
+	case request.FieldErrorCode:
+		return m.OldErrorCode(ctx)
+	case request.FieldErrorMessage:
+		return m.OldErrorMessage(ctx)
+	case request.FieldErrorStatus:
+		return m.OldErrorStatus(ctx)
 	case request.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case request.FieldUpdatedAt:
@@ -1632,12 +2570,47 @@ func (m *RequestMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetModelKey(v)
 		return nil
+	case request.FieldCapability:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCapability(v)
+		return nil
 	case request.FieldRequestPayload:
 		v, ok := value.(json.RawMessage)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRequestPayload(v)
+		return nil
+	case request.FieldPayloadBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadBytes(v)
+		return nil
+	case request.FieldUnits:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUnits(v)
+		return nil
+	case request.FieldState:
+		v, ok := value.(request.State)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetState(v)
+		return nil
+	case request.FieldSlotReserved:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSlotReserved(v)
 		return nil
 	case request.FieldInstanceID:
 		v, ok := value.(string)
@@ -1646,6 +2619,27 @@ func (m *RequestMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetInstanceID(v)
 		return nil
+	case request.FieldResourceGroup:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResourceGroup(v)
+		return nil
+	case request.FieldEndpoint:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEndpoint(v)
+		return nil
+	case request.FieldArtifactDigest:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetArtifactDigest(v)
+		return nil
 	case request.FieldBackendTaskID:
 		v, ok := value.(string)
 		if !ok {
@@ -1653,19 +2647,40 @@ func (m *RequestMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetBackendTaskID(v)
 		return nil
-	case request.FieldReservedUnits:
-		v, ok := value.(int)
+	case request.FieldDeadlineAt:
+		v, ok := value.(time.Time)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetReservedUnits(v)
+		m.SetDeadlineAt(v)
 		return nil
-	case request.FieldStatus:
-		v, ok := value.(request.Status)
+	case request.FieldStartedAt:
+		v, ok := value.(time.Time)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetStatus(v)
+		m.SetStartedAt(v)
+		return nil
+	case request.FieldFinishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFinishedAt(v)
+		return nil
+	case request.FieldNextPollAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNextPollAt(v)
+		return nil
+	case request.FieldPollClaim:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPollClaim(v)
 		return nil
 	case request.FieldResult:
 		v, ok := value.(json.RawMessage)
@@ -1673,6 +2688,27 @@ func (m *RequestMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetResult(v)
+		return nil
+	case request.FieldErrorCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorCode(v)
+		return nil
+	case request.FieldErrorMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorMessage(v)
+		return nil
+	case request.FieldErrorStatus:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorStatus(v)
 		return nil
 	case request.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -1696,8 +2732,14 @@ func (m *RequestMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *RequestMutation) AddedFields() []string {
 	var fields []string
-	if m.addreserved_units != nil {
-		fields = append(fields, request.FieldReservedUnits)
+	if m.addpayload_bytes != nil {
+		fields = append(fields, request.FieldPayloadBytes)
+	}
+	if m.addunits != nil {
+		fields = append(fields, request.FieldUnits)
+	}
+	if m.adderror_status != nil {
+		fields = append(fields, request.FieldErrorStatus)
 	}
 	return fields
 }
@@ -1707,8 +2749,12 @@ func (m *RequestMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *RequestMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
-	case request.FieldReservedUnits:
-		return m.AddedReservedUnits()
+	case request.FieldPayloadBytes:
+		return m.AddedPayloadBytes()
+	case request.FieldUnits:
+		return m.AddedUnits()
+	case request.FieldErrorStatus:
+		return m.AddedErrorStatus()
 	}
 	return nil, false
 }
@@ -1718,12 +2764,26 @@ func (m *RequestMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *RequestMutation) AddField(name string, value ent.Value) error {
 	switch name {
-	case request.FieldReservedUnits:
+	case request.FieldPayloadBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPayloadBytes(v)
+		return nil
+	case request.FieldUnits:
 		v, ok := value.(int)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.AddReservedUnits(v)
+		m.AddUnits(v)
+		return nil
+	case request.FieldErrorStatus:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddErrorStatus(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Request numeric field %s", name)
@@ -1733,8 +2793,14 @@ func (m *RequestMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *RequestMutation) ClearedFields() []string {
 	var fields []string
-	if m.FieldCleared(request.FieldBackendTaskID) {
-		fields = append(fields, request.FieldBackendTaskID)
+	if m.FieldCleared(request.FieldStartedAt) {
+		fields = append(fields, request.FieldStartedAt)
+	}
+	if m.FieldCleared(request.FieldFinishedAt) {
+		fields = append(fields, request.FieldFinishedAt)
+	}
+	if m.FieldCleared(request.FieldNextPollAt) {
+		fields = append(fields, request.FieldNextPollAt)
 	}
 	if m.FieldCleared(request.FieldResult) {
 		fields = append(fields, request.FieldResult)
@@ -1753,8 +2819,14 @@ func (m *RequestMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *RequestMutation) ClearField(name string) error {
 	switch name {
-	case request.FieldBackendTaskID:
-		m.ClearBackendTaskID()
+	case request.FieldStartedAt:
+		m.ClearStartedAt()
+		return nil
+	case request.FieldFinishedAt:
+		m.ClearFinishedAt()
+		return nil
+	case request.FieldNextPollAt:
+		m.ClearNextPollAt()
 		return nil
 	case request.FieldResult:
 		m.ClearResult()
@@ -1770,23 +2842,65 @@ func (m *RequestMutation) ResetField(name string) error {
 	case request.FieldModelKey:
 		m.ResetModelKey()
 		return nil
+	case request.FieldCapability:
+		m.ResetCapability()
+		return nil
 	case request.FieldRequestPayload:
 		m.ResetRequestPayload()
+		return nil
+	case request.FieldPayloadBytes:
+		m.ResetPayloadBytes()
+		return nil
+	case request.FieldUnits:
+		m.ResetUnits()
+		return nil
+	case request.FieldState:
+		m.ResetState()
+		return nil
+	case request.FieldSlotReserved:
+		m.ResetSlotReserved()
 		return nil
 	case request.FieldInstanceID:
 		m.ResetInstanceID()
 		return nil
+	case request.FieldResourceGroup:
+		m.ResetResourceGroup()
+		return nil
+	case request.FieldEndpoint:
+		m.ResetEndpoint()
+		return nil
+	case request.FieldArtifactDigest:
+		m.ResetArtifactDigest()
+		return nil
 	case request.FieldBackendTaskID:
 		m.ResetBackendTaskID()
 		return nil
-	case request.FieldReservedUnits:
-		m.ResetReservedUnits()
+	case request.FieldDeadlineAt:
+		m.ResetDeadlineAt()
 		return nil
-	case request.FieldStatus:
-		m.ResetStatus()
+	case request.FieldStartedAt:
+		m.ResetStartedAt()
+		return nil
+	case request.FieldFinishedAt:
+		m.ResetFinishedAt()
+		return nil
+	case request.FieldNextPollAt:
+		m.ResetNextPollAt()
+		return nil
+	case request.FieldPollClaim:
+		m.ResetPollClaim()
 		return nil
 	case request.FieldResult:
 		m.ResetResult()
+		return nil
+	case request.FieldErrorCode:
+		m.ResetErrorCode()
+		return nil
+	case request.FieldErrorMessage:
+		m.ResetErrorMessage()
+		return nil
+	case request.FieldErrorStatus:
+		m.ResetErrorStatus()
 		return nil
 	case request.FieldCreatedAt:
 		m.ResetCreatedAt()

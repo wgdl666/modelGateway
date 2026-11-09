@@ -28,48 +28,6 @@ func (_u *ModelInstanceUpdate) Where(ps ...predicate.ModelInstance) *ModelInstan
 	return _u
 }
 
-// SetCapacityUnits sets the "capacity_units" field.
-func (_u *ModelInstanceUpdate) SetCapacityUnits(v int) *ModelInstanceUpdate {
-	_u.mutation.ResetCapacityUnits()
-	_u.mutation.SetCapacityUnits(v)
-	return _u
-}
-
-// SetNillableCapacityUnits sets the "capacity_units" field if the given value is not nil.
-func (_u *ModelInstanceUpdate) SetNillableCapacityUnits(v *int) *ModelInstanceUpdate {
-	if v != nil {
-		_u.SetCapacityUnits(*v)
-	}
-	return _u
-}
-
-// AddCapacityUnits adds value to the "capacity_units" field.
-func (_u *ModelInstanceUpdate) AddCapacityUnits(v int) *ModelInstanceUpdate {
-	_u.mutation.AddCapacityUnits(v)
-	return _u
-}
-
-// SetUsedUnits sets the "used_units" field.
-func (_u *ModelInstanceUpdate) SetUsedUnits(v int) *ModelInstanceUpdate {
-	_u.mutation.ResetUsedUnits()
-	_u.mutation.SetUsedUnits(v)
-	return _u
-}
-
-// SetNillableUsedUnits sets the "used_units" field if the given value is not nil.
-func (_u *ModelInstanceUpdate) SetNillableUsedUnits(v *int) *ModelInstanceUpdate {
-	if v != nil {
-		_u.SetUsedUnits(*v)
-	}
-	return _u
-}
-
-// AddUsedUnits adds value to the "used_units" field.
-func (_u *ModelInstanceUpdate) AddUsedUnits(v int) *ModelInstanceUpdate {
-	_u.mutation.AddUsedUnits(v)
-	return _u
-}
-
 // SetReady sets the "ready" field.
 func (_u *ModelInstanceUpdate) SetReady(v bool) *ModelInstanceUpdate {
 	_u.mutation.SetReady(v)
@@ -84,6 +42,20 @@ func (_u *ModelInstanceUpdate) SetNillableReady(v *bool) *ModelInstanceUpdate {
 	return _u
 }
 
+// SetHealthCheckedAt sets the "health_checked_at" field.
+func (_u *ModelInstanceUpdate) SetHealthCheckedAt(v time.Time) *ModelInstanceUpdate {
+	_u.mutation.SetHealthCheckedAt(v)
+	return _u
+}
+
+// SetNillableHealthCheckedAt sets the "health_checked_at" field if the given value is not nil.
+func (_u *ModelInstanceUpdate) SetNillableHealthCheckedAt(v *time.Time) *ModelInstanceUpdate {
+	if v != nil {
+		_u.SetHealthCheckedAt(*v)
+	}
+	return _u
+}
+
 // SetDraining sets the "draining" field.
 func (_u *ModelInstanceUpdate) SetDraining(v bool) *ModelInstanceUpdate {
 	_u.mutation.SetDraining(v)
@@ -94,20 +66,6 @@ func (_u *ModelInstanceUpdate) SetDraining(v bool) *ModelInstanceUpdate {
 func (_u *ModelInstanceUpdate) SetNillableDraining(v *bool) *ModelInstanceUpdate {
 	if v != nil {
 		_u.SetDraining(*v)
-	}
-	return _u
-}
-
-// SetLeaseExpiresAt sets the "lease_expires_at" field.
-func (_u *ModelInstanceUpdate) SetLeaseExpiresAt(v time.Time) *ModelInstanceUpdate {
-	_u.mutation.SetLeaseExpiresAt(v)
-	return _u
-}
-
-// SetNillableLeaseExpiresAt sets the "lease_expires_at" field if the given value is not nil.
-func (_u *ModelInstanceUpdate) SetNillableLeaseExpiresAt(v *time.Time) *ModelInstanceUpdate {
-	if v != nil {
-		_u.SetLeaseExpiresAt(*v)
 	}
 	return _u
 }
@@ -159,25 +117,7 @@ func (_u *ModelInstanceUpdate) defaults() {
 	}
 }
 
-// check runs all checks and user-defined validators on the builder.
-func (_u *ModelInstanceUpdate) check() error {
-	if v, ok := _u.mutation.CapacityUnits(); ok {
-		if err := modelinstance.CapacityUnitsValidator(v); err != nil {
-			return &ValidationError{Name: "capacity_units", err: fmt.Errorf(`ent: validator failed for field "ModelInstance.capacity_units": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.UsedUnits(); ok {
-		if err := modelinstance.UsedUnitsValidator(v); err != nil {
-			return &ValidationError{Name: "used_units", err: fmt.Errorf(`ent: validator failed for field "ModelInstance.used_units": %w`, err)}
-		}
-	}
-	return nil
-}
-
 func (_u *ModelInstanceUpdate) sqlSave(ctx context.Context) (_node int, err error) {
-	if err := _u.check(); err != nil {
-		return _node, err
-	}
 	_spec := sqlgraph.NewUpdateSpec(modelinstance.Table, modelinstance.Columns, sqlgraph.NewFieldSpec(modelinstance.FieldID, field.TypeString))
 	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
@@ -186,26 +126,17 @@ func (_u *ModelInstanceUpdate) sqlSave(ctx context.Context) (_node int, err erro
 			}
 		}
 	}
-	if value, ok := _u.mutation.CapacityUnits(); ok {
-		_spec.SetField(modelinstance.FieldCapacityUnits, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.AddedCapacityUnits(); ok {
-		_spec.AddField(modelinstance.FieldCapacityUnits, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.UsedUnits(); ok {
-		_spec.SetField(modelinstance.FieldUsedUnits, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.AddedUsedUnits(); ok {
-		_spec.AddField(modelinstance.FieldUsedUnits, field.TypeInt, value)
+	if _u.mutation.GpuDevicesCleared() {
+		_spec.ClearField(modelinstance.FieldGpuDevices, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.Ready(); ok {
 		_spec.SetField(modelinstance.FieldReady, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.HealthCheckedAt(); ok {
+		_spec.SetField(modelinstance.FieldHealthCheckedAt, field.TypeTime, value)
+	}
 	if value, ok := _u.mutation.Draining(); ok {
 		_spec.SetField(modelinstance.FieldDraining, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.LeaseExpiresAt(); ok {
-		_spec.SetField(modelinstance.FieldLeaseExpiresAt, field.TypeTime, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(modelinstance.FieldUpdatedAt, field.TypeTime, value)
@@ -230,48 +161,6 @@ type ModelInstanceUpdateOne struct {
 	mutation *ModelInstanceMutation
 }
 
-// SetCapacityUnits sets the "capacity_units" field.
-func (_u *ModelInstanceUpdateOne) SetCapacityUnits(v int) *ModelInstanceUpdateOne {
-	_u.mutation.ResetCapacityUnits()
-	_u.mutation.SetCapacityUnits(v)
-	return _u
-}
-
-// SetNillableCapacityUnits sets the "capacity_units" field if the given value is not nil.
-func (_u *ModelInstanceUpdateOne) SetNillableCapacityUnits(v *int) *ModelInstanceUpdateOne {
-	if v != nil {
-		_u.SetCapacityUnits(*v)
-	}
-	return _u
-}
-
-// AddCapacityUnits adds value to the "capacity_units" field.
-func (_u *ModelInstanceUpdateOne) AddCapacityUnits(v int) *ModelInstanceUpdateOne {
-	_u.mutation.AddCapacityUnits(v)
-	return _u
-}
-
-// SetUsedUnits sets the "used_units" field.
-func (_u *ModelInstanceUpdateOne) SetUsedUnits(v int) *ModelInstanceUpdateOne {
-	_u.mutation.ResetUsedUnits()
-	_u.mutation.SetUsedUnits(v)
-	return _u
-}
-
-// SetNillableUsedUnits sets the "used_units" field if the given value is not nil.
-func (_u *ModelInstanceUpdateOne) SetNillableUsedUnits(v *int) *ModelInstanceUpdateOne {
-	if v != nil {
-		_u.SetUsedUnits(*v)
-	}
-	return _u
-}
-
-// AddUsedUnits adds value to the "used_units" field.
-func (_u *ModelInstanceUpdateOne) AddUsedUnits(v int) *ModelInstanceUpdateOne {
-	_u.mutation.AddUsedUnits(v)
-	return _u
-}
-
 // SetReady sets the "ready" field.
 func (_u *ModelInstanceUpdateOne) SetReady(v bool) *ModelInstanceUpdateOne {
 	_u.mutation.SetReady(v)
@@ -286,6 +175,20 @@ func (_u *ModelInstanceUpdateOne) SetNillableReady(v *bool) *ModelInstanceUpdate
 	return _u
 }
 
+// SetHealthCheckedAt sets the "health_checked_at" field.
+func (_u *ModelInstanceUpdateOne) SetHealthCheckedAt(v time.Time) *ModelInstanceUpdateOne {
+	_u.mutation.SetHealthCheckedAt(v)
+	return _u
+}
+
+// SetNillableHealthCheckedAt sets the "health_checked_at" field if the given value is not nil.
+func (_u *ModelInstanceUpdateOne) SetNillableHealthCheckedAt(v *time.Time) *ModelInstanceUpdateOne {
+	if v != nil {
+		_u.SetHealthCheckedAt(*v)
+	}
+	return _u
+}
+
 // SetDraining sets the "draining" field.
 func (_u *ModelInstanceUpdateOne) SetDraining(v bool) *ModelInstanceUpdateOne {
 	_u.mutation.SetDraining(v)
@@ -296,20 +199,6 @@ func (_u *ModelInstanceUpdateOne) SetDraining(v bool) *ModelInstanceUpdateOne {
 func (_u *ModelInstanceUpdateOne) SetNillableDraining(v *bool) *ModelInstanceUpdateOne {
 	if v != nil {
 		_u.SetDraining(*v)
-	}
-	return _u
-}
-
-// SetLeaseExpiresAt sets the "lease_expires_at" field.
-func (_u *ModelInstanceUpdateOne) SetLeaseExpiresAt(v time.Time) *ModelInstanceUpdateOne {
-	_u.mutation.SetLeaseExpiresAt(v)
-	return _u
-}
-
-// SetNillableLeaseExpiresAt sets the "lease_expires_at" field if the given value is not nil.
-func (_u *ModelInstanceUpdateOne) SetNillableLeaseExpiresAt(v *time.Time) *ModelInstanceUpdateOne {
-	if v != nil {
-		_u.SetLeaseExpiresAt(*v)
 	}
 	return _u
 }
@@ -374,25 +263,7 @@ func (_u *ModelInstanceUpdateOne) defaults() {
 	}
 }
 
-// check runs all checks and user-defined validators on the builder.
-func (_u *ModelInstanceUpdateOne) check() error {
-	if v, ok := _u.mutation.CapacityUnits(); ok {
-		if err := modelinstance.CapacityUnitsValidator(v); err != nil {
-			return &ValidationError{Name: "capacity_units", err: fmt.Errorf(`ent: validator failed for field "ModelInstance.capacity_units": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.UsedUnits(); ok {
-		if err := modelinstance.UsedUnitsValidator(v); err != nil {
-			return &ValidationError{Name: "used_units", err: fmt.Errorf(`ent: validator failed for field "ModelInstance.used_units": %w`, err)}
-		}
-	}
-	return nil
-}
-
 func (_u *ModelInstanceUpdateOne) sqlSave(ctx context.Context) (_node *ModelInstance, err error) {
-	if err := _u.check(); err != nil {
-		return _node, err
-	}
 	_spec := sqlgraph.NewUpdateSpec(modelinstance.Table, modelinstance.Columns, sqlgraph.NewFieldSpec(modelinstance.FieldID, field.TypeString))
 	id, ok := _u.mutation.ID()
 	if !ok {
@@ -418,26 +289,17 @@ func (_u *ModelInstanceUpdateOne) sqlSave(ctx context.Context) (_node *ModelInst
 			}
 		}
 	}
-	if value, ok := _u.mutation.CapacityUnits(); ok {
-		_spec.SetField(modelinstance.FieldCapacityUnits, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.AddedCapacityUnits(); ok {
-		_spec.AddField(modelinstance.FieldCapacityUnits, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.UsedUnits(); ok {
-		_spec.SetField(modelinstance.FieldUsedUnits, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.AddedUsedUnits(); ok {
-		_spec.AddField(modelinstance.FieldUsedUnits, field.TypeInt, value)
+	if _u.mutation.GpuDevicesCleared() {
+		_spec.ClearField(modelinstance.FieldGpuDevices, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.Ready(); ok {
 		_spec.SetField(modelinstance.FieldReady, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.HealthCheckedAt(); ok {
+		_spec.SetField(modelinstance.FieldHealthCheckedAt, field.TypeTime, value)
+	}
 	if value, ok := _u.mutation.Draining(); ok {
 		_spec.SetField(modelinstance.FieldDraining, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.LeaseExpiresAt(); ok {
-		_spec.SetField(modelinstance.FieldLeaseExpiresAt, field.TypeTime, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(modelinstance.FieldUpdatedAt, field.TypeTime, value)
