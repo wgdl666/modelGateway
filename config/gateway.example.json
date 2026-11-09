@@ -12,7 +12,7 @@
     "8001",
     "8002"
   ],
-  "backend_timeout": "120s",
+  "backend_timeout": "600s",
   "poll_interval": "1s",
   "max_body_bytes": 67108864,
   "max_waiting": 128

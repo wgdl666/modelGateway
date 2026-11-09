@@ -91,7 +91,8 @@ func prepareConfig(c Config) (*Snapshot, error) {
 		return nil, errors.New("distinct API and admin tokens of at least 24 characters required")
 	}
 	if c.BackendTimeout == 0 {
-		c.BackendTimeout = 120 * time.Second
+		// 排队和调用方等待共用入队时固定的截止时间，原生模型执行另有预算。
+		c.BackendTimeout = 600 * time.Second
 	}
 	if c.NativeExecutionTimeout == 0 {
 		c.NativeExecutionTimeout = 180 * time.Second
