@@ -21,12 +21,13 @@ func (s *Store) Get(ctx context.Context, id string) (*ent.Request, error) {
 
 type InstanceView struct {
 	*ent.ModelInstance
-	ReservedUnits      int  `json:"reserved_units"`
-	ReservedRequests   int  `json:"reserved_requests"`
-	Healthy            bool `json:"healthy"`
-	Eligible           bool `json:"eligible"`
-	Clearable          bool `json:"clearable,omitempty"`
-	LegacyRegistration bool `json:"legacy_registration,omitempty"`
+	ConfigRevision     string `json:"config_revision"`
+	ReservedUnits      int    `json:"reserved_units"`
+	ReservedRequests   int    `json:"reserved_requests"`
+	Healthy            bool   `json:"healthy"`
+	Eligible           bool   `json:"eligible"`
+	Clearable          bool   `json:"clearable,omitempty"`
+	LegacyRegistration bool   `json:"legacy_registration,omitempty"`
 }
 
 func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
@@ -58,7 +59,9 @@ func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
 		legacy := !protocol.MatchesCapability(row.ModelKey, row.Capability)
 		result = append(result, InstanceView{
 			ModelInstance: row, ReservedUnits: units[row.ID], ReservedRequests: requests[row.ID],
-			Healthy: healthy, Eligible: healthy && !row.Draining && !legacy,
+			// 暂停后不再主动探活，更新时间可识别同一份编辑草稿。
+			ConfigRevision: row.UpdatedAt.UTC().Format(time.RFC3339Nano),
+			Healthy:        healthy, Eligible: healthy && !row.Draining && !legacy,
 			Clearable: instanceClearable(row, healthy) && requests[row.ID] == 0, LegacyRegistration: legacy,
 		})
 	}

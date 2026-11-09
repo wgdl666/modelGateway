@@ -148,9 +148,10 @@ func (s *Store) ClearInstance(ctx context.Context, id string) error {
 }
 
 func (s *Store) RecordProbe(ctx context.Context, id string, checked time.Time, ready bool) error {
-	// 并行探针的响应可能乱序，较早样本不能覆盖较新的可用性判断。
+	// 暂停或修改后，先前开始的探针不能写回旧地址的就绪结果。
 	_, err := s.db.ModelInstance.Update().Where(
-		modelinstance.IDEQ(id), modelinstance.DeletedAtIsNil(), modelinstance.HealthCheckedAtLT(checked),
+		modelinstance.IDEQ(id), modelinstance.DeletedAtIsNil(),
+		modelinstance.UpdatedAtLTE(checked), modelinstance.HealthCheckedAtLT(checked),
 	).SetHealthCheckedAt(checked).SetReady(ready).Save(ctx)
 	return err
 }

@@ -19,17 +19,19 @@ func (ModelInstance) Fields() []ent.Field {
 		field.String("id").StorageKey("instance_id").SchemaType(map[string]string{dialect.Postgres: "text"}).Immutable(),
 		field.Text("model_key").Immutable(),
 		field.Text("capability").Immutable(),
-		field.Text("endpoint").Immutable(),
-		field.Text("health_url").Immutable(),
+		// 排空后可迁移执行地址，已有请求仍使用派发时写入的地址。
+		field.Text("endpoint"),
+		field.Text("health_url"),
 		field.Text("artifact_digest").Immutable(),
-		field.Text("resource_group").Immutable(),
-		// LTX 目标随 GPU 分组固定，探活和派发都依据这条登记。
+		field.Text("resource_group"),
+		// LTX 旧根地址仍使用部署登记的实例目标。
 		field.Text("target_instance").Default("").Immutable(),
 		// 切换期间旧网关仍读取此列，新网关从资源组表取实时上限。
-		field.Int("group_capacity_units").Positive().Immutable(),
-		field.Int("capacity_units").Positive().Immutable(),
-		field.Text("machine_id").Default("").Immutable(),
-		field.JSON("gpu_devices", []int{}).Optional().Immutable(),
+		field.Int("group_capacity_units").Positive(),
+		field.Int("capacity_units").Positive(),
+		// 转入物理资源组时由组记录带入设备归属。
+		field.Text("machine_id").Default(""),
+		field.JSON("gpu_devices", []int{}).Optional(),
 		field.Bool("ready").Default(false),
 		field.Time("health_checked_at").Default(func() time.Time { return time.Unix(0, 0).UTC() }),
 		field.Bool("draining").Default(false),

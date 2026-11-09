@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/predicate"
@@ -25,6 +26,122 @@ type ModelInstanceUpdate struct {
 // Where appends a list predicates to the ModelInstanceUpdate builder.
 func (_u *ModelInstanceUpdate) Where(ps ...predicate.ModelInstance) *ModelInstanceUpdate {
 	_u.mutation.Where(ps...)
+	return _u
+}
+
+// SetEndpoint sets the "endpoint" field.
+func (_u *ModelInstanceUpdate) SetEndpoint(v string) *ModelInstanceUpdate {
+	_u.mutation.SetEndpoint(v)
+	return _u
+}
+
+// SetNillableEndpoint sets the "endpoint" field if the given value is not nil.
+func (_u *ModelInstanceUpdate) SetNillableEndpoint(v *string) *ModelInstanceUpdate {
+	if v != nil {
+		_u.SetEndpoint(*v)
+	}
+	return _u
+}
+
+// SetHealthURL sets the "health_url" field.
+func (_u *ModelInstanceUpdate) SetHealthURL(v string) *ModelInstanceUpdate {
+	_u.mutation.SetHealthURL(v)
+	return _u
+}
+
+// SetNillableHealthURL sets the "health_url" field if the given value is not nil.
+func (_u *ModelInstanceUpdate) SetNillableHealthURL(v *string) *ModelInstanceUpdate {
+	if v != nil {
+		_u.SetHealthURL(*v)
+	}
+	return _u
+}
+
+// SetResourceGroup sets the "resource_group" field.
+func (_u *ModelInstanceUpdate) SetResourceGroup(v string) *ModelInstanceUpdate {
+	_u.mutation.SetResourceGroup(v)
+	return _u
+}
+
+// SetNillableResourceGroup sets the "resource_group" field if the given value is not nil.
+func (_u *ModelInstanceUpdate) SetNillableResourceGroup(v *string) *ModelInstanceUpdate {
+	if v != nil {
+		_u.SetResourceGroup(*v)
+	}
+	return _u
+}
+
+// SetGroupCapacityUnits sets the "group_capacity_units" field.
+func (_u *ModelInstanceUpdate) SetGroupCapacityUnits(v int) *ModelInstanceUpdate {
+	_u.mutation.ResetGroupCapacityUnits()
+	_u.mutation.SetGroupCapacityUnits(v)
+	return _u
+}
+
+// SetNillableGroupCapacityUnits sets the "group_capacity_units" field if the given value is not nil.
+func (_u *ModelInstanceUpdate) SetNillableGroupCapacityUnits(v *int) *ModelInstanceUpdate {
+	if v != nil {
+		_u.SetGroupCapacityUnits(*v)
+	}
+	return _u
+}
+
+// AddGroupCapacityUnits adds value to the "group_capacity_units" field.
+func (_u *ModelInstanceUpdate) AddGroupCapacityUnits(v int) *ModelInstanceUpdate {
+	_u.mutation.AddGroupCapacityUnits(v)
+	return _u
+}
+
+// SetCapacityUnits sets the "capacity_units" field.
+func (_u *ModelInstanceUpdate) SetCapacityUnits(v int) *ModelInstanceUpdate {
+	_u.mutation.ResetCapacityUnits()
+	_u.mutation.SetCapacityUnits(v)
+	return _u
+}
+
+// SetNillableCapacityUnits sets the "capacity_units" field if the given value is not nil.
+func (_u *ModelInstanceUpdate) SetNillableCapacityUnits(v *int) *ModelInstanceUpdate {
+	if v != nil {
+		_u.SetCapacityUnits(*v)
+	}
+	return _u
+}
+
+// AddCapacityUnits adds value to the "capacity_units" field.
+func (_u *ModelInstanceUpdate) AddCapacityUnits(v int) *ModelInstanceUpdate {
+	_u.mutation.AddCapacityUnits(v)
+	return _u
+}
+
+// SetMachineID sets the "machine_id" field.
+func (_u *ModelInstanceUpdate) SetMachineID(v string) *ModelInstanceUpdate {
+	_u.mutation.SetMachineID(v)
+	return _u
+}
+
+// SetNillableMachineID sets the "machine_id" field if the given value is not nil.
+func (_u *ModelInstanceUpdate) SetNillableMachineID(v *string) *ModelInstanceUpdate {
+	if v != nil {
+		_u.SetMachineID(*v)
+	}
+	return _u
+}
+
+// SetGpuDevices sets the "gpu_devices" field.
+func (_u *ModelInstanceUpdate) SetGpuDevices(v []int) *ModelInstanceUpdate {
+	_u.mutation.SetGpuDevices(v)
+	return _u
+}
+
+// AppendGpuDevices appends value to the "gpu_devices" field.
+func (_u *ModelInstanceUpdate) AppendGpuDevices(v []int) *ModelInstanceUpdate {
+	_u.mutation.AppendGpuDevices(v)
+	return _u
+}
+
+// ClearGpuDevices clears the value of the "gpu_devices" field.
+func (_u *ModelInstanceUpdate) ClearGpuDevices() *ModelInstanceUpdate {
+	_u.mutation.ClearGpuDevices()
 	return _u
 }
 
@@ -137,7 +254,25 @@ func (_u *ModelInstanceUpdate) defaults() {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *ModelInstanceUpdate) check() error {
+	if v, ok := _u.mutation.GroupCapacityUnits(); ok {
+		if err := modelinstance.GroupCapacityUnitsValidator(v); err != nil {
+			return &ValidationError{Name: "group_capacity_units", err: fmt.Errorf(`ent: validator failed for field "ModelInstance.group_capacity_units": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CapacityUnits(); ok {
+		if err := modelinstance.CapacityUnitsValidator(v); err != nil {
+			return &ValidationError{Name: "capacity_units", err: fmt.Errorf(`ent: validator failed for field "ModelInstance.capacity_units": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (_u *ModelInstanceUpdate) sqlSave(ctx context.Context) (_node int, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(modelinstance.Table, modelinstance.Columns, sqlgraph.NewFieldSpec(modelinstance.FieldID, field.TypeString))
 	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
@@ -145,6 +280,38 @@ func (_u *ModelInstanceUpdate) sqlSave(ctx context.Context) (_node int, err erro
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Endpoint(); ok {
+		_spec.SetField(modelinstance.FieldEndpoint, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.HealthURL(); ok {
+		_spec.SetField(modelinstance.FieldHealthURL, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ResourceGroup(); ok {
+		_spec.SetField(modelinstance.FieldResourceGroup, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GroupCapacityUnits(); ok {
+		_spec.SetField(modelinstance.FieldGroupCapacityUnits, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedGroupCapacityUnits(); ok {
+		_spec.AddField(modelinstance.FieldGroupCapacityUnits, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.CapacityUnits(); ok {
+		_spec.SetField(modelinstance.FieldCapacityUnits, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCapacityUnits(); ok {
+		_spec.AddField(modelinstance.FieldCapacityUnits, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.MachineID(); ok {
+		_spec.SetField(modelinstance.FieldMachineID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GpuDevices(); ok {
+		_spec.SetField(modelinstance.FieldGpuDevices, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedGpuDevices(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, modelinstance.FieldGpuDevices, value)
+		})
 	}
 	if _u.mutation.GpuDevicesCleared() {
 		_spec.ClearField(modelinstance.FieldGpuDevices, field.TypeJSON)
@@ -185,6 +352,122 @@ type ModelInstanceUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *ModelInstanceMutation
+}
+
+// SetEndpoint sets the "endpoint" field.
+func (_u *ModelInstanceUpdateOne) SetEndpoint(v string) *ModelInstanceUpdateOne {
+	_u.mutation.SetEndpoint(v)
+	return _u
+}
+
+// SetNillableEndpoint sets the "endpoint" field if the given value is not nil.
+func (_u *ModelInstanceUpdateOne) SetNillableEndpoint(v *string) *ModelInstanceUpdateOne {
+	if v != nil {
+		_u.SetEndpoint(*v)
+	}
+	return _u
+}
+
+// SetHealthURL sets the "health_url" field.
+func (_u *ModelInstanceUpdateOne) SetHealthURL(v string) *ModelInstanceUpdateOne {
+	_u.mutation.SetHealthURL(v)
+	return _u
+}
+
+// SetNillableHealthURL sets the "health_url" field if the given value is not nil.
+func (_u *ModelInstanceUpdateOne) SetNillableHealthURL(v *string) *ModelInstanceUpdateOne {
+	if v != nil {
+		_u.SetHealthURL(*v)
+	}
+	return _u
+}
+
+// SetResourceGroup sets the "resource_group" field.
+func (_u *ModelInstanceUpdateOne) SetResourceGroup(v string) *ModelInstanceUpdateOne {
+	_u.mutation.SetResourceGroup(v)
+	return _u
+}
+
+// SetNillableResourceGroup sets the "resource_group" field if the given value is not nil.
+func (_u *ModelInstanceUpdateOne) SetNillableResourceGroup(v *string) *ModelInstanceUpdateOne {
+	if v != nil {
+		_u.SetResourceGroup(*v)
+	}
+	return _u
+}
+
+// SetGroupCapacityUnits sets the "group_capacity_units" field.
+func (_u *ModelInstanceUpdateOne) SetGroupCapacityUnits(v int) *ModelInstanceUpdateOne {
+	_u.mutation.ResetGroupCapacityUnits()
+	_u.mutation.SetGroupCapacityUnits(v)
+	return _u
+}
+
+// SetNillableGroupCapacityUnits sets the "group_capacity_units" field if the given value is not nil.
+func (_u *ModelInstanceUpdateOne) SetNillableGroupCapacityUnits(v *int) *ModelInstanceUpdateOne {
+	if v != nil {
+		_u.SetGroupCapacityUnits(*v)
+	}
+	return _u
+}
+
+// AddGroupCapacityUnits adds value to the "group_capacity_units" field.
+func (_u *ModelInstanceUpdateOne) AddGroupCapacityUnits(v int) *ModelInstanceUpdateOne {
+	_u.mutation.AddGroupCapacityUnits(v)
+	return _u
+}
+
+// SetCapacityUnits sets the "capacity_units" field.
+func (_u *ModelInstanceUpdateOne) SetCapacityUnits(v int) *ModelInstanceUpdateOne {
+	_u.mutation.ResetCapacityUnits()
+	_u.mutation.SetCapacityUnits(v)
+	return _u
+}
+
+// SetNillableCapacityUnits sets the "capacity_units" field if the given value is not nil.
+func (_u *ModelInstanceUpdateOne) SetNillableCapacityUnits(v *int) *ModelInstanceUpdateOne {
+	if v != nil {
+		_u.SetCapacityUnits(*v)
+	}
+	return _u
+}
+
+// AddCapacityUnits adds value to the "capacity_units" field.
+func (_u *ModelInstanceUpdateOne) AddCapacityUnits(v int) *ModelInstanceUpdateOne {
+	_u.mutation.AddCapacityUnits(v)
+	return _u
+}
+
+// SetMachineID sets the "machine_id" field.
+func (_u *ModelInstanceUpdateOne) SetMachineID(v string) *ModelInstanceUpdateOne {
+	_u.mutation.SetMachineID(v)
+	return _u
+}
+
+// SetNillableMachineID sets the "machine_id" field if the given value is not nil.
+func (_u *ModelInstanceUpdateOne) SetNillableMachineID(v *string) *ModelInstanceUpdateOne {
+	if v != nil {
+		_u.SetMachineID(*v)
+	}
+	return _u
+}
+
+// SetGpuDevices sets the "gpu_devices" field.
+func (_u *ModelInstanceUpdateOne) SetGpuDevices(v []int) *ModelInstanceUpdateOne {
+	_u.mutation.SetGpuDevices(v)
+	return _u
+}
+
+// AppendGpuDevices appends value to the "gpu_devices" field.
+func (_u *ModelInstanceUpdateOne) AppendGpuDevices(v []int) *ModelInstanceUpdateOne {
+	_u.mutation.AppendGpuDevices(v)
+	return _u
+}
+
+// ClearGpuDevices clears the value of the "gpu_devices" field.
+func (_u *ModelInstanceUpdateOne) ClearGpuDevices() *ModelInstanceUpdateOne {
+	_u.mutation.ClearGpuDevices()
+	return _u
 }
 
 // SetReady sets the "ready" field.
@@ -309,7 +592,25 @@ func (_u *ModelInstanceUpdateOne) defaults() {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *ModelInstanceUpdateOne) check() error {
+	if v, ok := _u.mutation.GroupCapacityUnits(); ok {
+		if err := modelinstance.GroupCapacityUnitsValidator(v); err != nil {
+			return &ValidationError{Name: "group_capacity_units", err: fmt.Errorf(`ent: validator failed for field "ModelInstance.group_capacity_units": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CapacityUnits(); ok {
+		if err := modelinstance.CapacityUnitsValidator(v); err != nil {
+			return &ValidationError{Name: "capacity_units", err: fmt.Errorf(`ent: validator failed for field "ModelInstance.capacity_units": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (_u *ModelInstanceUpdateOne) sqlSave(ctx context.Context) (_node *ModelInstance, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(modelinstance.Table, modelinstance.Columns, sqlgraph.NewFieldSpec(modelinstance.FieldID, field.TypeString))
 	id, ok := _u.mutation.ID()
 	if !ok {
@@ -334,6 +635,38 @@ func (_u *ModelInstanceUpdateOne) sqlSave(ctx context.Context) (_node *ModelInst
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Endpoint(); ok {
+		_spec.SetField(modelinstance.FieldEndpoint, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.HealthURL(); ok {
+		_spec.SetField(modelinstance.FieldHealthURL, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ResourceGroup(); ok {
+		_spec.SetField(modelinstance.FieldResourceGroup, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GroupCapacityUnits(); ok {
+		_spec.SetField(modelinstance.FieldGroupCapacityUnits, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedGroupCapacityUnits(); ok {
+		_spec.AddField(modelinstance.FieldGroupCapacityUnits, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.CapacityUnits(); ok {
+		_spec.SetField(modelinstance.FieldCapacityUnits, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCapacityUnits(); ok {
+		_spec.AddField(modelinstance.FieldCapacityUnits, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.MachineID(); ok {
+		_spec.SetField(modelinstance.FieldMachineID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GpuDevices(); ok {
+		_spec.SetField(modelinstance.FieldGpuDevices, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedGpuDevices(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, modelinstance.FieldGpuDevices, value)
+		})
 	}
 	if _u.mutation.GpuDevicesCleared() {
 		_spec.ClearField(modelinstance.FieldGpuDevices, field.TypeJSON)
