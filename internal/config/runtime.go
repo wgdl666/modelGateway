@@ -1,12 +1,14 @@
-package gateway
+package config
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net"
+	"net/url"
 	"os"
 	"slices"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,7 +30,7 @@ type Config struct {
 }
 
 // 排队和首次模型调用共用 backend_timeout，入队后截止时间固定。
-func ParseConfig(raw []byte) (Config, error) {
+func Parse(raw []byte) (Config, error) {
 	var c Config
 	wire := struct {
 		*Config
@@ -66,13 +68,13 @@ func ParseConfig(raw []byte) (Config, error) {
 	return c, nil
 }
 
-type runtimeConfig struct {
+type Snapshot struct {
 	Config
 	networks []*net.IPNet
 	ports    map[string]bool
 }
 
-func prepareConfig(c Config) (*runtimeConfig, error) {
+func prepareConfig(c Config) (*Snapshot, error) {
 	if len(c.APIToken) < 24 || len(c.WorkerToken) < 24 || len(c.AdminToken) < 24 || c.APIToken == c.WorkerToken || c.APIToken == c.AdminToken || c.AdminToken == c.WorkerToken {
 		return nil, errors.New("three distinct tokens of at least 24 characters required")
 	}
@@ -99,7 +101,7 @@ func prepareConfig(c Config) (*runtimeConfig, error) {
 			return nil, errors.New("invalid capacity units by capability")
 		}
 	}
-	state := &runtimeConfig{Config: c, ports: map[string]bool{}}
+	state := &Snapshot{Config: c, ports: map[string]bool{}}
 	for _, cidr := range c.AllowedNetworks {
 		_, network, err := net.ParseCIDR(cidr)
 		if err != nil {
@@ -116,29 +118,62 @@ func prepareConfig(c Config) (*runtimeConfig, error) {
 	return state, nil
 }
 
-type runtimeKey struct{}
-
-func requestConfig(ctx context.Context) *runtimeConfig {
-	return ctx.Value(runtimeKey{}).(*runtimeConfig)
+// Runtime 让 HTTP 和后台任务共享一次配置更新，各自保留开始处理时读到的快照。
+type Runtime struct {
+	mu      sync.RWMutex
+	current *Snapshot
 }
 
-func (s *Server) config() *runtimeConfig {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.current
+func NewRuntime(c Config) (*Runtime, error) {
+	state, err := prepareConfig(c)
+	if err != nil {
+		return nil, err
+	}
+	return &Runtime{current: state}, nil
+}
+
+func (r *Runtime) Current() *Snapshot {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.current
 }
 
 // 活跃队列归固定 PG 所有，切换配置不能让排队或待核对任务留在旧库。
-func (s *Server) Reload(_ context.Context, c Config) error {
+func (r *Runtime) Reload(c Config) error {
 	next, err := prepareConfig(c)
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if next.DatabaseURL != s.current.DatabaseURL {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if next.DatabaseURL != r.current.DatabaseURL {
 		return errors.New("changing database_url requires draining and restarting the gateway")
 	}
-	s.current = next
+	r.current = next
 	return nil
+}
+
+// 注册和实际出站都限制到允许的字面 IP 与端口，健康地址可带明确路径。
+func (s *Snapshot) ValidateEndpoint(endpoint string, health bool) error {
+	u, err := url.Parse(endpoint)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil ||
+		u.ForceQuery || u.RawQuery != "" || u.Fragment != "" || (!health && strings.Trim(u.Path, "/") != "") {
+		return errors.New("invalid endpoint")
+	}
+	ip := net.ParseIP(u.Hostname())
+	port := u.Port()
+	if port == "" && u.Scheme == "https" {
+		port = "443"
+	} else if port == "" {
+		port = "80"
+	}
+	if ip == nil || !s.ports[port] {
+		return errors.New("endpoint is outside the backend allowlist")
+	}
+	for _, network := range s.networks {
+		if network.Contains(ip) {
+			return nil
+		}
+	}
+	return errors.New("endpoint is outside the backend allowlist")
 }

@@ -15,7 +15,9 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/wgdl666/modelGateway/internal/config"
-	"github.com/wgdl666/modelGateway/internal/gateway"
+	"github.com/wgdl666/modelGateway/internal/httpapi"
+	"github.com/wgdl666/modelGateway/internal/store"
+	"github.com/wgdl666/modelGateway/internal/worker"
 )
 
 func main() {
@@ -37,7 +39,7 @@ func run(ctx context.Context, path string, migration bool) error {
 	if err != nil {
 		return err
 	}
-	cfg, err := gateway.ParseConfig(raw)
+	cfg, err := config.Parse(raw)
 	if err != nil {
 		return err
 	}
@@ -47,22 +49,25 @@ func run(ctx context.Context, path string, migration bool) error {
 		dbTimeout = 90 * time.Second
 	}
 	dbCtx, cancel := context.WithTimeout(ctx, dbTimeout)
-	db, err := gateway.OpenDatabase(dbCtx, cfg.DatabaseURL, migration)
+	db, err := store.OpenDatabase(dbCtx, cfg.DatabaseURL, migration)
 	cancel()
 	if err != nil {
 		return err
 	}
+	defer db.Close()
 	if migration {
-		defer db.Close()
 		slog.Info("schema initialized with Ent")
 		return nil
 	}
-	app, err := gateway.NewServer(&gateway.Store{DB: db}, cfg)
+	runtime, err := config.NewRuntime(cfg)
 	if err != nil {
-		_ = db.Close()
 		return err
 	}
-	defer app.Close()
+	ledger := store.New(db)
+	app := httpapi.New(ledger, runtime)
+	reconciler := worker.New(ledger, runtime)
+	// 先排空 HTTP，再等后台写入完成，最后关闭两者共享的 PG 连接。
+	defer reconciler.Close()
 	listener, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		return errors.New("cannot listen on configured address")
@@ -81,7 +86,7 @@ func run(ctx context.Context, path string, migration bool) error {
 		return server
 	}
 	server := serve(listener)
-	app.StartReconciler()
+	reconciler.Start()
 	var retiring sync.WaitGroup
 	defer func() {
 		shutdown(server)
@@ -107,7 +112,7 @@ func run(ctx context.Context, path string, migration bool) error {
 			if bytes.Equal(raw, nextRaw) {
 				continue
 			}
-			next, err := gateway.ParseConfig(nextRaw)
+			next, err := config.Parse(nextRaw)
 			var nextListener net.Listener
 			if err == nil && next.Listen != cfg.Listen {
 				nextListener, err = net.Listen("tcp", next.Listen)
@@ -116,9 +121,7 @@ func run(ctx context.Context, path string, migration bool) error {
 				}
 			}
 			if err == nil {
-				reloadCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-				err = app.Reload(reloadCtx, next)
-				cancel()
+				err = runtime.Reload(next)
 			}
 			if err != nil {
 				if nextListener != nil {
