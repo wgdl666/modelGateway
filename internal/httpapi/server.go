@@ -114,6 +114,8 @@ func storeError(c *app.RequestContext, err error, id string) {
 		writeError(c, 404, "not_found", "record does not exist", id)
 	case errors.Is(err, store.ErrConflict):
 		writeError(c, 409, "conflict", "request or instance conflicts with an existing record", id)
+	case errors.Is(err, store.ErrLegacyRegistration):
+		writeError(c, 409, "legacy_registration", "register a new instance with the current model key", id)
 	case errors.Is(err, store.ErrFull):
 		writeError(c, 429, "queue_full", "waiting queue is full", id)
 	default:

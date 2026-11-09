@@ -76,6 +76,10 @@ func (s *Store) Drain(ctx context.Context, id string, draining bool) error {
 			return err
 		}
 		if !draining {
+			// 原登记用于追溯历史请求。重新接单时须用当前模型键登记新实例。
+			if !protocol.MatchesCapability(instance.ModelKey, instance.Capability) {
+				return ErrLegacyRegistration
+			}
 			conflict, err := tx.ModelInstance.Query().Where(
 				modelinstance.IDNEQ(id), modelinstance.ModelKeyEQ(instance.ModelKey),
 				modelinstance.CapabilityEQ(instance.Capability), modelinstance.EndpointEQ(instance.Endpoint),

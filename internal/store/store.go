@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	ErrFull     = errors.New("waiting queue is full")
-	ErrConflict = errors.New("request or instance conflict")
+	ErrFull               = errors.New("waiting queue is full")
+	ErrConflict           = errors.New("request or instance conflict")
+	ErrLegacyRegistration = errors.New("instance model key no longer matches its capability")
 )
 
 // Store 管理 PG 账本，同一事务协调多个网关副本的受理和容量分配。

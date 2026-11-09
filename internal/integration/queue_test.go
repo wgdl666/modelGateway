@@ -260,6 +260,29 @@ func TestQueuedUntilMatchingInstanceHasFreshProbe(t *testing.T) {
 	}
 }
 
+func TestLegacyRegistrationCannotResumeOrClaim(t *testing.T) {
+	a, b, _ := stores(t)
+	legacy := testInstance("Vmind_wardrobe_v1.0", "cloth_gen", "http://127.0.0.1:8001", 1)
+	// 模拟拆键前已登记的实例和已写入账本的请求。
+	registerReady(t, a, legacy)
+	in := testAdmission(legacy, uuid.NewString(), 1)
+	if _, err := a.Admit(t.Context(), in); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := b.ListInstances(t.Context()); err != nil || len(rows) != 1 || !rows[0].LegacyRegistration || rows[0].Eligible {
+		t.Fatalf("legacy registration must stay visible without being eligible: rows=%v err=%v", rows, err)
+	}
+	if task, err := b.Claim(t.Context(), testConfig(), in.ID); err != nil || task != nil {
+		t.Fatalf("legacy registration accepted a queued task: task=%v err=%v", task, err)
+	}
+	if err := a.Drain(t.Context(), legacy.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Drain(t.Context(), legacy.ID, false); !errors.Is(err, store.ErrLegacyRegistration) {
+		t.Fatalf("resume legacy registration: got %v", err)
+	}
+}
+
 func TestGroupRegistrationAndQueueExpiry(t *testing.T) {
 	a, b, _ := stores(t)
 	i := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8001", 1)

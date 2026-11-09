@@ -7,6 +7,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
 // 等待响应时只取响应字段和截止时间，避免反复读取入队保存的大图。
@@ -19,10 +20,11 @@ func (s *Store) Get(ctx context.Context, id string) (*ent.Request, error) {
 
 type InstanceView struct {
 	*ent.ModelInstance
-	ReservedUnits    int  `json:"reserved_units"`
-	ReservedRequests int  `json:"reserved_requests"`
-	Healthy          bool `json:"healthy"`
-	Eligible         bool `json:"eligible"`
+	ReservedUnits      int  `json:"reserved_units"`
+	ReservedRequests   int  `json:"reserved_requests"`
+	Healthy            bool `json:"healthy"`
+	Eligible           bool `json:"eligible"`
+	LegacyRegistration bool `json:"legacy_registration,omitempty"`
 }
 
 func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
@@ -45,9 +47,11 @@ func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
 	for _, row := range rows {
 		// 预留单位和请求数分别返回，避免把加权容量显示为在途任务数。
 		healthy := row.Ready && row.HealthCheckedAt.After(cutoff)
+		legacy := !protocol.MatchesCapability(row.ModelKey, row.Capability)
 		result = append(result, InstanceView{
 			ModelInstance: row, ReservedUnits: units[row.ID], ReservedRequests: requests[row.ID],
-			Healthy: healthy, Eligible: healthy && !row.Draining,
+			Healthy: healthy, Eligible: healthy && !row.Draining && !legacy,
+			LegacyRegistration: legacy,
 		})
 	}
 	return result, nil

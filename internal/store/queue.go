@@ -137,6 +137,10 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 			byGroup[hold.ResourceGroup] += hold.Units
 		}
 		for _, i := range instances {
+			// 旧登记仍保留执行账本，历史组合不再参与新派发。
+			if !protocol.MatchesCapability(i.ModelKey, i.Capability) {
+				continue
+			}
 			free := min(i.CapacityUnits-byInstance[i.ID], i.GroupCapacityUnits-byGroup[i.ResourceGroup])
 			if free < next.Units {
 				continue
