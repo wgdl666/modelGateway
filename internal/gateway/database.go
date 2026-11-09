@@ -47,12 +47,18 @@ func OpenDatabase(ctx context.Context, dsn string, initialize bool) (*ent.Client
 			_ = client.Close()
 			return nil, err
 		}
-		// 命名空间和表结构均交给 Atlas/Ent 生成，业务启动不读取或执行手写 SQL 文件。
-		driver, err := postgres.Open(db)
-		if err == nil {
-			err = driver.ApplyChanges(ctx, []atlasschema.Change{&atlasschema.AddSchema{
-				S: atlasschema.New(namespace), Extra: []atlasschema.Clause{&atlasschema.IfNotExists{}},
-			}})
+		// 共享库预建 schema 后，应用只需该 schema 的权限，不授予库级 CREATE。
+		var exists bool
+		err = lock.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = $1)", namespace).Scan(&exists)
+		if err == nil && !exists {
+			driver, openErr := postgres.Open(db)
+			if openErr == nil {
+				err = driver.ApplyChanges(ctx, []atlasschema.Change{&atlasschema.AddSchema{
+					S: atlasschema.New(namespace), Extra: []atlasschema.Clause{&atlasschema.IfNotExists{}},
+				}})
+			} else {
+				err = openErr
+			}
 		}
 		if err == nil {
 			err = client.Schema.Create(ctx, entschema.WithSchemaName(namespace), entschema.WithForeignKeys(false))
