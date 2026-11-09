@@ -40,6 +40,13 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			t.Setenv("MODEL_GATEWAY_NATIVE_VIDEO_TOKEN", "video-token")
 
 			const bucket, target, jobID = "test-results", "ltx-gpu1", "ltx-job-1"
+			// 一条走路演旧根地址，另一条覆盖新路径不发送 target_instance。
+			videoPrefix, wantTarget := "", target
+			healthPath := "/health"
+			if provider == "oss" {
+				videoPrefix, wantTarget = "/gpu1", ""
+				healthPath = "/healthz"
+			}
 			var targetAdvertised atomic.Bool
 			targetAdvertised.Store(provider != "oss")
 			png := []byte("\x89PNG\r\n\x1a\nimage")
@@ -93,27 +100,33 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 					return
 				}
 				switch r.Method + " " + r.URL.Path {
-				case "GET /health":
+				case "GET " + videoPrefix + healthPath:
 					if !targetAdvertised.Load() {
-						_, _ = io.WriteString(w, `{"ready":true,"instances":[{"name":"ltx-gpu0"}]}`)
+						if videoPrefix != "" {
+							w.WriteHeader(http.StatusServiceUnavailable)
+						}
+						_, _ = io.WriteString(w, `{"ready":false,"instances":[{"name":"ltx-gpu0"}]}`)
 						return
 					}
 					_, _ = fmt.Fprintf(w, `{"ready":true,"instances":[{"name":%q}]}`, target)
-				case "POST /vton":
-					if r.FormValue("target_instance") != target || r.FormValue("motion_tips") != "turn" ||
+				case "POST " + videoPrefix + "/vton":
+					if r.FormValue("target_instance") != wantTarget || r.FormValue("motion_tips") != "turn" ||
 						r.Header.Get("X-Gateway-Request-ID") != videoID || r.Header.Get("X-Gateway-Dispatch") != "immediate" {
 						t.Error("video request lost target or model fields")
+					}
+					if videoPrefix != "" && r.MultipartForm.Value["target_instance"] != nil {
+						t.Error("scoped video request sent target_instance")
 					}
 					checkNativeTestFile(t, r, "image", "first frame")
 					w.WriteHeader(http.StatusAccepted)
 					_ = json.NewEncoder(w).Encode(map[string]string{"job_id": jobID})
-				case "GET /jobs/" + jobID:
+				case "GET " + videoPrefix + "/jobs/" + jobID:
 					status := "processing"
 					if videoPolls.Add(1) > 1 {
 						status = "done"
 					}
 					_ = json.NewEncoder(w).Encode(map[string]string{"job_id": jobID, "status": status})
-				case "GET /jobs/" + jobID + "/video":
+				case "GET " + videoPrefix + "/jobs/" + jobID + "/video":
 					_, _ = w.Write(video)
 				default:
 					t.Errorf("unexpected video call %s %s", r.Method, r.URL.Path)
@@ -153,7 +166,8 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			cfg.RabbitMQURL, cfg.RabbitMQQueue, _ = testsupport.RabbitQueue(t)
 			cfg.BackendToken = "legacy-token"
 			cfg.PollInterval = 25 * time.Millisecond
-			cfg.NativeBackends = map[string]config.NativeBackend{imageModel.URL: {}, videoModelServer.URL: {Video: true}}
+			videoEndpoint := videoModelServer.URL + videoPrefix
+			cfg.NativeBackends = map[string]config.NativeBackend{imageModel.URL: {}, videoEndpoint: {Video: true}}
 			cfg.NativeResults = config.NativeResults{Provider: provider, Region: "us-east-2", Bucket: bucket, Endpoint: objects.URL}
 			for endpoint := range cfg.NativeBackends {
 				u, _ := url.Parse(endpoint)
@@ -192,23 +206,26 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 				return response
 			}
 			imageSpec := testInstance(protocol.OutfitModel, "vton", imageModel.URL, 1)
-			videoSpec := testInstance(protocol.VideoModel, "video", videoModelServer.URL, 1)
+			videoSpec := testInstance(protocol.VideoModel, "video", videoEndpoint, 1)
+			videoSpec.HealthURL = videoEndpoint + healthPath
 			videoSpec.ResourceGroup = "host/gpu1"
 			if provider == "oss" {
-				raw, _ := json.Marshal(videoSpec)
+				otherCard := videoSpec
+				otherCard.HealthURL = videoModelServer.URL + "/gpu0/healthz"
+				raw, _ := json.Marshal(otherCard)
 				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 400)
 			}
-			videoSpec.TargetInstance = target
+			videoSpec.TargetInstance = wantTarget
 			for _, spec := range []protocol.Instance{imageSpec, videoSpec} {
 				raw, _ := json.Marshal(spec)
 				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 200)
 			}
 			if provider == "oss" {
-				// 同一个登记 ID 不能把已经绑定的 GPU 目标改到另一卡。
+				// 单卡地址已经确定执行目标，登记不能再传另一个目标。
 				changed := videoSpec
 				changed.TargetInstance = "ltx-gpu0"
 				raw, _ := json.Marshal(changed)
-				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 409)
+				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 400)
 			}
 			reconciler.Start()
 			if provider == "oss" {

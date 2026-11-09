@@ -2,8 +2,12 @@ package config
 
 import (
 	"errors"
+	"net/url"
+	"regexp"
 	"strings"
 )
+
+var gpuEndpointPath = regexp.MustCompile(`^/gpu(0|[1-9][0-9]*)$`)
 
 type NativeBackend struct {
 	// 地址固定使用图片或视频协议，避免通过实例登记改变该地址可用的原生凭据。
@@ -15,12 +19,28 @@ func (b NativeBackend) Matches(capability string) bool {
 	return b.Video == (capability == "video")
 }
 
-// 原生视频必须登记目标。探针与执行使用同一地址，避免向其他服务发送原生凭据。
+func isGPUEndpoint(endpoint string) bool {
+	u, err := url.Parse(endpoint)
+	return err == nil && gpuEndpointPath.MatchString(u.Path)
+}
+
+// 单卡地址由运维配置授权，探针必须落在该卡，避免把另一张卡的就绪状态用于派发。
+func (c Config) AcceptsInstanceAddress(capability, endpoint, healthURL, targetInstance string) bool {
+	if backend, direct := c.NativeBackends[endpoint]; direct {
+		return backend.Accepts(capability, endpoint, healthURL, targetInstance)
+	}
+	return targetInstance == "" && !isGPUEndpoint(endpoint)
+}
+
 func (b NativeBackend) Accepts(capability, endpoint, healthURL, targetInstance string) bool {
-	if !b.Matches(capability) || b.Video != (targetInstance != "") {
+	if !b.Matches(capability) || strings.TrimSpace(targetInstance) != targetInstance {
 		return false
 	}
-	return strings.TrimSpace(targetInstance) == targetInstance &&
+	if isGPUEndpoint(endpoint) {
+		return b.Video && targetInstance == "" && healthURL == endpoint+"/healthz"
+	}
+	// 路演现有根地址在排空前仍靠旧实例目标派发，保证原来已登记的请求可以回查。
+	return b.Video == (targetInstance != "") &&
 		(healthURL == endpoint || strings.HasPrefix(healthURL, endpoint+"/"))
 }
 
@@ -36,6 +56,9 @@ func (s *Snapshot) validateNative() error {
 	for endpoint, backend := range s.NativeBackends {
 		if strings.HasSuffix(endpoint, "/") || s.ValidateEndpoint(endpoint, false) != nil {
 			return errors.New("invalid native_backends endpoint")
+		}
+		if isGPUEndpoint(endpoint) && !backend.Video {
+			return errors.New("native_backends /gpuN requires a video backend")
 		}
 		if backend.VTONEdits && backend.Video {
 			return errors.New("native_backends vton_edits requires an image endpoint")

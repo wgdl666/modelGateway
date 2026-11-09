@@ -135,11 +135,11 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 			if !protocol.MatchesCapability(i.ModelKey, i.Capability) {
 				continue
 			}
-			// 旧视频登记即使还留有就绪快照，也要先补齐目标才能预留 GPU。
-			backend, direct := cfg.NativeBackends[i.Endpoint]
-			if direct && !backend.Accepts(i.Capability, i.Endpoint, i.HealthURL, i.TargetInstance) {
+			// 已缓存的健康状态不能让已移出允许配置的单卡地址继续接单。
+			if !cfg.AcceptsInstanceAddress(i.Capability, i.Endpoint, i.HealthURL, i.TargetInstance) {
 				continue
 			}
+			_, direct := cfg.NativeBackends[i.Endpoint]
 			free := min(i.CapacityUnits-byInstance[i.ID], i.GroupCapacityUnits-byGroup[i.ResourceGroup])
 			if free < next.Units {
 				continue

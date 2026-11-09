@@ -179,11 +179,14 @@ func (r *Runtime) Reload(c Config) error {
 	return nil
 }
 
-// 注册和实际出站都限制到允许的字面 IP 与端口，健康地址可带明确路径。
+// 出站仍限制在允许的字面 IP 与端口，单卡执行路径必须为规范的 /gpuN。
 func (s *Snapshot) ValidateEndpoint(endpoint string, health bool) error {
 	u, err := url.Parse(endpoint)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil ||
-		u.ForceQuery || u.RawQuery != "" || u.Fragment != "" || (!health && strings.Trim(u.Path, "/") != "") {
+		u.ForceQuery || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("invalid endpoint")
+	}
+	if !health && strings.Trim(u.Path, "/") != "" && (u.RawPath != "" || !gpuEndpointPath.MatchString(u.Path)) {
 		return errors.New("invalid endpoint")
 	}
 	ip := net.ParseIP(u.Hostname())

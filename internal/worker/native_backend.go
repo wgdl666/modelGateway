@@ -65,7 +65,7 @@ var nativeRoutes = map[string]struct {
 	"video":              {"/vton", []string{"image"}},
 }
 
-// 图片的文件字段名由能力决定。视频目标来自预留 GPU 时选中的实例。
+// 图片字段名由能力决定。视频使用账本中的地址，只有尚未排空的旧根地址带实例目标。
 func nativeMultipart(task *ent.Request, input protocol.Submission, backend config.NativeBackend, targetInstance string) (string, *bytes.Buffer, http.Header, error) {
 	route, ok := nativeRoutes[task.Capability]
 	if !ok || !backend.Matches(task.Capability) {
@@ -113,7 +113,7 @@ func nativeMultipart(task *ent.Request, input protocol.Submission, backend confi
 	if user := input.Metadata.UserID; user != "" {
 		headers.Set("X-User-ID", user)
 	}
-	if backend.Video {
+	if backend.Video && targetInstance != "" {
 		form["target_instance"] = targetInstance
 	}
 	for key, value := range form {
@@ -204,7 +204,7 @@ func (w *Reconciler) nativeReady(ctx context.Context, cfg *config.Snapshot, row 
 	if !ready {
 		return false
 	}
-	if backend.Video && !slices.ContainsFunc(health.Instances, func(i struct {
+	if backend.Video && row.TargetInstance != "" && !slices.ContainsFunc(health.Instances, func(i struct {
 		Name string `json:"name"`
 	}) bool {
 		return i.Name == row.TargetInstance
