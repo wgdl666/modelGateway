@@ -13,7 +13,9 @@ RUN CGO_ENABLED=0 go build -trimpath -o /model-gateway ./cmd/model-gateway
 FROM ${GO_RUNTIME_IMAGE}
 ARG SOURCE_REVISION=""
 LABEL org.opencontainers.image.revision="$SOURCE_REVISION"
-RUN apk add --no-cache ca-certificates && adduser -D -u 10001 gateway
+# 国内构建机从已锁定的 Go 基础镜像取 CA，避免运行层依赖外部 Alpine 包仓。
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+RUN adduser -D -u 10001 gateway
 WORKDIR /app
 COPY --from=build /model-gateway /app/model-gateway
 USER 10001
