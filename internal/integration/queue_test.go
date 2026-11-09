@@ -83,7 +83,7 @@ func testConfig() config.Config {
 	return config.Config{
 		APIToken: apiToken, AdminToken: adminToken,
 		AllowedNetworks: []string{"127.0.0.0/8"}, AllowedPorts: []string{"8001", "8002"},
-		BackendTimeout: 10 * time.Second, MaxWaiting: 64, MaxWaitingBytes: 128 << 20,
+		BackendTimeout: 10 * time.Second, MaxWaiting: 128,
 	}
 }
 
@@ -111,7 +111,7 @@ func testAdmission(i protocol.Instance, id string, units int) store.Admission {
 	cfg := testConfig()
 	return store.Admission{
 		ID: id, ModelKey: i.ModelKey, Capability: i.Capability, Payload: raw, Input: input, Units: units,
-		MaxWaiting: cfg.MaxWaiting, MaxWaitingBytes: cfg.MaxWaitingBytes, BackendTimeout: cfg.BackendTimeout,
+		MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout,
 	}
 }
 
@@ -121,7 +121,7 @@ func succeeded(id string) protocol.ModelResponse {
 	}}}
 }
 
-func TestTwoReplicasQueueBudgetAndIdempotency(t *testing.T) {
+func TestTwoReplicasQueueLimitAndIdempotency(t *testing.T) {
 	a, b, db := stores(t)
 	i := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8001", 1)
 	registerReady(t, a, i)
@@ -152,9 +152,21 @@ func TestTwoReplicasQueueBudgetAndIdempotency(t *testing.T) {
 	if _, err := b.Admit(t.Context(), newTask); !errors.Is(err, store.ErrFull) {
 		t.Fatalf("expected count limit, got %v", err)
 	}
-	newTask.MaxWaiting, newTask.MaxWaitingBytes = 64, int64(len(same.Payload)+len(newTask.Payload)-1)
-	if _, err := b.Admit(t.Context(), newTask); !errors.Is(err, store.ErrFull) {
-		t.Fatalf("expected byte limit, got %v", err)
+	// 模拟历史记录已用满原字节预算，队列仍按条数受理。
+	if err := db.Request.Create().SetID(uuid.NewString()).SetModelKey(same.ModelKey).SetCapability(same.Capability).
+		SetRequestPayload(same.Payload).SetPayloadBytes(128 << 20).SetUnits(same.Units).
+		SetDeadlineAt(time.Now().UTC().Add(same.BackendTimeout)).Exec(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	newTask.MaxWaiting = testConfig().MaxWaiting
+	for count := 2; count < newTask.MaxWaiting; count++ {
+		if _, err := b.Admit(t.Context(), newTask); err != nil {
+			t.Fatalf("admit request %d: %v", count+1, err)
+		}
+		newTask.ID = uuid.NewString()
+	}
+	if _, err := a.Admit(t.Context(), newTask); !errors.Is(err, store.ErrFull) {
+		t.Fatalf("expected count limit at %d, got %v", newTask.MaxWaiting, err)
 	}
 }
 

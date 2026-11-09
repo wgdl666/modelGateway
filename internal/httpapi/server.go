@@ -255,7 +255,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 	task, err := s.store.Admit(ctx, store.Admission{
 		ID: id, ModelKey: model, Capability: capability, Payload: raw, Input: input.Input,
 		TraceID: input.Metadata.TraceID, Units: max(1, cfg.UnitsByCapability[capability]),
-		MaxWaiting: cfg.MaxWaiting, MaxWaitingBytes: cfg.MaxWaitingBytes, BackendTimeout: cfg.BackendTimeout,
+		MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout,
 	})
 	<-s.uploads
 	if err != nil {

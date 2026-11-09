@@ -14,6 +14,9 @@ func TestHotReloadKeepsQueueDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if got := runtime.Current().MaxWaiting; got != 128 {
+		t.Fatalf("default waiting limit = %d, want 128", got)
+	}
 	next := cfg
 	next.APIToken += "-new"
 	if err := runtime.Reload(next); err != nil || runtime.Current().APIToken != next.APIToken {

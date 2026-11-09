@@ -15,6 +15,5 @@
   "backend_timeout": "120s",
   "poll_interval": "1s",
   "max_body_bytes": 67108864,
-  "max_waiting": 64,
-  "max_waiting_bytes": 134217728
+  "max_waiting": 128
 }
