@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -271,6 +272,109 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSlowNativeVideoUploadsDoNotBlockPolling(t *testing.T) {
+	ledger, _, db := stores(t)
+	t.Setenv("AWS_ACCESS_KEY_ID", "test-access-key")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test-secret")
+	const videoCount = 4
+	const checkJob = "ltx-status-check"
+	allowUploads := make(chan struct{})
+	releaseUploads := sync.OnceFunc(func() { close(allowUploads) })
+	uploadsStarted := make(chan struct{}, videoCount)
+	var downloadsWhileBlocked atomic.Int32
+	native := http.NewServeMux()
+	native.HandleFunc("GET /jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, status := r.PathValue("id"), "done"
+		if id == checkJob {
+			status = "error"
+		}
+		_, _ = fmt.Fprintf(w, `{"job_id":%q,"status":%q}`, id, status)
+	})
+	native.HandleFunc("GET /jobs/{id}/video", func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-allowUploads:
+		default:
+			if downloadsWhileBlocked.Add(1) > 2 {
+				t.Error("a third video download started while both publishers were busy")
+			}
+		}
+		_, _ = io.WriteString(w, "video fixture")
+	})
+	model := httptest.NewServer(native)
+	defer model.Close()
+	objects := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		select {
+		case <-allowUploads:
+		case uploadsStarted <- struct{}{}:
+		}
+		select {
+		case <-allowUploads:
+			w.Header().Set("ETag", `"test-etag"`)
+			w.WriteHeader(http.StatusOK)
+		case <-r.Context().Done():
+		}
+	}))
+	defer objects.Close()
+
+	cfg := testConfig()
+	cfg.RabbitMQURL, cfg.RabbitMQQueue, _ = testsupport.RabbitQueue(t)
+	cfg.BackendTimeout = 30 * time.Second
+	cfg.PollInterval = 50 * time.Millisecond
+	cfg.NativeBackends = map[string]config.NativeBackend{model.URL: {Video: true}}
+	cfg.NativeResults = config.NativeResults{Provider: "s3", Region: "us-east-2", Bucket: "test-results", Endpoint: objects.URL}
+	address, _ := url.Parse(model.URL)
+	cfg.AllowedPorts = append(cfg.AllowedPorts, address.Port())
+	runtime, err := config.NewRuntime(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciler, err := worker.New(ledger, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reconciler.Close()
+	defer releaseUploads()
+
+	// 从模型已受理的账本状态开始，控制多个任务同时到期回查。
+	addPollingVideo := func(jobID string) string {
+		t.Helper()
+		id, now := uuid.NewString(), time.Now().UTC()
+		err := db.Request.Create().SetID(id).SetModelKey(protocol.VideoModel).
+			SetRequestPayload(json.RawMessage(`{}`)).SetPayloadBytes(2).SetUnits(1).
+			SetState(request.StateProcessing).SetSlotReserved(true).SetInstanceID("ltx-test").SetResourceGroup("test/gpu").
+			SetEndpoint(model.URL).SetBackendTaskID(jobID).SetDeadlineAt(now.Add(time.Minute)).SetNextPollAt(now).Exec(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	var videoIDs []string
+	for i := range videoCount {
+		videoIDs = append(videoIDs, addPollingVideo(fmt.Sprintf("ltx-publish-%d", i)))
+	}
+	reconciler.Start()
+	waitForNativeTest(t, "two blocked uploads", func() bool { return len(uploadsStarted) >= 2 })
+	checkID := addPollingVideo(checkJob)
+	waitForNativeTest(t, "another video status while both uploads are blocked", func() bool {
+		row, err := db.Request.Get(t.Context(), checkID)
+		return err == nil && row.State == request.StateFailed && row.ErrorCode == "model_failed"
+	})
+	count, err := db.Request.Query().Where(request.IDIn(videoIDs...), request.StateEQ(request.StateProcessing), request.SlotReservedEQ(true)).Count(t.Context())
+	if err != nil || count != videoCount {
+		t.Fatalf("video state advanced before upload: processing=%d err=%v", count, err)
+	}
+	releaseUploads()
+	waitForNativeTest(t, "all video results to be published", func() bool {
+		count, err := db.Request.Query().Where(request.IDIn(videoIDs...), request.StateEQ(request.StateSucceeded), request.SlotReservedEQ(false)).Count(t.Context())
+		return err == nil && count == videoCount
+	})
 }
 
 // 上游先拿到超时后，单槽 GPU 仍要等原请求跑完才接下一单。

@@ -22,8 +22,9 @@ import (
 )
 
 const (
-	workerResponseLimit = 1 << 20
-	probeInterval       = 2 * time.Second
+	workerResponseLimit       = 1 << 20
+	probeInterval             = 2 * time.Second
+	nativeVideoPublishWorkers = 2
 )
 
 // Reconciler 按 PG 账本派发与核对结果，入站连接断开后仍可处理已受理的任务。
@@ -35,13 +36,14 @@ type Reconciler struct {
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 
-	nativeImageAuth nativeAuth
-	nativeVideoAuth nativeAuth
-	results         *resultUploader
+	nativeImageAuth   nativeAuth
+	nativeVideoAuth   nativeAuth
+	results           *resultUploader
+	videoPublications chan func() error
 }
 
 func New(tasks *store.Store, runtime *config.Runtime) (*Reconciler, error) {
-	w := &Reconciler{store: tasks, runtime: runtime}
+	w := &Reconciler{store: tasks, runtime: runtime, videoPublications: make(chan func() error)}
 	cfg := runtime.Current()
 	// 连接暂时失败由投递循环重试，缺失启动配置会使已受理任务一直留在账本。
 	if cfg.RabbitMQURL == "" || cfg.RabbitMQQueue == "" {
@@ -292,13 +294,29 @@ func (w *Reconciler) runWorker(label string, interval time.Duration, work func()
 	})
 }
 
-// 派发与终态回查分开，等待模型响应的消费者不会占用回查协程。
+func (w *Reconciler) runVideoPublisher() {
+	for {
+		select {
+		case <-w.ctx.Done():
+			return
+		case publish := <-w.videoPublications:
+			if err := publish(); err != nil && w.ctx.Err() == nil {
+				slog.Error("native video publication failed", "error_type", fmt.Sprintf("%T", err))
+			}
+		}
+	}
+}
+
+// 派发、回查和视频发布各用独立协程，慢传输不会占用状态查询的并发。
 func (w *Reconciler) Start() {
 	w.runWorker("model health probe failed", probeInterval, func() error { return w.probe(w.runtime.Current()) })
 	w.runWorker("queue expiry failed", 200*time.Millisecond, func() error { return w.store.Expire(w.ctx) })
 	w.runRabbit("queue publication failed", w.publishQueued)
 	for range 2 {
 		w.runRabbit("queue dispatch failed", w.consumeQueued)
+	}
+	for range nativeVideoPublishWorkers {
+		w.wg.Go(w.runVideoPublisher)
 	}
 	for range 4 {
 		w.runWorker("model reconciliation failed", 125*time.Millisecond, func() error {
