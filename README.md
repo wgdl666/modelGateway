@@ -20,7 +20,7 @@
 
 图片持久入队后同步等待结果。视频持久入队后立即返回 202 和 `request_id`、`state`。使用相同请求头调用 `GET /v1/gateway/requests` 查询。成功响应为 `result.files[]`，每项只有 `provider`、`region`、`bucket` 和 `key`。在排队时可用 `POST /v1/gateway/requests/cancel` 取消，已经派发返回 409。
 
-队列按模型限制等待条数和字节数，默认 64 条、128 MiB。队列满返回 429，PostgreSQL 不可用返回 503。
+队列按 `model_key` 限制等待条数，`max_waiting` 默认 128。队列满返回 429，PostgreSQL 不可用返回 503。
 派发时检查能力、探活和容量。暂时没有可用实例时，任务保持 `queued`。`backend_timeout` 默认 120 秒，用于排队和上游等待。使用 Worker 协议的实例也用这份预算完成首次模型调用。截止时仍在队列的任务进入 `failed`，错误码为 `queue_timeout`。
 
 ## 实例管理

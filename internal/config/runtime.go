@@ -25,7 +25,6 @@ type Config struct {
 	PollInterval      time.Duration  `json:"-"`
 	MaxBodyBytes      int64          `json:"max_body_bytes"`
 	MaxWaiting        int            `json:"max_waiting"`
-	MaxWaitingBytes   int64          `json:"max_waiting_bytes"`
 	UnitsByCapability map[string]int `json:"units_by_capability"`
 
 	NativeBackends         map[string]NativeBackend `json:"native_backends"`
@@ -104,12 +103,9 @@ func prepareConfig(c Config) (*Snapshot, error) {
 		c.MaxBodyBytes = 64 << 20
 	}
 	if c.MaxWaiting == 0 {
-		c.MaxWaiting = 64
+		c.MaxWaiting = 128
 	}
-	if c.MaxWaitingBytes == 0 {
-		c.MaxWaitingBytes = 128 << 20
-	}
-	if c.BackendTimeout < 0 || c.PollInterval < 0 || c.MaxBodyBytes < 0 || c.MaxWaiting < 0 || c.MaxWaitingBytes < 0 {
+	if c.BackendTimeout < 0 || c.PollInterval < 0 || c.MaxBodyBytes < 0 || c.MaxWaiting < 0 {
 		return nil, errors.New("queue limits must be positive")
 	}
 	for capability, units := range c.UnitsByCapability {

@@ -23,7 +23,6 @@ type Admission struct {
 	Input                    json.RawMessage
 	Units                    int
 	MaxWaiting               int
-	MaxWaitingBytes          int64
 	BackendTimeout           time.Duration
 }
 
@@ -51,20 +50,14 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 			return err
 		}
 		// 实例短时下线时仍可接单。派发再查健康和可用容量，超过原截止时间的任务按排队超时结束。
-		var totals []struct {
-			Count int
-			Bytes *int64
-		}
-		if err := tx.Request.Query().Where(
+		// 同模型只按等待条数限流，可串行化事务避免多个副本同时接单超额。
+		waiting, err := tx.Request.Query().Where(
 			request.ModelKeyEQ(in.ModelKey), request.StateEQ(request.StateQueued), request.DeadlineAtGT(now),
-		).Aggregate(ent.As(ent.Count(), "count"), ent.As(ent.Sum(request.FieldPayloadBytes), "bytes")).Scan(ctx, &totals); err != nil {
+		).Count(ctx)
+		if err != nil {
 			return err
 		}
-		var waitingBytes int64
-		if totals[0].Bytes != nil {
-			waitingBytes = *totals[0].Bytes
-		}
-		if totals[0].Count >= in.MaxWaiting || int64(len(in.Payload)) > in.MaxWaitingBytes-waitingBytes {
+		if waiting >= in.MaxWaiting {
 			return ErrFull
 		}
 		task, err = tx.Request.Create().SetID(in.ID).SetModelKey(in.ModelKey).SetCapability(in.Capability).
