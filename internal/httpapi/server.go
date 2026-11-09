@@ -67,6 +67,7 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	// 实例登记决定网关可以向哪些执行地址派单，因此使用管理凭据。
 	h.POST("/v1/instances/register", s.auth("admin", s.register))
 	h.POST("/v1/instances/:id/drain", s.auth("admin", s.drain))
+	h.POST("/v1/instances/:id/edit", s.auth("admin", s.editInstance))
 	h.GET("/v1/instances", s.auth("admin", s.instances))
 	h.DELETE("/v1/instances/:id", s.auth("admin", s.clearInstance))
 	// 组容量会影响同卡所有模型，只允许用管理凭据变更。

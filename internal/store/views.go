@@ -20,11 +20,12 @@ func (s *Store) Get(ctx context.Context, id string) (*ent.Request, error) {
 
 type InstanceView struct {
 	*ent.ModelInstance
-	ReservedUnits    int  `json:"reserved_units"`
-	ReservedRequests int  `json:"reserved_requests"`
-	Healthy          bool `json:"healthy"`
-	Eligible         bool `json:"eligible"`
-	Clearable        bool `json:"clearable,omitempty"`
+	ConfigRevision   string `json:"config_revision"`
+	ReservedUnits    int    `json:"reserved_units"`
+	ReservedRequests int    `json:"reserved_requests"`
+	Healthy          bool   `json:"healthy"`
+	Eligible         bool   `json:"eligible"`
+	Clearable        bool   `json:"clearable,omitempty"`
 }
 
 func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
@@ -55,7 +56,9 @@ func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
 		healthy := instanceHealthy(row, now)
 		result = append(result, InstanceView{
 			ModelInstance: row, ReservedUnits: units[row.ID], ReservedRequests: requests[row.ID],
-			Healthy: healthy, Eligible: healthy && !row.Draining,
+			// 暂停后不再写探活，更新时间可识别同一份编辑草稿。
+			ConfigRevision: row.UpdatedAt.UTC().Format(time.RFC3339Nano),
+			Healthy:        healthy, Eligible: healthy && !row.Draining,
 			Clearable: instanceClearable(row, healthy) && requests[row.ID] == 0,
 		})
 	}

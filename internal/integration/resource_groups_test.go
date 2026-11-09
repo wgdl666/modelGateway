@@ -16,7 +16,7 @@ import (
 )
 
 func TestResourceGroupOwnsCapacityAcrossModels(t *testing.T) {
-	a, b, _ := stores(t)
+	a, b, db := stores(t)
 	ctx := t.Context()
 	cfg := testConfig()
 	runtime, err := config.NewRuntime(cfg)
@@ -134,4 +134,64 @@ func TestResourceGroupOwnsCapacityAcrossModels(t *testing.T) {
 	claim(b, waiting, false)
 	finish(third)
 	claim(b, waiting, true)
+	finish(waiting)
+
+	// 编辑走管理 API，地址与资源组同时变更；旧请求的派发账本必须保留。
+	active := admit(image)
+	claim(a, active, true)
+	path := "/v1/instances/" + image.ID
+	lookup := func() store.InstanceView {
+		t.Helper()
+		var rows []store.InstanceView
+		if err := json.Unmarshal(call("GET", "/v1/instances", nil, adminToken, 200), &rows); err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range rows {
+			if row.ID == image.ID {
+				return row
+			}
+		}
+		t.Fatal("instance missing from registry")
+		return store.InstanceView{}
+	}
+	settings := protocol.InstanceSettings{
+		Endpoint: "http://127.0.0.2:8002", HealthURL: "http://127.0.0.2:8002/health",
+		ResourceGroup: "host/gpu1", Capacity: 2, ConfigRevision: lookup().ConfigRevision,
+	}
+	call("POST", path+"/edit", settings, apiToken, 401)
+	call("POST", path+"/edit", settings, adminToken, 409)
+	call("POST", path+"/drain", map[string]bool{"draining": true}, adminToken, 200)
+	settings.ConfigRevision = lookup().ConfigRevision
+	call("POST", path+"/edit", settings, adminToken, 409)
+	finish(active)
+	call("POST", path+"/edit", settings, adminToken, 404)
+	call("POST", groupsPath, map[string]any{"id": settings.ResourceGroup, "machine_id": "host", "gpu_device": 1, "capacity_units": 3}, adminToken, 201)
+	oldProbe := time.Now()
+	call("POST", path+"/edit", settings, adminToken, 200)
+	row := lookup()
+	if row.Endpoint != settings.Endpoint || row.HealthURL != settings.HealthURL || row.ResourceGroup != settings.ResourceGroup ||
+		row.GroupCapacityUnits != 3 || row.ArtifactDigest != image.Artifact || !row.Draining || row.Healthy ||
+		row.ConfigRevision == settings.ConfigRevision || len(row.GpuDevices) != 1 || row.GpuDevices[0] != 1 {
+		t.Fatalf("incorrect readback: %+v", row)
+	}
+	call("POST", path+"/edit", settings, adminToken, 200)
+	stale := settings
+	stale.Capacity++
+	call("POST", path+"/edit", stale, adminToken, 409)
+	previous, err := db.Request.Get(ctx, active)
+	if err != nil || previous.Endpoint != image.Endpoint || previous.ResourceGroup != image.ResourceGroup {
+		t.Fatalf("historical dispatch changed: %v %v", previous, err)
+	}
+	call("POST", path+"/drain", map[string]bool{"draining": false}, adminToken, 200)
+	if err := a.RecordProbe(ctx, image.ID, oldProbe, true); err != nil || lookup().Healthy {
+		t.Fatalf("old probe marked edited endpoint healthy: %v", err)
+	}
+	if err := a.RecordProbe(ctx, image.ID, time.Now(), true); err != nil {
+		t.Fatal(err)
+	}
+	next := admit(image)
+	task, err := b.Claim(ctx, cfg, next)
+	if err != nil || task == nil || task.Endpoint != settings.Endpoint || task.ResourceGroup != settings.ResourceGroup {
+		t.Fatalf("new task did not use edited instance: %v %v", task, err)
+	}
 }

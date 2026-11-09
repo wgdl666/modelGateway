@@ -243,6 +243,8 @@ func (w *Reconciler) pollUnavailable(cfg *config.Snapshot, task *ent.Request) er
 }
 
 func (w *Reconciler) probe(cfg *config.Snapshot) error {
+	// 在读取登记前开始计时，避免读到旧地址后才产生新时间戳。
+	checked := time.Now().UTC()
 	rows, err := w.store.ProbeInstances(w.ctx)
 	if err != nil {
 		return err
@@ -251,7 +253,6 @@ func (w *Reconciler) probe(cfg *config.Snapshot) error {
 	var probes sync.WaitGroup
 	for _, row := range rows {
 		probes.Go(func() {
-			checked := time.Now().UTC()
 			ctx, cancel := context.WithTimeout(w.ctx, 3*time.Second)
 			defer cancel()
 			var ready bool
