@@ -23,6 +23,7 @@ func (ModelInstance) Fields() []ent.Field {
 		field.Text("health_url").Immutable(),
 		field.Text("artifact_digest").Immutable(),
 		field.Text("resource_group").Immutable(),
+		// 切换期间旧网关仍读取此列，新网关从资源组表取实时上限。
 		field.Int("group_capacity_units").Positive().Immutable(),
 		field.Int("capacity_units").Positive().Immutable(),
 		field.Text("machine_id").Default("").Immutable(),

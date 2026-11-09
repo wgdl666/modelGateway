@@ -33,6 +33,18 @@ func (f RequestFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RequestMutation", m)
 }
 
+// The ResourceGroupFunc type is an adapter to allow the use of ordinary
+// function as ResourceGroup mutator.
+type ResourceGroupFunc func(context.Context, *ent.ResourceGroupMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ResourceGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ResourceGroupMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ResourceGroupMutation", m)
+}
+
 // Condition is a hook condition function.
 type Condition func(context.Context, ent.Mutation) bool
 

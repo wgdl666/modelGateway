@@ -27,7 +27,7 @@ func TestWardrobeRoutesAreSelectedByModelKey(t *testing.T) {
 func TestInstanceRegistrationRequiresKnownModelKey(t *testing.T) {
 	i := Instance{
 		ID: "product-1", ModelKey: "cloth_gen",
-		Artifact: "sha256-" + strings.Repeat("a", 64), ResourceGroup: "gpu0", Capacity: 1, GroupCapacity: 1,
+		Artifact: "sha256-" + strings.Repeat("a", 64), ResourceGroup: "gpu0", Capacity: 1,
 	}
 	if i.Valid() {
 		t.Fatal("registered an instance without a valid model key")

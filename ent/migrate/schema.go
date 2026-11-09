@@ -135,10 +135,31 @@ var (
 			},
 		},
 	}
+	// ResourceGroupsColumns holds the columns for the "resource_groups" table.
+	ResourceGroupsColumns = []*schema.Column{
+		{Name: "resource_group", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "machine_id", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "gpu_device", Type: field.TypeInt, Nullable: true},
+		{Name: "capacity_units", Type: field.TypeInt},
+	}
+	// ResourceGroupsTable holds the schema information for the "resource_groups" table.
+	ResourceGroupsTable = &schema.Table{
+		Name:       "resource_groups",
+		Columns:    ResourceGroupsColumns,
+		PrimaryKey: []*schema.Column{ResourceGroupsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "resource_groups_machine_gpu",
+				Unique:  true,
+				Columns: []*schema.Column{ResourceGroupsColumns[1], ResourceGroupsColumns[2]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		ModelInstancesTable,
 		RequestsTable,
+		ResourceGroupsTable,
 	}
 )
 
@@ -156,5 +177,12 @@ func init() {
 		"requests_slot_check":  "NOT slot_reserved OR (state IN ('processing','failed') AND instance_id <> '' AND resource_group <> '' AND endpoint <> '')",
 		"requests_state_check": "state IN ('queued','processing','succeeded','failed')",
 		"requests_units_check": "units > 0 AND payload_bytes > 0",
+	}
+	ResourceGroupsTable.Annotation = &entsql.Annotation{
+		Table: "resource_groups",
+	}
+	ResourceGroupsTable.Annotation.Checks = map[string]string{
+		"resource_groups_capacity_check": "capacity_units BETWEEN 1 AND 65536",
+		"resource_groups_device_check":   "(machine_id = '' AND gpu_device IS NULL) OR (machine_id <> '' AND gpu_device IS NOT NULL AND gpu_device >= 0)",
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/predicate"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/ent/resourcegroup"
 )
 
 const (
@@ -28,6 +29,7 @@ const (
 	// Node types.
 	TypeModelInstance = "ModelInstance"
 	TypeRequest       = "Request"
+	TypeResourceGroup = "ResourceGroup"
 )
 
 // ModelInstanceMutation represents an operation that mutates the ModelInstance nodes in the graph.
@@ -3050,4 +3052,536 @@ func (m *RequestMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *RequestMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Request edge %s", name)
+}
+
+// ResourceGroupMutation represents an operation that mutates the ResourceGroup nodes in the graph.
+type ResourceGroupMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *string
+	machine_id        *string
+	gpu_device        *int
+	addgpu_device     *int
+	capacity_units    *int
+	addcapacity_units *int
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*ResourceGroup, error)
+	predicates        []predicate.ResourceGroup
+}
+
+var _ ent.Mutation = (*ResourceGroupMutation)(nil)
+
+// resourcegroupOption allows management of the mutation configuration using functional options.
+type resourcegroupOption func(*ResourceGroupMutation)
+
+// newResourceGroupMutation creates new mutation for the ResourceGroup entity.
+func newResourceGroupMutation(c config, op Op, opts ...resourcegroupOption) *ResourceGroupMutation {
+	m := &ResourceGroupMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeResourceGroup,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withResourceGroupID sets the ID field of the mutation.
+func withResourceGroupID(id string) resourcegroupOption {
+	return func(m *ResourceGroupMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ResourceGroup
+		)
+		m.oldValue = func(ctx context.Context) (*ResourceGroup, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ResourceGroup.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withResourceGroup sets the old ResourceGroup of the mutation.
+func withResourceGroup(node *ResourceGroup) resourcegroupOption {
+	return func(m *ResourceGroupMutation) {
+		m.oldValue = func(context.Context) (*ResourceGroup, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ResourceGroupMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ResourceGroupMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ResourceGroup entities.
+func (m *ResourceGroupMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ResourceGroupMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ResourceGroupMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ResourceGroup.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetMachineID sets the "machine_id" field.
+func (m *ResourceGroupMutation) SetMachineID(s string) {
+	m.machine_id = &s
+}
+
+// MachineID returns the value of the "machine_id" field in the mutation.
+func (m *ResourceGroupMutation) MachineID() (r string, exists bool) {
+	v := m.machine_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMachineID returns the old "machine_id" field's value of the ResourceGroup entity.
+// If the ResourceGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceGroupMutation) OldMachineID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMachineID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMachineID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMachineID: %w", err)
+	}
+	return oldValue.MachineID, nil
+}
+
+// ResetMachineID resets all changes to the "machine_id" field.
+func (m *ResourceGroupMutation) ResetMachineID() {
+	m.machine_id = nil
+}
+
+// SetGpuDevice sets the "gpu_device" field.
+func (m *ResourceGroupMutation) SetGpuDevice(i int) {
+	m.gpu_device = &i
+	m.addgpu_device = nil
+}
+
+// GpuDevice returns the value of the "gpu_device" field in the mutation.
+func (m *ResourceGroupMutation) GpuDevice() (r int, exists bool) {
+	v := m.gpu_device
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGpuDevice returns the old "gpu_device" field's value of the ResourceGroup entity.
+// If the ResourceGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceGroupMutation) OldGpuDevice(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGpuDevice is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGpuDevice requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGpuDevice: %w", err)
+	}
+	return oldValue.GpuDevice, nil
+}
+
+// AddGpuDevice adds i to the "gpu_device" field.
+func (m *ResourceGroupMutation) AddGpuDevice(i int) {
+	if m.addgpu_device != nil {
+		*m.addgpu_device += i
+	} else {
+		m.addgpu_device = &i
+	}
+}
+
+// AddedGpuDevice returns the value that was added to the "gpu_device" field in this mutation.
+func (m *ResourceGroupMutation) AddedGpuDevice() (r int, exists bool) {
+	v := m.addgpu_device
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearGpuDevice clears the value of the "gpu_device" field.
+func (m *ResourceGroupMutation) ClearGpuDevice() {
+	m.gpu_device = nil
+	m.addgpu_device = nil
+	m.clearedFields[resourcegroup.FieldGpuDevice] = struct{}{}
+}
+
+// GpuDeviceCleared returns if the "gpu_device" field was cleared in this mutation.
+func (m *ResourceGroupMutation) GpuDeviceCleared() bool {
+	_, ok := m.clearedFields[resourcegroup.FieldGpuDevice]
+	return ok
+}
+
+// ResetGpuDevice resets all changes to the "gpu_device" field.
+func (m *ResourceGroupMutation) ResetGpuDevice() {
+	m.gpu_device = nil
+	m.addgpu_device = nil
+	delete(m.clearedFields, resourcegroup.FieldGpuDevice)
+}
+
+// SetCapacityUnits sets the "capacity_units" field.
+func (m *ResourceGroupMutation) SetCapacityUnits(i int) {
+	m.capacity_units = &i
+	m.addcapacity_units = nil
+}
+
+// CapacityUnits returns the value of the "capacity_units" field in the mutation.
+func (m *ResourceGroupMutation) CapacityUnits() (r int, exists bool) {
+	v := m.capacity_units
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCapacityUnits returns the old "capacity_units" field's value of the ResourceGroup entity.
+// If the ResourceGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ResourceGroupMutation) OldCapacityUnits(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCapacityUnits is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCapacityUnits requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCapacityUnits: %w", err)
+	}
+	return oldValue.CapacityUnits, nil
+}
+
+// AddCapacityUnits adds i to the "capacity_units" field.
+func (m *ResourceGroupMutation) AddCapacityUnits(i int) {
+	if m.addcapacity_units != nil {
+		*m.addcapacity_units += i
+	} else {
+		m.addcapacity_units = &i
+	}
+}
+
+// AddedCapacityUnits returns the value that was added to the "capacity_units" field in this mutation.
+func (m *ResourceGroupMutation) AddedCapacityUnits() (r int, exists bool) {
+	v := m.addcapacity_units
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCapacityUnits resets all changes to the "capacity_units" field.
+func (m *ResourceGroupMutation) ResetCapacityUnits() {
+	m.capacity_units = nil
+	m.addcapacity_units = nil
+}
+
+// Where appends a list predicates to the ResourceGroupMutation builder.
+func (m *ResourceGroupMutation) Where(ps ...predicate.ResourceGroup) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ResourceGroupMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ResourceGroupMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ResourceGroup, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ResourceGroupMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ResourceGroupMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ResourceGroup).
+func (m *ResourceGroupMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ResourceGroupMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.machine_id != nil {
+		fields = append(fields, resourcegroup.FieldMachineID)
+	}
+	if m.gpu_device != nil {
+		fields = append(fields, resourcegroup.FieldGpuDevice)
+	}
+	if m.capacity_units != nil {
+		fields = append(fields, resourcegroup.FieldCapacityUnits)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ResourceGroupMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case resourcegroup.FieldMachineID:
+		return m.MachineID()
+	case resourcegroup.FieldGpuDevice:
+		return m.GpuDevice()
+	case resourcegroup.FieldCapacityUnits:
+		return m.CapacityUnits()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ResourceGroupMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case resourcegroup.FieldMachineID:
+		return m.OldMachineID(ctx)
+	case resourcegroup.FieldGpuDevice:
+		return m.OldGpuDevice(ctx)
+	case resourcegroup.FieldCapacityUnits:
+		return m.OldCapacityUnits(ctx)
+	}
+	return nil, fmt.Errorf("unknown ResourceGroup field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ResourceGroupMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case resourcegroup.FieldMachineID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMachineID(v)
+		return nil
+	case resourcegroup.FieldGpuDevice:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGpuDevice(v)
+		return nil
+	case resourcegroup.FieldCapacityUnits:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCapacityUnits(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceGroup field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ResourceGroupMutation) AddedFields() []string {
+	var fields []string
+	if m.addgpu_device != nil {
+		fields = append(fields, resourcegroup.FieldGpuDevice)
+	}
+	if m.addcapacity_units != nil {
+		fields = append(fields, resourcegroup.FieldCapacityUnits)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ResourceGroupMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case resourcegroup.FieldGpuDevice:
+		return m.AddedGpuDevice()
+	case resourcegroup.FieldCapacityUnits:
+		return m.AddedCapacityUnits()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ResourceGroupMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case resourcegroup.FieldGpuDevice:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGpuDevice(v)
+		return nil
+	case resourcegroup.FieldCapacityUnits:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCapacityUnits(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceGroup numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ResourceGroupMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(resourcegroup.FieldGpuDevice) {
+		fields = append(fields, resourcegroup.FieldGpuDevice)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ResourceGroupMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ResourceGroupMutation) ClearField(name string) error {
+	switch name {
+	case resourcegroup.FieldGpuDevice:
+		m.ClearGpuDevice()
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceGroup nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ResourceGroupMutation) ResetField(name string) error {
+	switch name {
+	case resourcegroup.FieldMachineID:
+		m.ResetMachineID()
+		return nil
+	case resourcegroup.FieldGpuDevice:
+		m.ResetGpuDevice()
+		return nil
+	case resourcegroup.FieldCapacityUnits:
+		m.ResetCapacityUnits()
+		return nil
+	}
+	return fmt.Errorf("unknown ResourceGroup field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ResourceGroupMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ResourceGroupMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ResourceGroupMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ResourceGroupMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ResourceGroupMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ResourceGroupMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ResourceGroupMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ResourceGroup unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ResourceGroupMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ResourceGroup edge %s", name)
 }

@@ -192,6 +192,7 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 				s.ID = fmt.Sprintf("native-gpu%d", gpu)
 				s.HealthURL = s.Endpoint + "/healthz"
 				s.ResourceGroup = fmt.Sprintf("host/gpu%d", gpu)
+				s.GPUDevices = []int{gpu}
 				videoSpecs[gpu] = s
 				cfg.NativeBackends[s.Endpoint] = config.NativeBackend{Video: true}
 			}
@@ -237,8 +238,13 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 				wrong.HealthURL = videoSpecs[1].HealthURL
 				raw, _ := json.Marshal(wrong)
 				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 400)
+				wrong = videoSpecs[0]
+				wrong.GPUDevices = videoSpecs[1].GPUDevices
+				raw, _ = json.Marshal(wrong)
+				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 400)
 			}
 			for _, spec := range []protocol.Instance{imageSpec, videoSpecs[0], videoSpecs[1]} {
+				ensureTestGroup(t, ledger, spec)
 				raw, _ := json.Marshal(spec)
 				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 200)
 			}
@@ -246,6 +252,7 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 				// 同一个登记 ID 不能把已绑定的地址改到另一卡。
 				changed := videoSpecs[1]
 				changed.Endpoint, changed.HealthURL = videoSpecs[0].Endpoint, videoSpecs[0].HealthURL
+				changed.ResourceGroup, changed.GPUDevices = videoSpecs[0].ResourceGroup, videoSpecs[0].GPUDevices
 				raw, _ := json.Marshal(changed)
 				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 409)
 			}
@@ -506,6 +513,7 @@ func TestNativeImageWaitTimeoutReleasesSlotAfterExecution(t *testing.T) {
 	}
 	defer reconciler.Close()
 	spec := testInstance(protocol.OutfitModel, model.URL, 1)
+	ensureTestGroup(t, ledger, spec)
 	if err := ledger.Register(t.Context(), spec); err != nil {
 		t.Fatal(err)
 	}

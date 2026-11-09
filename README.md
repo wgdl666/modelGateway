@@ -1,6 +1,6 @@
 # modelGateway
 
-一个模型网关可运行多个 Go 副本，共享 PostgreSQL 和 RabbitMQ。Hertz 处理 HTTP，Ent 定义 `model_instances` 和 `requests`。每个副本启动两个 RabbitMQ 消费者。模型执行端确认终态并上传成品，ModelHub 使用 OSS/S3 对象引用读取。
+一个模型网关可运行多个 Go 副本，共享 PostgreSQL 和 RabbitMQ。Hertz 处理 HTTP，Ent 定义 `resource_groups`、`model_instances` 和 `requests`。每个副本启动两个 RabbitMQ 消费者。模型执行端确认终态并上传成品，ModelHub 使用 OSS/S3 对象引用读取。
 
 ## 调用协议
 
@@ -26,6 +26,10 @@
 
 ## 实例管理
 
+先在 Ops 的“GPU 资源组”页面建组，或用管理凭据调用 `POST /v1/resource-groups`。请求体示例为 `{"id":"g7e/gpu0","machine_id":"g7e-a","gpu_device":0,"capacity_units":1}`。同一机器上的同一物理卡只能建一个组。
+
+用 `GET /v1/resource-groups` 查询容量、占用和实例数。用 `PATCH /v1/resource-groups` 提交 `id` 和 `capacity_units` 调整组上限。调低容量后，已派发任务继续执行，新任务等待空位。
+
 `POST /v1/instances/register` 使用管理凭据，提交以下字段。
 
 ```json
@@ -36,12 +40,15 @@
   "health_url": "http://10.0.1.10:8001/health/ready",
   "artifact_digest": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "resource_group": "g7e/gpu0",
-  "group_capacity_units": 1,
-  "capacity_units": 1
+  "capacity_units": 1,
+  "machine_id": "g7e-a",
+  "gpu_devices": [0]
 }
 ```
 
-网关主动探测。探针返回 `ready: true` 后实例可以接单。使用管理凭据调用 `GET /v1/instances` 查询和 `POST /v1/instances/{id}/drain` 设置 `{"draining":true}`。同一卡的模型登记同一个资源组和组容量。部署身份变化时先排空旧实例，再登记新实例。
+登记时使用已有组标识和实例容量。机器和卡号必须与资源组匹配。网关忽略旧客户端传入的 `group_capacity_units`，组上限统一在资源组管理接口修改。迁移后未绑定物理卡的历史组允许同模型、同地址的部署重新登记。
+
+网关主动探测。探针返回 `ready: true` 后实例可以接单。使用管理凭据调用 `GET /v1/instances` 查询和 `POST /v1/instances/{id}/drain` 设置 `{"draining":true}`。部署身份变化时先排空旧实例，再登记新实例。
 
 实例列表用 `clearable` 标明可清除的登记。使用管理凭据调用 `DELETE /v1/instances/{id}`，网关在同一事务里确认实例已暂停、未就绪且没有占槽请求。状态不满足时返回 409。
 清除只写入 `deleted_at`，实例从列表移除。历史请求仍可按原实例 ID 查询，新部署使用新的实例 ID。
@@ -89,7 +96,7 @@ python -m uvicorn app:app --app-dir worker_adapter --host 127.0.0.1 --port 8001
 }
 ```
 
-每张卡登记一个原生视频实例。例如 GPU 0 的 `endpoint` 为 `http://10.0.1.11:9002/gpu0`，`health_url` 为同一地址加 `/healthz`。将 `resource_group` 设为对应的 GPU 分组，每卡一个并发时实例和组的容量都填 1。LTX 按路径选择 worker，网关核对探活返回的 GPU 编号。
+每张卡登记一个原生视频实例。例如 GPU 0 的 `endpoint` 为 `http://10.0.1.11:9002/gpu0`，`health_url` 为同一地址加 `/healthz`。选 GPU 0 对应的已有组，登记 `gpu_devices: [0]` 和实例容量。LTX 按路径选择 worker，网关核对探活返回的 GPU 编号。
 
 VMind-Image 和 LTX 的原生鉴权分别使用 `MODEL_GATEWAY_NATIVE_IMAGE_*` 和 `MODEL_GATEWAY_NATIVE_VIDEO_*`。Basic Auth 注入 `USERNAME`、`PASSWORD`，`X-Token` 注入 `TOKEN`。OSS 从 `OSS_ACCESS_KEY_ID` 和 `OSS_ACCESS_KEY_SECRET` 取凭据。S3 使用 AWS 凭据链，`endpoint` 可省略。
 
@@ -115,6 +122,8 @@ VMind-Image 和 LTX 的原生鉴权分别使用 `MODEL_GATEWAY_NATIVE_IMAGE_*` �
 部署前，数据库侧根据 [Ent 模型定义](ent/schema) 准备 `model_gateway` schema、业务表和索引。已有数据库以自动提交方式执行 [RabbitMQ 迁移](deploy/migrations/rabbitmq-dispatch.sql)，并发索引需要独立提交。国内 ACK 使用 `wghub` 数据库。网关运行账号需要该 schema 的访问权限和业务表的读写权限。
 
 上线实例清除功能时，先执行[实例软删除迁移](deploy/migrations/instance-soft-delete.sql)。等网关的所有副本更新后，再发布 Ops 后端和页面。
+
+上线资源组管理前，暂停实例登记，执行 [资源组迁移](deploy/migrations/resource-groups.sql)。脚本按现有组标识回填容量，发现同组容量冲突会回滚。确认所有 Go 网关副本更新后，再恢复实例登记、开放 Ops 管理页。已有请求继续使用原组标识和占槽记录。调整组容量后若需回退旧网关，先核对并同步旧实例列的容量。
 
 国内 ACK 通过 workspace 的 `server_release.py release --service model-gateway --branch dev` 发布两个副本和内网 Service。镜像使用私有不可变仓库 `wg/model-gateway`。首次部署需要 [启动配置清单](deploy/ack-bootstrap.yaml) 和 Kubernetes Secret `model-gateway-runtime`。Nacos `wg.mirror.modelGateway` 保存监听、后端白名单、`rabbitmq_queue` 和容量设置。Secret 提供 `MODEL_GATEWAY_DATABASE_URL`、`MODEL_GATEWAY_RABBITMQ_URL` 和 `MODEL_GATEWAY_{API,ADMIN,BACKEND}_TOKEN`。
 

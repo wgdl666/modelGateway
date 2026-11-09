@@ -12,6 +12,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,6 +69,10 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.POST("/v1/instances/:id/drain", s.auth("admin", s.drain))
 	h.GET("/v1/instances", s.auth("admin", s.instances))
 	h.DELETE("/v1/instances/:id", s.auth("admin", s.clearInstance))
+	// 组容量会影响同卡所有模型，只允许用管理凭据变更。
+	h.GET("/v1/resource-groups", s.auth("admin", s.listResourceGroups))
+	h.POST("/v1/resource-groups", s.auth("admin", s.createResourceGroup))
+	h.PATCH("/v1/resource-groups", s.auth("admin", s.updateResourceGroup))
 	h.GET("/v1/admin/requests", s.auth("admin", s.listRequests))
 	h.GET("/v1/admin/requests/:id", s.auth("admin", s.requestDetail))
 	h.POST("/v1/gateway/requests/cancel", s.auth("api", s.cancelRequest))
@@ -124,6 +129,14 @@ func writeError(c *app.RequestContext, status int, code, message, id string) {
 
 func storeError(c *app.RequestContext, err error, id string) {
 	switch {
+	case errors.Is(err, store.ErrResourceGroupNotFound):
+		writeError(c, 404, "resource_group_not_found", err.Error(), id)
+	case errors.Is(err, store.ErrResourceGroupExists):
+		writeError(c, 409, "resource_group_exists", err.Error(), id)
+	case errors.Is(err, store.ErrResourceGroupDeviceMismatch):
+		writeError(c, 409, "resource_group_device_mismatch", err.Error(), id)
+	case errors.Is(err, store.ErrLegacyResourceGroup):
+		writeError(c, 409, "legacy_resource_group", err.Error(), id)
 	case ent.IsNotFound(err):
 		writeError(c, 404, "not_found", "record does not exist", id)
 	case errors.Is(err, store.ErrConflict):
@@ -186,6 +199,12 @@ func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 	// 单卡探针跟派发地址一起登记，不能用另一张卡的探针替代。
 	if !cfg.AcceptsInstanceAddress(spec.ModelKey, spec.Endpoint, spec.HealthURL) {
 		writeError(c, 400, "invalid_instance", "endpoint, health URL or model_key does not match the backend configuration", "")
+		return
+	}
+	// 原生视频地址选择实际 worker，登记卡号必须与地址中的卡号一致。
+	if cfg.NativeBackends[spec.Endpoint].Video && (len(spec.GPUDevices) != 1 ||
+		!strings.HasSuffix(spec.Endpoint, "/gpu"+strconv.Itoa(spec.GPUDevices[0]))) {
+		writeError(c, 400, "invalid_instance", "physical GPU does not match the video endpoint", "")
 		return
 	}
 	if err := s.store.Register(ctx, spec); err != nil {

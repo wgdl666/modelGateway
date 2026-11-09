@@ -11,3 +11,6 @@ type ModelInstance func(*sql.Selector)
 
 // Request is the predicate function for request builders.
 type Request func(*sql.Selector)
+
+// ResourceGroup is the predicate function for resourcegroup builders.
+type ResourceGroup func(*sql.Selector)

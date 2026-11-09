@@ -186,6 +186,7 @@ func TestClearInstanceKeepsRequestHistory(t *testing.T) {
 	a, b, db := stores(t)
 	ctx := t.Context()
 	spec := testInstance(protocol.VideoModel, "http://127.0.0.1:8001", 1)
+	ensureTestGroup(t, a, spec)
 	if err := a.Register(ctx, spec); err != nil {
 		t.Fatal(err)
 	}
@@ -274,9 +275,12 @@ func TestClearInstanceKeepsRequestHistory(t *testing.T) {
 	if err := a.Register(ctx, spec); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("cleared ID accepted for registration: %v", err)
 	}
-	// 新部署可以更换组容量，已清除的登记不会约束它。
+	// 组容量在管理接口修改，已清除的旧登记不会约束新部署。
+	if _, err := a.UpdateResourceGroupCapacity(ctx, spec.ResourceGroup, 2); err != nil {
+		t.Fatal(err)
+	}
 	replacement := spec
-	replacement.ID, replacement.GroupCapacity = uuid.NewString(), 2
+	replacement.ID = uuid.NewString()
 	if err := a.Register(ctx, replacement); err != nil {
 		t.Fatalf("tombstone blocked a new deployment: %v", err)
 	}
