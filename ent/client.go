@@ -16,6 +16,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/ent/resourcegroup"
 )
 
 // Client is the client that holds all ent builders.
@@ -27,6 +28,8 @@ type Client struct {
 	ModelInstance *ModelInstanceClient
 	// Request is the client for interacting with the Request builders.
 	Request *RequestClient
+	// ResourceGroup is the client for interacting with the ResourceGroup builders.
+	ResourceGroup *ResourceGroupClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -40,6 +43,7 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.ModelInstance = NewModelInstanceClient(c.config)
 	c.Request = NewRequestClient(c.config)
+	c.ResourceGroup = NewResourceGroupClient(c.config)
 }
 
 type (
@@ -134,6 +138,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:        cfg,
 		ModelInstance: NewModelInstanceClient(cfg),
 		Request:       NewRequestClient(cfg),
+		ResourceGroup: NewResourceGroupClient(cfg),
 	}, nil
 }
 
@@ -155,6 +160,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:        cfg,
 		ModelInstance: NewModelInstanceClient(cfg),
 		Request:       NewRequestClient(cfg),
+		ResourceGroup: NewResourceGroupClient(cfg),
 	}, nil
 }
 
@@ -185,6 +191,7 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	c.ModelInstance.Use(hooks...)
 	c.Request.Use(hooks...)
+	c.ResourceGroup.Use(hooks...)
 }
 
 // Intercept adds the query interceptors to all the entity clients.
@@ -192,6 +199,7 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	c.ModelInstance.Intercept(interceptors...)
 	c.Request.Intercept(interceptors...)
+	c.ResourceGroup.Intercept(interceptors...)
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -201,6 +209,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ModelInstance.mutate(ctx, m)
 	case *RequestMutation:
 		return c.Request.mutate(ctx, m)
+	case *ResourceGroupMutation:
+		return c.ResourceGroup.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -472,12 +482,145 @@ func (c *RequestClient) mutate(ctx context.Context, m *RequestMutation) (Value, 
 	}
 }
 
+// ResourceGroupClient is a client for the ResourceGroup schema.
+type ResourceGroupClient struct {
+	config
+}
+
+// NewResourceGroupClient returns a client for the ResourceGroup from the given config.
+func NewResourceGroupClient(c config) *ResourceGroupClient {
+	return &ResourceGroupClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `resourcegroup.Hooks(f(g(h())))`.
+func (c *ResourceGroupClient) Use(hooks ...Hook) {
+	c.hooks.ResourceGroup = append(c.hooks.ResourceGroup, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `resourcegroup.Intercept(f(g(h())))`.
+func (c *ResourceGroupClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ResourceGroup = append(c.inters.ResourceGroup, interceptors...)
+}
+
+// Create returns a builder for creating a ResourceGroup entity.
+func (c *ResourceGroupClient) Create() *ResourceGroupCreate {
+	mutation := newResourceGroupMutation(c.config, OpCreate)
+	return &ResourceGroupCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ResourceGroup entities.
+func (c *ResourceGroupClient) CreateBulk(builders ...*ResourceGroupCreate) *ResourceGroupCreateBulk {
+	return &ResourceGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ResourceGroupClient) MapCreateBulk(slice any, setFunc func(*ResourceGroupCreate, int)) *ResourceGroupCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ResourceGroupCreateBulk{err: fmt.Errorf("calling to ResourceGroupClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ResourceGroupCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ResourceGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ResourceGroup.
+func (c *ResourceGroupClient) Update() *ResourceGroupUpdate {
+	mutation := newResourceGroupMutation(c.config, OpUpdate)
+	return &ResourceGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ResourceGroupClient) UpdateOne(_m *ResourceGroup) *ResourceGroupUpdateOne {
+	mutation := newResourceGroupMutation(c.config, OpUpdateOne, withResourceGroup(_m))
+	return &ResourceGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ResourceGroupClient) UpdateOneID(id string) *ResourceGroupUpdateOne {
+	mutation := newResourceGroupMutation(c.config, OpUpdateOne, withResourceGroupID(id))
+	return &ResourceGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ResourceGroup.
+func (c *ResourceGroupClient) Delete() *ResourceGroupDelete {
+	mutation := newResourceGroupMutation(c.config, OpDelete)
+	return &ResourceGroupDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ResourceGroupClient) DeleteOne(_m *ResourceGroup) *ResourceGroupDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ResourceGroupClient) DeleteOneID(id string) *ResourceGroupDeleteOne {
+	builder := c.Delete().Where(resourcegroup.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ResourceGroupDeleteOne{builder}
+}
+
+// Query returns a query builder for ResourceGroup.
+func (c *ResourceGroupClient) Query() *ResourceGroupQuery {
+	return &ResourceGroupQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeResourceGroup},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ResourceGroup entity by its id.
+func (c *ResourceGroupClient) Get(ctx context.Context, id string) (*ResourceGroup, error) {
+	return c.Query().Where(resourcegroup.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ResourceGroupClient) GetX(ctx context.Context, id string) *ResourceGroup {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ResourceGroupClient) Hooks() []Hook {
+	return c.hooks.ResourceGroup
+}
+
+// Interceptors returns the client interceptors.
+func (c *ResourceGroupClient) Interceptors() []Interceptor {
+	return c.inters.ResourceGroup
+}
+
+func (c *ResourceGroupClient) mutate(ctx context.Context, m *ResourceGroupMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ResourceGroupCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ResourceGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ResourceGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ResourceGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ResourceGroup mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		ModelInstance, Request []ent.Hook
+		ModelInstance, Request, ResourceGroup []ent.Hook
 	}
 	inters struct {
-		ModelInstance, Request []ent.Interceptor
+		ModelInstance, Request, ResourceGroup []ent.Interceptor
 	}
 )

@@ -76,6 +76,9 @@ func stores(t *testing.T) (*store.Store, *store.Store, *ent.Client) {
 	if _, err := a.ModelInstance.Delete().Exec(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := a.ResourceGroup.Delete().Exec(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	return store.New(a), store.New(b), b
 }
 
@@ -91,12 +94,22 @@ func testInstance(model, capability, endpoint string, capacity int) protocol.Ins
 	return protocol.Instance{
 		ID: uuid.NewString(), ModelKey: model, Capability: capability, Endpoint: endpoint,
 		HealthURL: endpoint + "/health", Artifact: "sha256-" + strings.Repeat("a", 64),
-		ResourceGroup: "host/gpu0", Capacity: capacity, GroupCapacity: capacity,
+		ResourceGroup: "host/gpu0", Capacity: capacity, MachineID: "host", GPUDevices: []int{0},
+	}
+}
+
+func ensureTestGroup(t *testing.T, replica *store.Store, spec protocol.Instance) {
+	t.Helper()
+	// 测试和部署一样先建组，多条同卡实例只建一次。
+	if _, err := replica.CreateResourceGroup(t.Context(), spec.ResourceGroup, spec.MachineID, spec.GPUDevices[0], spec.Capacity); err != nil &&
+		!errors.Is(err, store.ErrResourceGroupExists) {
+		t.Fatal(err)
 	}
 }
 
 func registerReady(t *testing.T, replica *store.Store, spec protocol.Instance) {
 	t.Helper()
+	ensureTestGroup(t, replica, spec)
 	if err := replica.Register(t.Context(), spec); err != nil {
 		t.Fatal(err)
 	}
@@ -311,15 +324,11 @@ func TestLegacyRegistrationCannotResumeOrClaim(t *testing.T) {
 	}
 }
 
-func TestGroupRegistrationAndQueueExpiry(t *testing.T) {
+func TestQueueExpiry(t *testing.T) {
 	a, b, _ := stores(t)
 	i := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8001", 1)
 	registerReady(t, a, i)
-	inconsistent := testInstance(protocol.OutfitModel, "vton", "http://127.0.0.1:8002", 2)
-	if err := b.Register(t.Context(), inconsistent); !errors.Is(err, store.ErrConflict) {
-		t.Fatalf("inconsistent group capacity accepted: %v", err)
-	}
-	in := testAdmission(inconsistent, uuid.NewString(), 1)
+	in := testAdmission(i, uuid.NewString(), 1)
 	in.BackendTimeout = time.Millisecond
 	if _, err := b.Admit(t.Context(), in); err != nil {
 		t.Fatal(err)

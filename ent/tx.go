@@ -16,6 +16,8 @@ type Tx struct {
 	ModelInstance *ModelInstanceClient
 	// Request is the client for interacting with the Request builders.
 	Request *RequestClient
+	// ResourceGroup is the client for interacting with the ResourceGroup builders.
+	ResourceGroup *ResourceGroupClient
 
 	// lazily loaded.
 	client     *Client
@@ -149,6 +151,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.ModelInstance = NewModelInstanceClient(tx.config)
 	tx.Request = NewRequestClient(tx.config)
+	tx.ResourceGroup = NewResourceGroupClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

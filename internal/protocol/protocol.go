@@ -14,6 +14,8 @@ import (
 )
 
 const (
+	MaxCapacityUnits = 65536
+
 	wardrobeModel = "Vmind_wardrobe_v1.0"
 	clothGenModel = "Vmind_cloth_gen_v1.0"
 	OutfitModel   = "Vmind_outfit_v1.0"
@@ -37,17 +39,23 @@ type Instance struct {
 	Artifact       string `json:"artifact_digest"`
 	ResourceGroup  string `json:"resource_group"`
 	TargetInstance string `json:"target_instance,omitempty"`
-	GroupCapacity  int    `json:"group_capacity_units"`
-	Capacity       int    `json:"capacity_units"`
-	MachineID      string `json:"machine_id,omitempty"`
-	GPUDevices     []int  `json:"gpu_devices,omitempty"`
+	// 现有部署程序可能仍传旧字段，只有资源组管理接口可以设置组上限。
+	GroupCapacity int    `json:"group_capacity_units,omitempty"`
+	Capacity      int    `json:"capacity_units"`
+	MachineID     string `json:"machine_id,omitempty"`
+	GPUDevices    []int  `json:"gpu_devices,omitempty"`
 }
 
 // Valid 检查部署身份和容量。地址还需按当前配置的出站白名单验证。
 func (i Instance) Valid() bool {
 	return ValidInstanceID(i.ID) && MatchesCapability(i.ModelKey, i.Capability) &&
-		i.ResourceGroup != "" && len(i.ResourceGroup) <= 256 && validArtifact(i.Artifact) &&
-		i.Capacity >= 1 && i.Capacity <= 65536 && i.GroupCapacity >= 1 && i.GroupCapacity <= 65536
+		ValidResourceGroupID(i.ResourceGroup) && validArtifact(i.Artifact) &&
+		i.Capacity >= 1 && i.Capacity <= MaxCapacityUnits
+}
+
+func ValidResourceGroupID(id string) bool {
+	// 登记和更新使用数据库中的原组标识，迁移不会重命名历史组。
+	return id != "" && len(id) <= 256
 }
 
 func ValidInstanceID(id string) bool {

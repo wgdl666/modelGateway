@@ -29,6 +29,18 @@ func (s *Store) ProbeInstances(ctx context.Context) ([]*ent.ModelInstance, error
 
 func (s *Store) Register(ctx context.Context, spec protocol.Instance) error {
 	return s.serialize(ctx, func(tx *ent.Tx) error {
+		group, err := tx.ResourceGroup.Get(ctx, spec.ResourceGroup)
+		if ent.IsNotFound(err) {
+			return ErrResourceGroupNotFound
+		}
+		if err != nil {
+			return err
+		}
+		// 同卡容量只对绑定到实际部署设备的实例生效。
+		if group.GpuDevice != nil && (group.MachineID != spec.MachineID ||
+			len(spec.GPUDevices) != 1 || spec.GPUDevices[0] != *group.GpuDevice) {
+			return ErrResourceGroupDeviceMismatch
+		}
 		old, err := tx.ModelInstance.Get(ctx, spec.ID)
 		if err == nil {
 			// 已清除的 ID 仍归属原部署，注册重试不能让旧登记重新出现。
@@ -39,7 +51,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance) error {
 			if old.ModelKey == spec.ModelKey && old.Capability == spec.Capability && old.Endpoint == spec.Endpoint &&
 				old.HealthURL == spec.HealthURL && old.ArtifactDigest == spec.Artifact && old.ResourceGroup == spec.ResourceGroup &&
 				old.TargetInstance == spec.TargetInstance &&
-				old.GroupCapacityUnits == spec.GroupCapacity && old.CapacityUnits == spec.Capacity &&
+				old.CapacityUnits == spec.Capacity &&
 				old.MachineID == spec.MachineID && slices.Equal(old.GpuDevices, spec.GPUDevices) {
 				return nil
 			}
@@ -48,25 +60,20 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance) error {
 		if !ent.IsNotFound(err) {
 			return err
 		}
-		conflict, err := tx.ModelInstance.Query().Where(
-			modelinstance.DeletedAtIsNil(), modelinstance.ResourceGroupEQ(spec.ResourceGroup),
-			modelinstance.GroupCapacityUnitsNEQ(spec.GroupCapacity),
-		).Exist(ctx)
-		if err != nil {
-			return err
-		}
-		if conflict {
-			return ErrConflict
-		}
 		// 同一执行地址的新实例不能绕过仍在执行的旧实例及其资源组。
 		sameEndpoint, err := tx.ModelInstance.Query().Where(
-			modelinstance.DeletedAtIsNil(), modelinstance.ModelKeyEQ(spec.ModelKey), modelinstance.CapabilityEQ(spec.Capability),
+			modelinstance.ModelKeyEQ(spec.ModelKey), modelinstance.CapabilityEQ(spec.Capability),
 			modelinstance.EndpointEQ(spec.Endpoint),
 		).All(ctx)
 		if err != nil {
 			return err
 		}
+		knownDeployment := false
 		for _, instance := range sameEndpoint {
+			knownDeployment = knownDeployment || instance.ResourceGroup == spec.ResourceGroup
+			if instance.DeletedAt != nil {
+				continue
+			}
 			held, err := tx.Request.Query().Where(request.InstanceIDEQ(instance.ID), request.SlotReservedEQ(true)).Exist(ctx)
 			if err != nil {
 				return err
@@ -75,10 +82,14 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance) error {
 				return ErrConflict
 			}
 		}
+		// 历史组可以重登原服务地址，新增部署必须使用已绑定物理卡的组。
+		if group.GpuDevice == nil && !knownDeployment {
+			return ErrLegacyResourceGroup
+		}
 		return tx.ModelInstance.Create().
 			SetID(spec.ID).SetModelKey(spec.ModelKey).SetCapability(spec.Capability).
 			SetEndpoint(spec.Endpoint).SetHealthURL(spec.HealthURL).SetArtifactDigest(spec.Artifact).
-			SetResourceGroup(spec.ResourceGroup).SetTargetInstance(spec.TargetInstance).SetGroupCapacityUnits(spec.GroupCapacity).
+			SetResourceGroup(spec.ResourceGroup).SetTargetInstance(spec.TargetInstance).SetGroupCapacityUnits(group.CapacityUnits).
 			SetCapacityUnits(spec.Capacity).SetMachineID(spec.MachineID).SetGpuDevices(spec.GPUDevices).Exec(ctx)
 	})
 }

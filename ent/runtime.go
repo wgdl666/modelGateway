@@ -7,6 +7,7 @@ import (
 
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/ent/resourcegroup"
 	"github.com/wgdl666/modelGateway/ent/schema"
 )
 
@@ -118,4 +119,18 @@ func init() {
 	request.DefaultUpdatedAt = requestDescUpdatedAt.Default.(func() time.Time)
 	// request.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	request.UpdateDefaultUpdatedAt = requestDescUpdatedAt.UpdateDefault.(func() time.Time)
+	resourcegroupFields := schema.ResourceGroup{}.Fields()
+	_ = resourcegroupFields
+	// resourcegroupDescMachineID is the schema descriptor for machine_id field.
+	resourcegroupDescMachineID := resourcegroupFields[1].Descriptor()
+	// resourcegroup.DefaultMachineID holds the default value on creation for the machine_id field.
+	resourcegroup.DefaultMachineID = resourcegroupDescMachineID.Default.(string)
+	// resourcegroupDescGpuDevice is the schema descriptor for gpu_device field.
+	resourcegroupDescGpuDevice := resourcegroupFields[2].Descriptor()
+	// resourcegroup.GpuDeviceValidator is a validator for the "gpu_device" field. It is called by the builders before save.
+	resourcegroup.GpuDeviceValidator = resourcegroupDescGpuDevice.Validators[0].(func(int) error)
+	// resourcegroupDescCapacityUnits is the schema descriptor for capacity_units field.
+	resourcegroupDescCapacityUnits := resourcegroupFields[3].Descriptor()
+	// resourcegroup.CapacityUnitsValidator is a validator for the "capacity_units" field. It is called by the builders before save.
+	resourcegroup.CapacityUnitsValidator = resourcegroupDescCapacityUnits.Validators[0].(func(int) error)
 }

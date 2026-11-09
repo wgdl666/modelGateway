@@ -9,6 +9,7 @@ import (
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/ent/resourcegroup"
 	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 )
@@ -121,6 +122,16 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		if len(instances) == 0 {
 			return deferPublication(ctx, tx, next)
 		}
+		groups := make([]string, 0, len(instances))
+		for _, instance := range instances {
+			groups = append(groups, instance.ResourceGroup)
+		}
+		// 共享锁与容量更新互斥；修改返回后，新派发不能沿用旧上限。
+		limits, err := groupCapacities(ctx, tx.ResourceGroup.Query().
+			Where(resourcegroup.IDIn(groups...)).Order(resourcegroup.ByID()).ForShare())
+		if err != nil {
+			return err
+		}
 		occupied, err := reserved(ctx, tx.Request)
 		if err != nil {
 			return err
@@ -140,7 +151,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 				continue
 			}
 			_, direct := cfg.NativeBackends[i.Endpoint]
-			free := min(i.CapacityUnits-byInstance[i.ID], i.GroupCapacityUnits-byGroup[i.ResourceGroup])
+			free := min(i.CapacityUnits-byInstance[i.ID], limits[i.ResourceGroup]-byGroup[i.ResourceGroup])
 			if free < next.Units {
 				continue
 			}

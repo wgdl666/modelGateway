@@ -25,6 +25,7 @@ func (ModelInstance) Fields() []ent.Field {
 		field.Text("resource_group").Immutable(),
 		// LTX 目标随 GPU 分组固定，探活和派发都依据这条登记。
 		field.Text("target_instance").Default("").Immutable(),
+		// 切换期间旧网关仍读取此列，新网关从资源组表取实时上限。
 		field.Int("group_capacity_units").Positive().Immutable(),
 		field.Int("capacity_units").Positive().Immutable(),
 		field.Text("machine_id").Default("").Immutable(),

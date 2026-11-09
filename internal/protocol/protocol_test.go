@@ -25,7 +25,7 @@ func TestWardrobeRoutesAreSelectedByModelKey(t *testing.T) {
 func TestInstanceRegistrationRejectsMismatchedModelCapability(t *testing.T) {
 	i := Instance{
 		ID: "product-1", ModelKey: wardrobeModel, Capability: "cloth_gen",
-		Artifact: "sha256-" + strings.Repeat("a", 64), ResourceGroup: "gpu0", Capacity: 1, GroupCapacity: 1,
+		Artifact: "sha256-" + strings.Repeat("a", 64), ResourceGroup: "gpu0", Capacity: 1,
 	}
 	if i.Valid() {
 		t.Fatal("registered a product generation worker under the extraction model key")

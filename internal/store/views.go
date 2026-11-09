@@ -34,6 +34,10 @@ func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
 	if err != nil {
 		return nil, err
 	}
+	limits, err := groupCapacities(ctx, s.db.ResourceGroup.Query())
+	if err != nil {
+		return nil, err
+	}
 	holds, err := reserved(ctx, s.db.Request)
 	if err != nil {
 		return nil, err
@@ -47,6 +51,8 @@ func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
 	result := make([]InstanceView, 0, len(rows))
 	now := time.Now()
 	for _, row := range rows {
+		// 保持实例查询的字段契约，组容量显示调度当前使用的值。
+		row.GroupCapacityUnits = limits[row.ResourceGroup]
 		// 预留单位和请求数分别返回，避免把加权容量显示为在途任务数。
 		healthy := instanceHealthy(row, now)
 		legacy := !protocol.MatchesCapability(row.ModelKey, row.Capability)

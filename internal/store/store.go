@@ -10,6 +10,7 @@ import (
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/ent/resourcegroup"
 )
 
 var (
@@ -27,6 +28,10 @@ func New(db *ent.Client) *Store {
 }
 
 func (s *Store) CheckReady(ctx context.Context) error {
+	// 组表先迁移，网关才能按统一容量接单。
+	if _, err := s.db.ResourceGroup.Query().Select(resourcegroup.FieldCapacityUnits).Limit(1).All(ctx); err != nil {
+		return err
+	}
 	// 就绪检查覆盖软删除和原生目标字段，迁移完成后才允许新副本接流量。
 	if _, err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).
 		Select(modelinstance.FieldTargetInstance).Limit(1).All(ctx); err != nil {
