@@ -30,6 +30,7 @@ var (
 	ErrFull     = errors.New("waiting queue is full")
 	ErrConflict = errors.New("request or instance conflict")
 	imageMIME   = regexp.MustCompile(`^image/[A-Za-z0-9.+-]+$`)
+	instanceID  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,255}$`)
 )
 
 // Instance 记录部署身份和同卡分组。是否可派由主动探针及排空状态决定。

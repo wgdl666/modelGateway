@@ -61,6 +61,8 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.POST("/v1/instances/register", s.auth("worker", s.register))
 	h.POST("/v1/instances/:id/drain", s.auth("admin", s.drain))
 	h.GET("/v1/instances", s.auth("admin", s.instances))
+	h.GET("/v1/admin/requests", s.auth("admin", s.listRequests))
+	h.GET("/v1/admin/requests/:id", s.auth("admin", s.requestDetail))
 	h.POST("/v1/gateway/requests/cancel", s.auth("api", s.cancelRequest))
 	h.POST("/v1/gateway/requests/:model_key", s.auth("api", s.submit))
 	h.GET("/v1/gateway/requests", s.auth("api", s.get))
@@ -175,7 +177,7 @@ func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	spec.Endpoint = strings.TrimRight(spec.Endpoint, "/")
-	if spec.ID == "" || len(spec.ID) > 256 || !slices.Contains(capabilities(spec.ModelKey), spec.Capability) ||
+	if !instanceID.MatchString(spec.ID) || !slices.Contains(capabilities(spec.ModelKey), spec.Capability) ||
 		spec.ResourceGroup == "" || len(spec.ResourceGroup) > 256 || !validArtifact(spec.Artifact) ||
 		spec.Capacity < 1 || spec.Capacity > 65536 || spec.GroupCapacity < 1 || spec.GroupCapacity > 65536 ||
 		validateEndpoint(spec.Endpoint, false, cfg.networks, cfg.ports) != nil ||
@@ -220,18 +222,24 @@ func (s *Server) instances(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	units := make(map[string]int)
+	requests := make(map[string]int)
 	for _, hold := range holds {
 		units[hold.InstanceID] += hold.Units
+		requests[hold.InstanceID] += hold.Requests
 	}
 	type view struct {
 		*ent.ModelInstance
-		Reserved int  `json:"reserved_units"`
-		Eligible bool `json:"eligible"`
+		ReservedUnits    int  `json:"reserved_units"`
+		ReservedRequests int  `json:"reserved_requests"`
+		Healthy          bool `json:"healthy"`
+		Eligible         bool `json:"eligible"`
 	}
 	result := make([]view, 0, len(rows))
 	cutoff := time.Now().Add(-probeMaxAge)
 	for _, row := range rows {
-		result = append(result, view{row, units[row.ID], row.Ready && !row.Draining && row.HealthCheckedAt.After(cutoff)})
+		// 预留单位和请求数分别返回，避免把加权容量显示为在途任务数。
+		healthy := row.Ready && row.HealthCheckedAt.After(cutoff)
+		result = append(result, view{row, units[row.ID], requests[row.ID], healthy, healthy && !row.Draining})
 	}
 	writeJSON(c, 200, result)
 }
@@ -282,7 +290,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 	}
 	task, err := s.store.Admit(ctx, admission{
 		id: id, model: model, capability: capability, raw: raw, input: input.Input,
-		units: max(1, cfg.UnitsByCapability[capability]), config: cfg.Config,
+		traceID: input.Metadata.TraceID, units: max(1, cfg.UnitsByCapability[capability]), config: cfg.Config,
 	})
 	<-s.uploads
 	if err != nil {

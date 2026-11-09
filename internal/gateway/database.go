@@ -35,6 +35,18 @@ func OpenDatabase(ctx context.Context, dsn string, initialize bool) (*ent.Client
 		return nil, errors.New("cannot connect to configured PostgreSQL")
 	}
 	if initialize {
+		// 同一 schema 的两个发布 Job 可能重叠，事务锁覆盖 schema 创建和 Ent 建表。
+		lock, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			_ = client.Close()
+			return nil, err
+		}
+		defer lock.Rollback()
+		if _, err := lock.ExecContext(ctx, "SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", "model-gateway:"+namespace); err != nil {
+			_ = lock.Rollback()
+			_ = client.Close()
+			return nil, err
+		}
 		// 命名空间和表结构均交给 Atlas/Ent 生成，业务启动不读取或执行手写 SQL 文件。
 		driver, err := postgres.Open(db)
 		if err == nil {
@@ -46,6 +58,11 @@ func OpenDatabase(ctx context.Context, dsn string, initialize bool) (*ent.Client
 			err = client.Schema.Create(ctx, entschema.WithSchemaName(namespace), entschema.WithForeignKeys(false))
 		}
 		if err != nil {
+			_ = lock.Rollback()
+			_ = client.Close()
+			return nil, err
+		}
+		if err := lock.Commit(); err != nil {
 			_ = client.Close()
 			return nil, err
 		}

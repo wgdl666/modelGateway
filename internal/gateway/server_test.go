@@ -2,10 +2,15 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // 使用真实监听器覆盖 Hertz 的路由、流式读取和关闭，避免只测处理函数而漏掉协议层差异。
@@ -51,6 +56,68 @@ func startHTTPServer(t *testing.T, app *Server) string {
 	}
 	t.Fatal("Hertz server did not become live")
 	return ""
+}
+
+func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
+	a, b := stores(t)
+	spec := testInstance(videoModel, "video", "http://127.0.0.1:8001", 2)
+	registerReady(t, a, spec)
+	id := uuid.NewString()
+	submission := testAdmission(spec, id, 2)
+	submission.traceID = "trace-for-ops"
+	if _, err := a.Admit(t.Context(), submission); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Claim(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	app, err := NewServer(b, testConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(app.cancel)
+	base := startHTTPServer(t, app)
+	get := func(path, token string, want int) []byte {
+		t.Helper()
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		raw, err := io.ReadAll(res.Body)
+		if err != nil || res.StatusCode != want {
+			t.Fatalf("%s: status=%d response=%s err=%v", path, res.StatusCode, raw, err)
+		}
+		return raw
+	}
+	get("/v1/admin/requests", apiToken, 401)
+	list := get("/v1/admin/requests?trace_id=trace-for-ops&state=processing", adminToken, 200)
+	var page struct {
+		Items []requestView
+		Total int
+	}
+	if err := json.Unmarshal(list, &page); err != nil || page.Total != 1 || len(page.Items) != 1 ||
+		page.Items[0].RequestID != id || !page.Items[0].SlotReserved || strings.Contains(string(list), "request_payload") {
+		t.Fatalf("invalid list %s, error %v", list, err)
+	}
+	instances := get("/v1/instances", adminToken, 200)
+	if !strings.Contains(string(instances), `"reserved_units":2`) || !strings.Contains(string(instances), `"reserved_requests":1`) {
+		t.Fatalf("invalid instance capacities %s", instances)
+	}
+	if err := a.RecordResponse(t.Context(), id, "", succeeded(id), time.Second); err != nil {
+		t.Fatal(err)
+	}
+	detail := get("/v1/admin/requests/"+id, adminToken, 200)
+	var task requestView
+	if err := json.Unmarshal(detail, &task); err != nil || task.TraceID != submission.traceID ||
+		task.State != "succeeded" || task.Result == nil || len(task.Result.Files) != 1 || task.SlotReserved {
+		t.Fatalf("invalid detail %s, error %v", detail, err)
+	}
 }
 
 func TestHertzRoutingAndValidation(t *testing.T) {

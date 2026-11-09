@@ -74,6 +74,11 @@ func Capability(v string) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldCapability, v))
 }
 
+// TraceID applies equality check predicate on the "trace_id" field. It's identical to TraceIDEQ.
+func TraceID(v string) predicate.Request {
+	return predicate.Request(sql.FieldEQ(FieldTraceID, v))
+}
+
 // PayloadBytes applies equality check predicate on the "payload_bytes" field. It's identical to PayloadBytesEQ.
 func PayloadBytes(v int64) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldPayloadBytes, v))
@@ -292,6 +297,71 @@ func CapabilityEqualFold(v string) predicate.Request {
 // CapabilityContainsFold applies the ContainsFold predicate on the "capability" field.
 func CapabilityContainsFold(v string) predicate.Request {
 	return predicate.Request(sql.FieldContainsFold(FieldCapability, v))
+}
+
+// TraceIDEQ applies the EQ predicate on the "trace_id" field.
+func TraceIDEQ(v string) predicate.Request {
+	return predicate.Request(sql.FieldEQ(FieldTraceID, v))
+}
+
+// TraceIDNEQ applies the NEQ predicate on the "trace_id" field.
+func TraceIDNEQ(v string) predicate.Request {
+	return predicate.Request(sql.FieldNEQ(FieldTraceID, v))
+}
+
+// TraceIDIn applies the In predicate on the "trace_id" field.
+func TraceIDIn(vs ...string) predicate.Request {
+	return predicate.Request(sql.FieldIn(FieldTraceID, vs...))
+}
+
+// TraceIDNotIn applies the NotIn predicate on the "trace_id" field.
+func TraceIDNotIn(vs ...string) predicate.Request {
+	return predicate.Request(sql.FieldNotIn(FieldTraceID, vs...))
+}
+
+// TraceIDGT applies the GT predicate on the "trace_id" field.
+func TraceIDGT(v string) predicate.Request {
+	return predicate.Request(sql.FieldGT(FieldTraceID, v))
+}
+
+// TraceIDGTE applies the GTE predicate on the "trace_id" field.
+func TraceIDGTE(v string) predicate.Request {
+	return predicate.Request(sql.FieldGTE(FieldTraceID, v))
+}
+
+// TraceIDLT applies the LT predicate on the "trace_id" field.
+func TraceIDLT(v string) predicate.Request {
+	return predicate.Request(sql.FieldLT(FieldTraceID, v))
+}
+
+// TraceIDLTE applies the LTE predicate on the "trace_id" field.
+func TraceIDLTE(v string) predicate.Request {
+	return predicate.Request(sql.FieldLTE(FieldTraceID, v))
+}
+
+// TraceIDContains applies the Contains predicate on the "trace_id" field.
+func TraceIDContains(v string) predicate.Request {
+	return predicate.Request(sql.FieldContains(FieldTraceID, v))
+}
+
+// TraceIDHasPrefix applies the HasPrefix predicate on the "trace_id" field.
+func TraceIDHasPrefix(v string) predicate.Request {
+	return predicate.Request(sql.FieldHasPrefix(FieldTraceID, v))
+}
+
+// TraceIDHasSuffix applies the HasSuffix predicate on the "trace_id" field.
+func TraceIDHasSuffix(v string) predicate.Request {
+	return predicate.Request(sql.FieldHasSuffix(FieldTraceID, v))
+}
+
+// TraceIDEqualFold applies the EqualFold predicate on the "trace_id" field.
+func TraceIDEqualFold(v string) predicate.Request {
+	return predicate.Request(sql.FieldEqualFold(FieldTraceID, v))
+}
+
+// TraceIDContainsFold applies the ContainsFold predicate on the "trace_id" field.
+func TraceIDContainsFold(v string) predicate.Request {
+	return predicate.Request(sql.FieldContainsFold(FieldTraceID, v))
 }
 
 // PayloadBytesEQ applies the EQ predicate on the "payload_bytes" field.

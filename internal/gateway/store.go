@@ -131,6 +131,7 @@ func (s *Store) RecordProbe(ctx context.Context, id string, checked time.Time, r
 
 type admission struct {
 	id, model, capability string
+	traceID               string
 	raw                   json.RawMessage
 	input                 json.RawMessage
 	units                 int
@@ -189,7 +190,7 @@ func (s *Store) Admit(ctx context.Context, in admission) (*ent.Request, error) {
 			return ErrFull
 		}
 		task, err = tx.Request.Create().SetID(in.id).SetModelKey(in.model).SetCapability(in.capability).
-			SetRequestPayload(in.raw).SetPayloadBytes(int64(len(in.raw))).SetUnits(in.units).
+			SetTraceID(in.traceID).SetRequestPayload(in.raw).SetPayloadBytes(int64(len(in.raw))).SetUnits(in.units).
 			SetCreatedAt(now).SetDeadlineAt(now.Add(in.config.BackendTimeout)).Save(ctx)
 		return err
 	})
@@ -200,13 +201,14 @@ type reservation struct {
 	InstanceID    string `json:"instance_id"`
 	ResourceGroup string `json:"resource_group"`
 	Units         int    `json:"units"`
+	Requests      int    `json:"requests"`
 }
 
 func reserved(ctx context.Context, client *ent.RequestClient) ([]reservation, error) {
 	var occupied []reservation
 	err := client.Query().Where(request.SlotReservedEQ(true)).
 		GroupBy(request.FieldInstanceID, request.FieldResourceGroup).
-		Aggregate(ent.As(ent.Sum(request.FieldUnits), "units")).Scan(ctx, &occupied)
+		Aggregate(ent.As(ent.Sum(request.FieldUnits), "units"), ent.As(ent.Count(), "requests")).Scan(ctx, &occupied)
 	return occupied, err
 }
 

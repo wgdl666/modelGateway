@@ -33,6 +33,20 @@ func (_c *RequestCreate) SetCapability(v string) *RequestCreate {
 	return _c
 }
 
+// SetTraceID sets the "trace_id" field.
+func (_c *RequestCreate) SetTraceID(v string) *RequestCreate {
+	_c.mutation.SetTraceID(v)
+	return _c
+}
+
+// SetNillableTraceID sets the "trace_id" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableTraceID(v *string) *RequestCreate {
+	if v != nil {
+		_c.SetTraceID(*v)
+	}
+	return _c
+}
+
 // SetRequestPayload sets the "request_payload" field.
 func (_c *RequestCreate) SetRequestPayload(v json.RawMessage) *RequestCreate {
 	_c.mutation.SetRequestPayload(v)
@@ -328,6 +342,10 @@ func (_c *RequestCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *RequestCreate) defaults() {
+	if _, ok := _c.mutation.TraceID(); !ok {
+		v := request.DefaultTraceID
+		_c.mutation.SetTraceID(v)
+	}
 	if _, ok := _c.mutation.State(); !ok {
 		v := request.DefaultState
 		_c.mutation.SetState(v)
@@ -389,6 +407,9 @@ func (_c *RequestCreate) check() error {
 	}
 	if _, ok := _c.mutation.Capability(); !ok {
 		return &ValidationError{Name: "capability", err: errors.New(`ent: missing required field "Request.capability"`)}
+	}
+	if _, ok := _c.mutation.TraceID(); !ok {
+		return &ValidationError{Name: "trace_id", err: errors.New(`ent: missing required field "Request.trace_id"`)}
 	}
 	if _, ok := _c.mutation.RequestPayload(); !ok {
 		return &ValidationError{Name: "request_payload", err: errors.New(`ent: missing required field "Request.request_payload"`)}
@@ -498,6 +519,10 @@ func (_c *RequestCreate) createSpec() (*Request, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Capability(); ok {
 		_spec.SetField(request.FieldCapability, field.TypeString, value)
 		_node.Capability = value
+	}
+	if value, ok := _c.mutation.TraceID(); ok {
+		_spec.SetField(request.FieldTraceID, field.TypeString, value)
+		_node.TraceID = value
 	}
 	if value, ok := _c.mutation.RequestPayload(); ok {
 		_spec.SetField(request.FieldRequestPayload, field.TypeJSON, value)

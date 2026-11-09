@@ -51,6 +51,7 @@ var (
 		{Name: "request_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "model_key", Type: field.TypeString, Size: 2147483647},
 		{Name: "capability", Type: field.TypeString, Size: 2147483647},
+		{Name: "trace_id", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "request_payload", Type: field.TypeJSON},
 		{Name: "payload_bytes", Type: field.TypeInt64},
 		{Name: "units", Type: field.TypeInt},
@@ -82,7 +83,7 @@ var (
 			{
 				Name:    "request_model_key_capability_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[2], RequestsColumns[22], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[2], RequestsColumns[23], RequestsColumns[0]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -90,7 +91,7 @@ var (
 			{
 				Name:    "request_deadline_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[13]},
+				Columns: []*schema.Column{RequestsColumns[14]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -98,7 +99,7 @@ var (
 			{
 				Name:    "request_resource_group_instance_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[9], RequestsColumns[8]},
+				Columns: []*schema.Column{RequestsColumns[10], RequestsColumns[9]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "slot_reserved",
 				},
@@ -106,9 +107,22 @@ var (
 			{
 				Name:    "request_next_poll_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[16]},
+				Columns: []*schema.Column{RequestsColumns[17]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "slot_reserved",
+				},
+			},
+			{
+				Name:    "request_created_at_request_id",
+				Unique:  false,
+				Columns: []*schema.Column{RequestsColumns[23], RequestsColumns[0]},
+			},
+			{
+				Name:    "request_trace_id",
+				Unique:  false,
+				Columns: []*schema.Column{RequestsColumns[3]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "trace_id <> ''",
 				},
 			},
 		},

@@ -18,6 +18,8 @@ const (
 	FieldModelKey = "model_key"
 	// FieldCapability holds the string denoting the capability field in the database.
 	FieldCapability = "capability"
+	// FieldTraceID holds the string denoting the trace_id field in the database.
+	FieldTraceID = "trace_id"
 	// FieldRequestPayload holds the string denoting the request_payload field in the database.
 	FieldRequestPayload = "request_payload"
 	// FieldPayloadBytes holds the string denoting the payload_bytes field in the database.
@@ -69,6 +71,7 @@ var Columns = []string{
 	FieldID,
 	FieldModelKey,
 	FieldCapability,
+	FieldTraceID,
 	FieldRequestPayload,
 	FieldPayloadBytes,
 	FieldUnits,
@@ -103,6 +106,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultTraceID holds the default value on creation for the "trace_id" field.
+	DefaultTraceID string
 	// PayloadBytesValidator is a validator for the "payload_bytes" field. It is called by the builders before save.
 	PayloadBytesValidator func(int64) error
 	// UnitsValidator is a validator for the "units" field. It is called by the builders before save.
@@ -179,6 +184,11 @@ func ByModelKey(opts ...sql.OrderTermOption) OrderOption {
 // ByCapability orders the results by the capability field.
 func ByCapability(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCapability, opts...).ToFunc()
+}
+
+// ByTraceID orders the results by the trace_id field.
+func ByTraceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTraceID, opts...).ToFunc()
 }
 
 // ByPayloadBytes orders the results by the payload_bytes field.

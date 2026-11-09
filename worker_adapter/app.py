@@ -84,12 +84,23 @@ class Adapter:
         self.artifact = os.environ["VMIND_WORKER_ARTIFACT_DIGEST"]
         self.native = os.environ["VMIND_NATIVE_ORIGIN"].rstrip("/")
         self.health_url = os.environ["VMIND_NATIVE_HEALTH_URL"]
+        self.video_protocol = os.environ.get("VMIND_NATIVE_VIDEO_PROTOCOL", "gateway")
+        if self.video_protocol not in ("gateway", "jobs"):
+            raise ValueError("invalid native video protocol")
+        self.video_target = os.environ.get("VMIND_NATIVE_VIDEO_TARGET", "").strip()
+        if self.video_protocol == "jobs" and "video" in self.capabilities and not self.video_target:
+            raise ValueError("native video target instance is required")
         self.native_headers = {}
         if token := os.environ.get("VMIND_NATIVE_TOKEN"):
             self.native_headers["X-Token"] = token
+        username = os.environ.get("VMIND_NATIVE_USERNAME")
+        password = os.environ.get("VMIND_NATIVE_PASSWORD")
+        if bool(username) != bool(password):
+            raise ValueError("native basic authentication requires both fields")
         self.objects = Objects()
         self.http = httpx.AsyncClient(
-            timeout=httpx.Timeout(180.0, connect=5.0), trust_env=False, follow_redirects=False
+            auth=(username, password) if username else None,
+            timeout=httpx.Timeout(180.0, connect=5.0), trust_env=False, follow_redirects=False,
         )
         self.running: dict[str, asyncio.Task] = {}
 
@@ -138,8 +149,7 @@ class Adapter:
             status_code=202 if row["state"] == "processing" else 200,
         )
 
-    @staticmethod
-    def multipart(value, fields):
+    def multipart(self, value, fields):
         business = value["input"]
         images = business["images"]
         minimum = len(fields) if value["capability"] != "garment_extraction" else 1
@@ -156,6 +166,9 @@ class Adapter:
             key: item if isinstance(item, str) else json.dumps(item, ensure_ascii=False)
             for key, item in business.items() if key != "images"
         }
+        if value["capability"] == "video" and self.video_protocol == "jobs":
+            # 原生视频服务包含多个实例，固定本部署的目标以兑现网关登记的 GPU 分组。
+            form["target_instance"] = self.video_target
         metadata = value.get("metadata") or {}
         headers = {"X-Gateway-Request-ID": value["request_id"], "X-Gateway-Dispatch": "immediate"}
         if trace := metadata.get("trace_id"):
@@ -172,7 +185,7 @@ class Adapter:
         self.save(row)
         headers = {**self.native_headers, **headers}
         try:
-            if row["capability"] == "video":
+            if row["capability"] == "video" and self.video_protocol == "gateway":
                 multipart = self.http.build_request("POST", self.native + path, data=form, files=files)
                 envelope = {
                     "task_id": UUID(row["request_id"]).hex,
@@ -199,11 +212,15 @@ class Adapter:
         if row["capability"] == "video":
             expected = "gw-" + UUID(row["request_id"]).hex
             try:
-                if response.json().get("job_id") != expected:
+                job = response.json().get("job_id")
+                if not isinstance(job, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", job):
+                    return False
+                if self.video_protocol == "gateway" and job != expected:
                     return False
             except (ValueError, AttributeError):
                 return False
-            row["backend_task_id"] = expected
+            # /vton 分配自己的 job_id，受理后先持久化，再允许网关继续轮询。
+            row["backend_task_id"] = job
             self.save(row)
             return True
         try:
@@ -249,9 +266,18 @@ class Adapter:
     async def refresh_video(self, row):
         request_id = row["request_id"]
         native_id = UUID(request_id).hex
+        if self.video_protocol == "jobs":
+            job = row.get("backend_task_id")
+            # 国内原生端无法按外部 UUID 查找，受理响应不明时保持原执行占位。
+            if not job:
+                return
+            path = "/jobs/" + job
+        else:
+            job = "gw-" + native_id
+            path = "/_gateway/tasks/" + native_id
         try:
             response = await self.http.get(
-                self.native + "/_gateway/tasks/" + native_id, headers=self.native_headers, timeout=2.0
+                self.native + path, headers=self.native_headers, timeout=2.0
             )
             if not response.is_success:
                 return
@@ -262,8 +288,7 @@ class Adapter:
         latest = self.load(request_id)
         if latest["state"] != "processing" or request_id in self.running:
             return
-        job = "gw-" + native_id
-        if native.get("job_id") != job:
+        if native.get("job_id", job if self.video_protocol == "jobs" else "") != job:
             return
         latest["backend_task_id"] = job
         if native.get("status") == "done":
@@ -316,7 +341,11 @@ async def ready(request: Request):
         response = await worker.http.get(worker.health_url, headers=worker.native_headers, timeout=2.0)
         data = response.json()
         ready = response.is_success and (data.get("ready") is True or ("ready" not in data and data.get("status") == "ok"))
-    except (httpx.HTTPError, ValueError):
+        if worker.video_protocol == "jobs" and "video" in worker.capabilities:
+            ready = ready and any(item.get("name") == worker.video_target for item in data.get("instances", []))
+        if "workers" in data:
+            ready = ready and any(item.get("healthy") is True for item in data["workers"])
+    except (httpx.HTTPError, ValueError, AttributeError):
         ready = False
     return {"ready": ready}
 

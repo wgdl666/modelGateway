@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-gateway-migrate-RELEASE_SHA
+  namespace: default
+spec:
+  # 发布入口等待当前镜像的迁移完成后才滚动 API 副本。
+  activeDeadlineSeconds: 120
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: wgdl-registry-vpc.cn-shenzhen.cr.aliyuncs.com/wg/model-gateway@sha256:REPLACE_ME
+          args: [-migrate]
+          envFrom:
+            - secretRef:
+                name: model-gateway-runtime
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: "1", memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: bootstrap
+              mountPath: /etc/model-gateway
+              readOnly: true
+      volumes:
+        - name: bootstrap
+          configMap:
+            name: model-gateway-bootstrap

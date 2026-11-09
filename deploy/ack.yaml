@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-gateway
+  namespace: default
+spec:
+  # 副本只通过 PG 领取工作，同一副本退出时由另一个继续处理。
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: model-gateway
+  template:
+    metadata:
+      labels:
+        app: model-gateway
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 35
+      containers:
+        - name: model-gateway
+          image: wgdl-registry-vpc.cn-shenzhen.cr.aliyuncs.com/wg/model-gateway@sha256:REPLACE_ME
+          envFrom:
+            - secretRef:
+                name: model-gateway-runtime
+          ports:
+            - name: http
+              containerPort: 18580
+          startupProbe:
+            httpGet: {path: /_gateway/ready, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /_gateway/ready, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /_gateway/live, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: bootstrap
+              mountPath: /etc/model-gateway
+              readOnly: true
+      volumes:
+        - name: bootstrap
+          configMap:
+            name: model-gateway-bootstrap
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-gateway
+  namespace: default
+spec:
+  type: ClusterIP
+  selector:
+    app: model-gateway
+  ports:
+    - name: http
+      port: 18580
+      targetPort: http

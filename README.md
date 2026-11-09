@@ -41,6 +41,8 @@
 
 ## 处理和恢复
 
+Ops 使用管理凭据访问 `GET /v1/admin/requests` 和 `GET /v1/admin/requests/{request_id}`。列表支持请求 ID、Trace ID、模型或能力、实例、制品摘要、状态和时间过滤，`limit` 最大 100。详情返回对象引用和终态错误。两者都省略原始输入图片。实例查询分别返回 `reserved_requests` 和 `reserved_units`，健康与排空独立展示。
+
 `requests` 保存原始业务 JSON、四态、截止时间、实际派发实例和制品、容量预留、后端任务及对象结果。实例和组占用从仍预留槽位的请求汇总。并发受理与派发使用可串行化事务。消费者在持有任务行锁时提交归属和容量，再调用模型。
 
 派发使用 `POST {endpoint}/requests`。模型端接收 `request_id`、`model_key`、`capability`、`input` 和 `metadata`。返回同一 `request_id`，状态为 `processing`、`succeeded` 或 `failed`。未受理的输入校验和鉴权错误使用 HTTP 400、413、415、401 或 403。已经受理的任务通过 `GET {endpoint}/requests/{request_id}` 查询，完成状态必须提供对象结果或结构化错误。
@@ -59,6 +61,12 @@ python -m uvicorn app:app --app-dir worker_adapter --host 127.0.0.1 --port 8001
 ```
 
 ## 网关启动
+
+国内 ACK 通过 workspace 的 `server_release.py release --service model-gateway --branch dev` 发布。准备同一 ACR 实例里的私有不可变仓库 `wg/model-gateway`、可写的独立 PG 和 Nacos `wg.mirror.modelGateway`。Nacos 只保存监听、后端白名单、队列和容量设置。Kubernetes Secret `model-gateway-runtime` 提供 `MODEL_GATEWAY_DATABASE_URL` 以及 `MODEL_GATEWAY_{API,WORKER,ADMIN,BACKEND}_TOKEN`。发布入口先执行单独迁移，再部署两个副本和内网 Service。
+
+国内视频 Worker 设置 `VMIND_NATIVE_VIDEO_PROTOCOL=jobs` 和 `VMIND_NATIVE_VIDEO_TARGET`。目标实例名必须来自原生 `/healthz`，并与网关登记的 GPU 分组对应。提交原生 `/vton` 后持久化后端分配的 job_id，再查询 `/jobs/{job_id}`。原生服务未提供按外部 UUID 查询，受理响应丢失时保留槽位，待核实原执行。图片上游需要 Basic Auth 时，由模型部署提供 `VMIND_NATIVE_USERNAME` 和 `VMIND_NATIVE_PASSWORD`。
+
+适配器镜像从仓库根目录使用 `worker_adapter/Dockerfile` 构建。部署端以稳定的内网 IP 和真实制品、GPU 归属登记实例，并持久挂载 `/state`。成品统一写入目标桶的 `outputs/<request_id>/`。
 
 业务配置通过 AppConfig Agent 或 Nacos 加载。示例见 [gateway.example.json](config/gateway.example.json)。多个副本使用同一份 PG schema。换库前需要排空任务并重启。
 

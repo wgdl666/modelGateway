@@ -41,7 +41,12 @@ func run(ctx context.Context, path string, migration bool) error {
 	if err != nil {
 		return err
 	}
-	dbCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	dbTimeout := 10 * time.Second
+	if migration {
+		// 首次发布可能等待另一轮迁移释放锁，仍由 Job 限制总时长。
+		dbTimeout = 90 * time.Second
+	}
+	dbCtx, cancel := context.WithTimeout(ctx, dbTimeout)
 	db, err := gateway.OpenDatabase(dbCtx, cfg.DatabaseURL, migration)
 	cancel()
 	if err != nil {

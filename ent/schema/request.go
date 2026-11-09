@@ -20,6 +20,8 @@ func (Request) Fields() []ent.Field {
 		field.String("id").StorageKey("request_id").SchemaType(map[string]string{dialect.Postgres: "text"}).Immutable(),
 		field.Text("model_key").Immutable(),
 		field.Text("capability").Immutable(),
+		// 查询链路只需要 Trace ID，避免 Ops 列表读取包含图片的请求正文。
+		field.Text("trace_id").Default("").Immutable(),
 		field.JSON("request_payload", json.RawMessage{}).Immutable(),
 		field.Int64("payload_bytes").Positive().Immutable(),
 		field.Int("units").Positive().Immutable(),
@@ -58,5 +60,7 @@ func (Request) Indexes() []ent.Index {
 		index.Fields("deadline_at").Annotations(entsql.IndexWhere("state = 'queued'")),
 		index.Fields("resource_group", "instance_id").Annotations(entsql.IndexWhere("slot_reserved")),
 		index.Fields("next_poll_at").Annotations(entsql.IndexWhere("slot_reserved")),
+		index.Fields("created_at", "id"),
+		index.Fields("trace_id").Annotations(entsql.IndexWhere("trace_id <> ''")),
 	}
 }

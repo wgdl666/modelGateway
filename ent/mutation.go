@@ -1234,6 +1234,7 @@ type RequestMutation struct {
 	id                    *string
 	model_key             *string
 	capability            *string
+	trace_id              *string
 	request_payload       *json.RawMessage
 	appendrequest_payload json.RawMessage
 	payload_bytes         *int64
@@ -1440,6 +1441,42 @@ func (m *RequestMutation) OldCapability(ctx context.Context) (v string, err erro
 // ResetCapability resets all changes to the "capability" field.
 func (m *RequestMutation) ResetCapability() {
 	m.capability = nil
+}
+
+// SetTraceID sets the "trace_id" field.
+func (m *RequestMutation) SetTraceID(s string) {
+	m.trace_id = &s
+}
+
+// TraceID returns the value of the "trace_id" field in the mutation.
+func (m *RequestMutation) TraceID() (r string, exists bool) {
+	v := m.trace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTraceID returns the old "trace_id" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldTraceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTraceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTraceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTraceID: %w", err)
+	}
+	return oldValue.TraceID, nil
+}
+
+// ResetTraceID resets all changes to the "trace_id" field.
+func (m *RequestMutation) ResetTraceID() {
+	m.trace_id = nil
 }
 
 // SetRequestPayload sets the "request_payload" field.
@@ -2375,12 +2412,15 @@ func (m *RequestMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RequestMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.model_key != nil {
 		fields = append(fields, request.FieldModelKey)
 	}
 	if m.capability != nil {
 		fields = append(fields, request.FieldCapability)
+	}
+	if m.trace_id != nil {
+		fields = append(fields, request.FieldTraceID)
 	}
 	if m.request_payload != nil {
 		fields = append(fields, request.FieldRequestPayload)
@@ -2457,6 +2497,8 @@ func (m *RequestMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelKey()
 	case request.FieldCapability:
 		return m.Capability()
+	case request.FieldTraceID:
+		return m.TraceID()
 	case request.FieldRequestPayload:
 		return m.RequestPayload()
 	case request.FieldPayloadBytes:
@@ -2512,6 +2554,8 @@ func (m *RequestMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldModelKey(ctx)
 	case request.FieldCapability:
 		return m.OldCapability(ctx)
+	case request.FieldTraceID:
+		return m.OldTraceID(ctx)
 	case request.FieldRequestPayload:
 		return m.OldRequestPayload(ctx)
 	case request.FieldPayloadBytes:
@@ -2576,6 +2620,13 @@ func (m *RequestMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCapability(v)
+		return nil
+	case request.FieldTraceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTraceID(v)
 		return nil
 	case request.FieldRequestPayload:
 		v, ok := value.(json.RawMessage)
@@ -2844,6 +2895,9 @@ func (m *RequestMutation) ResetField(name string) error {
 		return nil
 	case request.FieldCapability:
 		m.ResetCapability()
+		return nil
+	case request.FieldTraceID:
+		m.ResetTraceID()
 		return nil
 	case request.FieldRequestPayload:
 		m.ResetRequestPayload()
