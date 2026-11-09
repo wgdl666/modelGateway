@@ -322,24 +322,39 @@ func (w *Reconciler) pollNative(cfg *config.Snapshot, task *ent.Request, backend
 	}
 	switch job.Status {
 	case "done":
-		ctx, cancel := context.WithTimeout(w.ctx, cfg.BackendTimeout)
-		defer cancel()
-		deadline, _ := ctx.Deadline()
-		claimed, err := w.store.ExtendPoll(ctx, task.ID, task.PollClaim, deadline.Add(store.ExecutionWriteTimeout))
-		if err != nil || !claimed {
-			return err
+		publish := func() error {
+			return w.completeNativeVideo(cfg, task, auth, jobURL+"/video")
 		}
-		// shortcut: 当前副本在轮询中完成成品发布，有并发视频查询延迟时再拆分发布。
-		file, err := w.publishNativeVideo(ctx, w.results, auth, task.ID, jobURL+"/video")
-		if err != nil {
-			return w.saveModelResponse(cfg, task, nativeFailure(task.ID, "result_unavailable", "cannot publish video result"), true)
+		// 发布协程忙时按原间隔回查重试，避免轮询阻塞或把在途领取堆在内存里。
+		select {
+		case w.videoPublications <- publish:
+			return nil
+		default:
 		}
-		return w.saveModelResponse(cfg, task, nativeSuccess(task.ID, []protocol.Object{file}), true)
 	case "error", "cancelled", "interrupted":
 		return w.saveModelResponse(cfg, task, nativeFailure(task.ID, "model_failed", "native video execution failed"), true)
-	default:
-		return w.saveModelResponse(cfg, task, protocol.ModelResponse{Response: protocol.Response{RequestID: task.ID, State: "processing"}}, true)
 	}
+	return w.saveModelResponse(cfg, task, protocol.ModelResponse{Response: protocol.Response{RequestID: task.ID, State: "processing"}}, true)
+}
+
+func (w *Reconciler) completeNativeVideo(cfg *config.Snapshot, task *ent.Request, auth nativeAuth, url string) error {
+	ctx, cancel := context.WithTimeout(w.ctx, cfg.BackendTimeout)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
+	// 领取仍有效才开始传输，并给发布后的终态写入留足时间。
+	claimed, err := w.store.ExtendPoll(ctx, task.ID, task.PollClaim, deadline.Add(store.ExecutionWriteTimeout))
+	if err != nil || !claimed {
+		return err
+	}
+	file, err := w.publishNativeVideo(ctx, w.results, auth, task.ID, url)
+	if err != nil {
+		// 本副本关停时保留任务，领取到期后可以重新发布同一成品。
+		if w.ctx.Err() != nil {
+			return w.ctx.Err()
+		}
+		return w.saveModelResponse(cfg, task, nativeFailure(task.ID, "result_unavailable", "cannot publish video result"), true)
+	}
+	return w.saveModelResponse(cfg, task, nativeSuccess(task.ID, []protocol.Object{file}), true)
 }
 
 func (w *Reconciler) publishNativeVideo(ctx context.Context, results *resultUploader, auth nativeAuth, id, url string) (protocol.Object, error) {
