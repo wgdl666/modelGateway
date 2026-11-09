@@ -42,6 +42,7 @@ type ModelInstanceMutation struct {
 	health_url              *string
 	artifact_digest         *string
 	resource_group          *string
+	target_instance         *string
 	group_capacity_units    *int
 	addgroup_capacity_units *int
 	capacity_units          *int
@@ -379,6 +380,42 @@ func (m *ModelInstanceMutation) OldResourceGroup(ctx context.Context) (v string,
 // ResetResourceGroup resets all changes to the "resource_group" field.
 func (m *ModelInstanceMutation) ResetResourceGroup() {
 	m.resource_group = nil
+}
+
+// SetTargetInstance sets the "target_instance" field.
+func (m *ModelInstanceMutation) SetTargetInstance(s string) {
+	m.target_instance = &s
+}
+
+// TargetInstance returns the value of the "target_instance" field in the mutation.
+func (m *ModelInstanceMutation) TargetInstance() (r string, exists bool) {
+	v := m.target_instance
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTargetInstance returns the old "target_instance" field's value of the ModelInstance entity.
+// If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelInstanceMutation) OldTargetInstance(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTargetInstance is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTargetInstance requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTargetInstance: %w", err)
+	}
+	return oldValue.TargetInstance, nil
+}
+
+// ResetTargetInstance resets all changes to the "target_instance" field.
+func (m *ModelInstanceMutation) ResetTargetInstance() {
+	m.target_instance = nil
 }
 
 // SetGroupCapacityUnits sets the "group_capacity_units" field.
@@ -857,7 +894,7 @@ func (m *ModelInstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelInstanceMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.model_key != nil {
 		fields = append(fields, modelinstance.FieldModelKey)
 	}
@@ -875,6 +912,9 @@ func (m *ModelInstanceMutation) Fields() []string {
 	}
 	if m.resource_group != nil {
 		fields = append(fields, modelinstance.FieldResourceGroup)
+	}
+	if m.target_instance != nil {
+		fields = append(fields, modelinstance.FieldTargetInstance)
 	}
 	if m.group_capacity_units != nil {
 		fields = append(fields, modelinstance.FieldGroupCapacityUnits)
@@ -926,6 +966,8 @@ func (m *ModelInstanceMutation) Field(name string) (ent.Value, bool) {
 		return m.ArtifactDigest()
 	case modelinstance.FieldResourceGroup:
 		return m.ResourceGroup()
+	case modelinstance.FieldTargetInstance:
+		return m.TargetInstance()
 	case modelinstance.FieldGroupCapacityUnits:
 		return m.GroupCapacityUnits()
 	case modelinstance.FieldCapacityUnits:
@@ -967,6 +1009,8 @@ func (m *ModelInstanceMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldArtifactDigest(ctx)
 	case modelinstance.FieldResourceGroup:
 		return m.OldResourceGroup(ctx)
+	case modelinstance.FieldTargetInstance:
+		return m.OldTargetInstance(ctx)
 	case modelinstance.FieldGroupCapacityUnits:
 		return m.OldGroupCapacityUnits(ctx)
 	case modelinstance.FieldCapacityUnits:
@@ -1037,6 +1081,13 @@ func (m *ModelInstanceMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetResourceGroup(v)
+		return nil
+	case modelinstance.FieldTargetInstance:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTargetInstance(v)
 		return nil
 	case modelinstance.FieldGroupCapacityUnits:
 		v, ok := value.(int)
@@ -1216,6 +1267,9 @@ func (m *ModelInstanceMutation) ResetField(name string) error {
 		return nil
 	case modelinstance.FieldResourceGroup:
 		m.ResetResourceGroup()
+		return nil
+	case modelinstance.FieldTargetInstance:
+		m.ResetTargetInstance()
 		return nil
 	case modelinstance.FieldGroupCapacityUnits:
 		m.ResetGroupCapacityUnits()

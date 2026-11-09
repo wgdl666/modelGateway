@@ -71,13 +71,13 @@ python -m uvicorn app:app --app-dir worker_adapter --host 127.0.0.1 --port 8001
 
 ## Go 网关直连
 
-将原生地址加入 `native_backends`，再以相同的 `endpoint` 登记实例。健康地址和执行地址使用同一个协议、IP 和端口，端口加入 `backend_ports`。常规 VMind-Image 使用空对象。国内 FLUX 换装使用 `vton_edits` 选择 `/v1/images/edits`。LTX 的 `target_instance` 取自原生健康接口，并与登记的 GPU 分组对应。切换地址、协议或结果桶前先排空受影响的实例，再更新配置并重启网关。
+将原生地址加入 `native_backends`，再以相同的 `endpoint` 登记实例。健康地址和执行地址使用同一个协议、IP 和端口。将端口加入 `backend_ports`。常规 VMind-Image 使用空对象。国内 FLUX 换装使用 `vton_edits` 选择 `/v1/images/edits`。LTX 地址设置 `video: true`，以使用视频协议和凭据。切换地址、协议或结果桶前先排空受影响的实例，再更新配置并重启网关。
 
 ```json
 {
   "native_backends": {
     "http://10.0.1.10:9001": {"vton_edits": true},
-    "http://10.0.1.11:9002": {"target_instance": "ltx-gpu0"}
+    "http://10.0.1.11:9002": {"video": true}
   },
   "native_results": {
     "provider": "oss",
@@ -87,6 +87,15 @@ python -m uvicorn app:app --app-dir worker_adapter --host 127.0.0.1 --port 8001
   }
 }
 ```
+
+登记原生视频实例时，在 `POST /v1/instances/register` 中同时填写 `resource_group` 和 `target_instance`。目标名取自 LTX 健康响应的 `instances[].name`，应对应所登记的 GPU 分组。网关按登记的目标探活并派发。可以用 `GET /v1/instances` 回读这两个字段。
+
+已有直连视频实例按以下顺序迁移。
+
+1. 执行[原生视频目标迁移](deploy/migrations/native-video-target.sql)，为实例表添加目标列。
+2. 先记录旧配置中的 LTX 目标名。排空旧实例，等 `reserved_requests` 归零。
+3. 将 LTX 地址在 `native_backends` 中的配置改成 `{"video": true}`，更新网关的所有副本。
+4. 用新的 `instance_id` 登记。填写原来的 GPU 分组和 LTX 目标名，等待实例就绪。
 
 VMind-Image 和 LTX 的原生鉴权分别使用 `MODEL_GATEWAY_NATIVE_IMAGE_*` 和 `MODEL_GATEWAY_NATIVE_VIDEO_*`。Basic Auth 注入 `USERNAME`、`PASSWORD`，`X-Token` 注入 `TOKEN`。OSS 从 `OSS_ACCESS_KEY_ID` 和 `OSS_ACCESS_KEY_SECRET` 取凭据。S3 使用 AWS 凭据链，`endpoint` 可省略。
 

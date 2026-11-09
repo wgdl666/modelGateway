@@ -56,6 +56,20 @@ func (_c *ModelInstanceCreate) SetResourceGroup(v string) *ModelInstanceCreate {
 	return _c
 }
 
+// SetTargetInstance sets the "target_instance" field.
+func (_c *ModelInstanceCreate) SetTargetInstance(v string) *ModelInstanceCreate {
+	_c.mutation.SetTargetInstance(v)
+	return _c
+}
+
+// SetNillableTargetInstance sets the "target_instance" field if the given value is not nil.
+func (_c *ModelInstanceCreate) SetNillableTargetInstance(v *string) *ModelInstanceCreate {
+	if v != nil {
+		_c.SetTargetInstance(*v)
+	}
+	return _c
+}
+
 // SetGroupCapacityUnits sets the "group_capacity_units" field.
 func (_c *ModelInstanceCreate) SetGroupCapacityUnits(v int) *ModelInstanceCreate {
 	_c.mutation.SetGroupCapacityUnits(v)
@@ -213,6 +227,10 @@ func (_c *ModelInstanceCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *ModelInstanceCreate) defaults() {
+	if _, ok := _c.mutation.TargetInstance(); !ok {
+		v := modelinstance.DefaultTargetInstance
+		_c.mutation.SetTargetInstance(v)
+	}
 	if _, ok := _c.mutation.MachineID(); !ok {
 		v := modelinstance.DefaultMachineID
 		_c.mutation.SetMachineID(v)
@@ -258,6 +276,9 @@ func (_c *ModelInstanceCreate) check() error {
 	}
 	if _, ok := _c.mutation.ResourceGroup(); !ok {
 		return &ValidationError{Name: "resource_group", err: errors.New(`ent: missing required field "ModelInstance.resource_group"`)}
+	}
+	if _, ok := _c.mutation.TargetInstance(); !ok {
+		return &ValidationError{Name: "target_instance", err: errors.New(`ent: missing required field "ModelInstance.target_instance"`)}
 	}
 	if _, ok := _c.mutation.GroupCapacityUnits(); !ok {
 		return &ValidationError{Name: "group_capacity_units", err: errors.New(`ent: missing required field "ModelInstance.group_capacity_units"`)}
@@ -351,6 +372,10 @@ func (_c *ModelInstanceCreate) createSpec() (*ModelInstance, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.ResourceGroup(); ok {
 		_spec.SetField(modelinstance.FieldResourceGroup, field.TypeString, value)
 		_node.ResourceGroup = value
+	}
+	if value, ok := _c.mutation.TargetInstance(); ok {
+		_spec.SetField(modelinstance.FieldTargetInstance, field.TypeString, value)
+		_node.TargetInstance = value
 	}
 	if value, ok := _c.mutation.GroupCapacityUnits(); ok {
 		_spec.SetField(modelinstance.FieldGroupCapacityUnits, field.TypeInt, value)

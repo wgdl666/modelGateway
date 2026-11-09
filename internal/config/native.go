@@ -6,17 +6,22 @@ import (
 )
 
 type NativeBackend struct {
-	TargetInstance string `json:"target_instance,omitempty"`
-	VTONEdits      bool   `json:"vton_edits,omitempty"`
+	// 地址固定使用图片或视频协议，避免通过实例登记改变该地址可用的原生凭据。
+	Video     bool `json:"video,omitempty"`
+	VTONEdits bool `json:"vton_edits,omitempty"`
 }
 
 func (b NativeBackend) Matches(capability string) bool {
-	return (b.TargetInstance != "") == (capability == "video")
+	return b.Video == (capability == "video")
 }
 
-// 探针与执行使用同一地址，防止登记其他服务的探针时把原生凭据传过去。
-func (b NativeBackend) Accepts(capability, endpoint, healthURL string) bool {
-	return b.Matches(capability) && (healthURL == endpoint || strings.HasPrefix(healthURL, endpoint+"/"))
+// 原生视频必须登记目标。探针与执行使用同一地址，避免向其他服务发送原生凭据。
+func (b NativeBackend) Accepts(capability, endpoint, healthURL, targetInstance string) bool {
+	if !b.Matches(capability) || b.Video != (targetInstance != "") {
+		return false
+	}
+	return strings.TrimSpace(targetInstance) == targetInstance &&
+		(healthURL == endpoint || strings.HasPrefix(healthURL, endpoint+"/"))
 }
 
 type NativeResults struct {
@@ -32,10 +37,7 @@ func (s *Snapshot) validateNative() error {
 		if strings.HasSuffix(endpoint, "/") || s.ValidateEndpoint(endpoint, false) != nil {
 			return errors.New("invalid native_backends endpoint")
 		}
-		if strings.TrimSpace(backend.TargetInstance) != backend.TargetInstance {
-			return errors.New("invalid native_backends target instance")
-		}
-		if backend.VTONEdits && backend.TargetInstance != "" {
+		if backend.VTONEdits && backend.Video {
 			return errors.New("native_backends vton_edits requires an image endpoint")
 		}
 	}

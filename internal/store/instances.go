@@ -38,6 +38,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance) error {
 			// 相同部署重复注册是幂等操作，不改排空状态、健康快照或任务账本。
 			if old.ModelKey == spec.ModelKey && old.Capability == spec.Capability && old.Endpoint == spec.Endpoint &&
 				old.HealthURL == spec.HealthURL && old.ArtifactDigest == spec.Artifact && old.ResourceGroup == spec.ResourceGroup &&
+				old.TargetInstance == spec.TargetInstance &&
 				old.GroupCapacityUnits == spec.GroupCapacity && old.CapacityUnits == spec.Capacity &&
 				old.MachineID == spec.MachineID && slices.Equal(old.GpuDevices, spec.GPUDevices) {
 				return nil
@@ -77,7 +78,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance) error {
 		return tx.ModelInstance.Create().
 			SetID(spec.ID).SetModelKey(spec.ModelKey).SetCapability(spec.Capability).
 			SetEndpoint(spec.Endpoint).SetHealthURL(spec.HealthURL).SetArtifactDigest(spec.Artifact).
-			SetResourceGroup(spec.ResourceGroup).SetGroupCapacityUnits(spec.GroupCapacity).
+			SetResourceGroup(spec.ResourceGroup).SetTargetInstance(spec.TargetInstance).SetGroupCapacityUnits(spec.GroupCapacity).
 			SetCapacityUnits(spec.Capacity).SetMachineID(spec.MachineID).SetGpuDevices(spec.GPUDevices).Exec(ctx)
 	})
 }

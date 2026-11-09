@@ -74,7 +74,7 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 	if _, err := a.Admit(t.Context(), submission); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.Claim(t.Context(), testConfig(), id); err != nil {
+	if _, _, err := a.Claim(t.Context(), testConfig(), id); err != nil {
 		t.Fatal(err)
 	}
 	runtime, err := config.NewRuntime(testConfig())
@@ -211,7 +211,7 @@ func TestClearInstanceKeepsRequestHistory(t *testing.T) {
 	if _, err := a.Admit(ctx, testAdmission(spec, id, 1)); err != nil {
 		t.Fatal(err)
 	}
-	if row, err := a.Claim(ctx, testConfig(), id); err != nil || row == nil {
+	if row, _, err := a.Claim(ctx, testConfig(), id); err != nil || row == nil {
 		t.Fatalf("claim: %v %v", row, err)
 	}
 	if err := a.Drain(ctx, spec.ID, true); err != nil {

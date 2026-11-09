@@ -140,7 +140,7 @@ func readModelBody(body io.Reader, limit int64) ([]byte, error) {
 	return raw, nil
 }
 
-func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
+func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request, targetInstance string) error {
 	var payload protocol.Submission
 	if err := json.Unmarshal(task.RequestPayload, &payload); err != nil {
 		return w.failDispatch(task.ID, 500, "invalid_saved_request", "saved request is invalid", false)
@@ -168,7 +168,7 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 	ctx, cancel := context.WithDeadline(w.ctx, deadline)
 	defer cancel()
 	if direct {
-		return w.executeNative(ctx, cfg, task, payload, backend)
+		return w.executeNative(ctx, cfg, task, payload, backend, targetInstance)
 	}
 	response, err := w.modelCall(ctx, cfg, http.MethodPost, task.Endpoint, "/requests", raw)
 	if err != nil {

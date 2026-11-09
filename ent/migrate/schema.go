@@ -18,6 +18,7 @@ var (
 		{Name: "health_url", Type: field.TypeString, Size: 2147483647},
 		{Name: "artifact_digest", Type: field.TypeString, Size: 2147483647},
 		{Name: "resource_group", Type: field.TypeString, Size: 2147483647},
+		{Name: "target_instance", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "group_capacity_units", Type: field.TypeInt},
 		{Name: "capacity_units", Type: field.TypeInt},
 		{Name: "machine_id", Type: field.TypeString, Size: 2147483647, Default: ""},

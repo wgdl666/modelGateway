@@ -48,7 +48,7 @@ func readNativeAuth(prefix string) (nativeAuth, error) {
 }
 
 func (w *Reconciler) nativeAuth(backend config.NativeBackend) nativeAuth {
-	if backend.TargetInstance != "" {
+	if backend.Video {
 		return w.nativeVideoAuth
 	}
 	return w.nativeImageAuth
@@ -65,8 +65,8 @@ var nativeRoutes = map[string]struct {
 	"video":              {"/vton", []string{"image"}},
 }
 
-// 图片的文件字段名由能力决定，视频目标则由登记配置绑定到网关预留的 GPU。
-func nativeMultipart(task *ent.Request, input protocol.Submission, backend config.NativeBackend) (string, *bytes.Buffer, http.Header, error) {
+// 图片的文件字段名由能力决定。视频目标来自预留 GPU 时选中的实例。
+func nativeMultipart(task *ent.Request, input protocol.Submission, backend config.NativeBackend, targetInstance string) (string, *bytes.Buffer, http.Header, error) {
 	route, ok := nativeRoutes[task.Capability]
 	if !ok || !backend.Matches(task.Capability) {
 		return "", nil, nil, errors.New("invalid native backend capability")
@@ -113,8 +113,8 @@ func nativeMultipart(task *ent.Request, input protocol.Submission, backend confi
 	if user := input.Metadata.UserID; user != "" {
 		headers.Set("X-User-ID", user)
 	}
-	if backend.TargetInstance != "" {
-		form["target_instance"] = backend.TargetInstance
+	if backend.Video {
+		form["target_instance"] = targetInstance
 	}
 	for key, value := range form {
 		if err := writer.WriteField(key, value); err != nil {
@@ -178,7 +178,7 @@ func (w *Reconciler) nativeJSON(ctx context.Context, auth nativeAuth, url string
 }
 
 func (w *Reconciler) nativeReady(ctx context.Context, cfg *config.Snapshot, row *ent.ModelInstance, backend config.NativeBackend) bool {
-	if !backend.Accepts(row.Capability, row.Endpoint, row.HealthURL) ||
+	if !backend.Accepts(row.Capability, row.Endpoint, row.HealthURL, row.TargetInstance) ||
 		cfg.ValidateEndpoint(row.HealthURL, true) != nil {
 		return false
 	}
@@ -204,10 +204,10 @@ func (w *Reconciler) nativeReady(ctx context.Context, cfg *config.Snapshot, row 
 	if !ready {
 		return false
 	}
-	if backend.TargetInstance != "" && !slices.ContainsFunc(health.Instances, func(i struct {
+	if backend.Video && !slices.ContainsFunc(health.Instances, func(i struct {
 		Name string `json:"name"`
 	}) bool {
-		return i.Name == backend.TargetInstance
+		return i.Name == row.TargetInstance
 	}) {
 		return false
 	}
@@ -227,8 +227,8 @@ type nativeJob struct {
 	Status string `json:"status"`
 }
 
-func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, task *ent.Request, input protocol.Submission, backend config.NativeBackend) error {
-	path, body, headers, err := nativeMultipart(task, input, backend)
+func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, task *ent.Request, input protocol.Submission, backend config.NativeBackend, targetInstance string) error {
+	path, body, headers, err := nativeMultipart(task, input, backend, targetInstance)
 	if err != nil {
 		return w.failDispatch(task.ID, 500, "invalid_saved_request", "saved request cannot be dispatched to the native model", false)
 	}

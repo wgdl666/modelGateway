@@ -27,8 +27,9 @@ func New(db *ent.Client) *Store {
 }
 
 func (s *Store) CheckReady(ctx context.Context) error {
-	// 就绪检查覆盖软删除字段，迁移完成后才允许新副本接流量。
-	if _, err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).Exist(ctx); err != nil {
+	// 就绪检查覆盖软删除和原生目标字段，迁移完成后才允许新副本接流量。
+	if _, err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).
+		Select(modelinstance.FieldTargetInstance).Limit(1).All(ctx); err != nil {
 		return err
 	}
 	// 核对待投递字段已经迁移，避免就绪检查放过旧表结构。

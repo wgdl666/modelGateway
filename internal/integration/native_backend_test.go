@@ -3,6 +3,7 @@ package integration
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -39,6 +40,8 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			t.Setenv("MODEL_GATEWAY_NATIVE_VIDEO_TOKEN", "video-token")
 
 			const bucket, target, jobID = "test-results", "ltx-gpu1", "ltx-job-1"
+			var targetAdvertised atomic.Bool
+			targetAdvertised.Store(provider != "oss")
 			png := []byte("\x89PNG\r\n\x1a\nimage")
 			video := []byte("video fixture")
 			imageID, videoID := uuid.NewString(), uuid.NewString()
@@ -91,7 +94,11 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 				}
 				switch r.Method + " " + r.URL.Path {
 				case "GET /health":
-					_, _ = io.WriteString(w, `{"ready":true,"instances":[{"name":"ltx-gpu1"}]}`)
+					if !targetAdvertised.Load() {
+						_, _ = io.WriteString(w, `{"ready":true,"instances":[{"name":"ltx-gpu0"}]}`)
+						return
+					}
+					_, _ = fmt.Fprintf(w, `{"ready":true,"instances":[{"name":%q}]}`, target)
 				case "POST /vton":
 					if r.FormValue("target_instance") != target || r.FormValue("motion_tips") != "turn" ||
 						r.Header.Get("X-Gateway-Request-ID") != videoID || r.Header.Get("X-Gateway-Dispatch") != "immediate" {
@@ -146,7 +153,7 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			cfg.RabbitMQURL, cfg.RabbitMQQueue, _ = testsupport.RabbitQueue(t)
 			cfg.BackendToken = "legacy-token"
 			cfg.PollInterval = 25 * time.Millisecond
-			cfg.NativeBackends = map[string]config.NativeBackend{imageModel.URL: {}, videoModelServer.URL: {TargetInstance: target}}
+			cfg.NativeBackends = map[string]config.NativeBackend{imageModel.URL: {}, videoModelServer.URL: {Video: true}}
 			cfg.NativeResults = config.NativeResults{Provider: provider, Region: "us-east-2", Bucket: bucket, Endpoint: objects.URL}
 			for endpoint := range cfg.NativeBackends {
 				u, _ := url.Parse(endpoint)
@@ -184,14 +191,39 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 				}
 				return response
 			}
-			for _, spec := range []protocol.Instance{
-				testInstance(protocol.OutfitModel, "vton", imageModel.URL, 1),
-				testInstance(protocol.VideoModel, "video", videoModelServer.URL, 1),
-			} {
+			imageSpec := testInstance(protocol.OutfitModel, "vton", imageModel.URL, 1)
+			videoSpec := testInstance(protocol.VideoModel, "video", videoModelServer.URL, 1)
+			videoSpec.ResourceGroup = "host/gpu1"
+			if provider == "oss" {
+				raw, _ := json.Marshal(videoSpec)
+				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 400)
+			}
+			videoSpec.TargetInstance = target
+			for _, spec := range []protocol.Instance{imageSpec, videoSpec} {
 				raw, _ := json.Marshal(spec)
 				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 200)
 			}
+			if provider == "oss" {
+				// 同一个登记 ID 不能把已经绑定的 GPU 目标改到另一卡。
+				changed := videoSpec
+				changed.TargetInstance = "ltx-gpu0"
+				raw, _ := json.Marshal(changed)
+				call(http.MethodPost, "/v1/instances/register", adminToken, "", string(raw), 409)
+			}
 			reconciler.Start()
+			if provider == "oss" {
+				waitForNativeTest(t, "probe of the unadvertised video target", func() bool {
+					row, err := db.ModelInstance.Get(t.Context(), videoSpec.ID)
+					if err != nil || row.HealthCheckedAt.Unix() == 0 {
+						return false
+					}
+					if row.Ready {
+						t.Fatal("probe marked the registration ready with only another LTX target advertised")
+					}
+					return true
+				})
+				targetAdvertised.Store(true)
+			}
 			waitForNativeTest(t, "model readiness", func() bool {
 				count, err := db.ModelInstance.Query().Where(modelinstance.ReadyEQ(true)).Count(t.Context())
 				return err == nil && count == 2
@@ -217,7 +249,8 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			})
 			assertResult(response, videoID, "0.mp4")
 			row, err := db.Request.Get(t.Context(), videoID)
-			if err != nil || row.BackendTaskID != jobID || row.SlotReserved || len(uploads) != 2 {
+			if err != nil || row.InstanceID != videoSpec.ID || row.ResourceGroup != videoSpec.ResourceGroup ||
+				row.BackendTaskID != jobID || row.SlotReserved || len(uploads) != 2 {
 				t.Fatalf("unexpected video record or upload count: row=%+v uploads=%d error=%v", row, len(uploads), err)
 			}
 
