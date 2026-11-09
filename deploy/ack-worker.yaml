@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-gateway-worker
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: model-gateway-worker
+  template:
+    metadata:
+      labels:
+        app: model-gateway-worker
+    spec:
+      automountServiceAccountToken: false
+      # 终止时留出原生受理响应和 OSS 状态写入的时间。
+      terminationGracePeriodSeconds: 35
+      containers:
+        - name: image
+          image: wgdl-registry-vpc.cn-shenzhen.cr.aliyuncs.com/wg/model-gateway-worker@sha256:REPLACE_ME
+          args: ["--port", "8001", "--timeout-graceful-shutdown", "25"]
+          envFrom:
+            - secretRef: {name: model-gateway-worker}
+            - secretRef: {name: model-gateway-worker-image}
+          env:
+            - {name: VMIND_WORKER_STATE_BACKEND, value: oss}
+            - {name: VMIND_WORKER_INSTANCE_ID, value: cn-image}
+            - {name: VMIND_WORKER_ARTIFACT_DIGEST, value: WORKER_IMAGE_DIGEST}
+            - {name: VMIND_WORKER_CAPABILITIES, value: "cloth_gen,garment_extraction,vton,body_model"}
+          ports:
+            - {name: image, containerPort: 8001}
+          readinessProbe:
+            httpGet: {path: /health/live, port: image}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health/live, port: image}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 192Mi}
+            limits: {cpu: "1", memory: 768Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+        - name: video
+          image: wgdl-registry-vpc.cn-shenzhen.cr.aliyuncs.com/wg/model-gateway-worker@sha256:REPLACE_ME
+          args: ["--port", "8002", "--timeout-graceful-shutdown", "25"]
+          envFrom:
+            - secretRef: {name: model-gateway-worker}
+            - secretRef: {name: model-gateway-worker-video}
+          env:
+            - {name: VMIND_WORKER_STATE_BACKEND, value: oss}
+            - {name: VMIND_WORKER_INSTANCE_ID, value: cn-video}
+            - {name: VMIND_WORKER_ARTIFACT_DIGEST, value: WORKER_IMAGE_DIGEST}
+            - {name: VMIND_WORKER_CAPABILITIES, value: video}
+            - {name: VMIND_NATIVE_VIDEO_PROTOCOL, value: jobs}
+          ports:
+            - {name: video, containerPort: 8002}
+          readinessProbe:
+            httpGet: {path: /health/live, port: video}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health/live, port: video}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-gateway-worker
+  namespace: default
+spec:
+  type: ClusterIP
+  selector:
+    app: model-gateway-worker
+  ports:
+    - {name: image, port: 8001, targetPort: image}
+    - {name: video, port: 8002, targetPort: video}

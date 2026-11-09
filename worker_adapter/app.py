@@ -13,7 +13,7 @@ import logging
 import os
 import re
 import tempfile
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager
 from pathlib import Path
 from uuid import UUID
 
@@ -69,11 +69,46 @@ class Objects:
             self.client.put_object(key, body, headers={"Content-Type": content_type})
         return {"provider": self.provider, "region": self.region, "bucket": self.bucket, "key": key}
 
+    def create_state(self, row, phase):
+        from oss2.exceptions import ServerError
+
+        key = f"outputs/{row['request_id']}/_worker-{phase}.json"
+        try:
+            self.client.put_object(key, json.dumps(row).encode(), headers={
+                "Content-Type": "application/json", "x-oss-forbid-overwrite": "true",
+            })
+        except ServerError as exc:
+            if exc.code == "FileAlreadyExists":
+                return False
+            raise
+        return True
+
+    def load_state(self, request_id):
+        from oss2.exceptions import NoSuchKey
+
+        # 三份小记录只增不改。后续阶段优先，重启时不会退回到尚未受理。
+        for phase in ("terminal", "accepted", "claimed"):
+            try:
+                result = self.client.get_object(f"outputs/{request_id}/_worker-{phase}.json")
+            except NoSuchKey:
+                continue
+            try:
+                return json.loads(result.read(64 * 1024))
+            finally:
+                result.close()
+        return None
+
 
 class Adapter:
     def __init__(self):
-        self.state_dir = Path(os.environ["VMIND_WORKER_STATE_DIR"])
-        self.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.objects = Objects()
+        state_backend = os.environ.get("VMIND_WORKER_STATE_BACKEND", "file")
+        if state_backend not in ("file", "oss") or (state_backend == "oss" and self.objects.provider != "oss"):
+            raise ValueError("invalid worker state backend")
+        self.state_dir = None
+        if state_backend == "file":
+            self.state_dir = Path(os.environ["VMIND_WORKER_STATE_DIR"])
+            self.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.bearer = "Bearer " + os.environ["VMIND_WORKER_BEARER"]
         if len(self.bearer) < len("Bearer ") + 24:
             raise ValueError("worker bearer is too short")
@@ -97,7 +132,6 @@ class Adapter:
         password = os.environ.get("VMIND_NATIVE_PASSWORD")
         if bool(username) != bool(password):
             raise ValueError("native basic authentication requires both fields")
-        self.objects = Objects()
         self.http = httpx.AsyncClient(
             auth=(username, password) if username else None,
             timeout=httpx.Timeout(180.0, connect=5.0), trust_env=False, follow_redirects=False,
@@ -108,14 +142,14 @@ class Adapter:
         if not hmac.compare_digest(request.headers.get("Authorization", "").encode(), self.bearer.encode()):
             raise HTTPException(401, "invalid worker credential")
 
-    def load(self, request_id):
+    def load_file(self, request_id):
         path = self.state_dir / (request_id + ".json")
         try:
             return json.loads(path.read_text())
         except FileNotFoundError:
             return None
 
-    def save(self, row):
+    def save_file(self, row):
         # 先持久写完整记录再原子替换，崩溃后查询只会看到一份完整快照。
         with tempfile.NamedTemporaryFile(mode="w", dir=self.state_dir, delete=False) as temp:
             name = temp.name
@@ -132,15 +166,37 @@ class Adapter:
         finally:
             Path(name).unlink(missing_ok=True)
 
+    async def claim(self, row):
+        if self.state_dir is None:
+            # ACK 没有持久盘。先独占写下发送意图，才能跨进程去重并安全回查。
+            row["sent"] = True
+            return await asyncio.to_thread(self.objects.create_state, row, "claimed")
+        if self.load_file(row["request_id"]) is not None:
+            return False
+        self.save_file(row)
+        return True
+
+    async def load(self, request_id):
+        if self.state_dir is None:
+            return await asyncio.to_thread(self.objects.load_state, request_id)
+        return self.load_file(request_id)
+
+    async def save(self, row):
+        if self.state_dir is None:
+            phase = "accepted" if row["state"] == "processing" else "terminal"
+            await asyncio.to_thread(self.objects.create_state, row, phase)
+        else:
+            self.save_file(row)
+
     def spawn(self, request_id, coroutine):
         task = asyncio.create_task(coroutine)
         self.running[request_id] = task
         task.add_done_callback(lambda _task: self.running.pop(request_id, None))
         return task
 
-    def fail(self, row, code, message):
+    async def fail(self, row, code, message):
         row.update(state="failed", error={"code": code, "message": message})
-        self.save(row)
+        await self.save(row)
 
     def response(self, row):
         keys = ("request_id", "state", "backend_task_id", "result", "error")
@@ -181,8 +237,9 @@ class Adapter:
 
     async def execute(self, row, path, form, files, headers):
         # 一旦标记已发送，重启后只核对原任务，绝不再次触发推理。
-        row["sent"] = True
-        self.save(row)
+        if not row["sent"]:
+            row["sent"] = True
+            await self.save(row)
         headers = {**self.native_headers, **headers}
         try:
             if row["capability"] == "video" and self.video_protocol == "gateway":
@@ -200,12 +257,12 @@ class Adapter:
             else:
                 response = await self.http.post(self.native + path, data=form, files=files, headers=headers)
             if response.status_code in (400, 401, 403, 413, 415, 422, 429):
-                self.fail(row, "model_rejected", "native model rejected the request before execution")
+                await self.fail(row, "model_rejected", "native model rejected the request before execution")
                 return True
             if not response.is_success:
                 return False
         except (httpx.ConnectError, httpx.ConnectTimeout):
-            self.fail(row, "native_unreachable", "model connection was not established")
+            await self.fail(row, "native_unreachable", "model connection was not established")
             return True
         except (httpx.HTTPError, ValueError):
             return False
@@ -221,7 +278,7 @@ class Adapter:
                 return False
             # /vton 分配自己的 job_id，受理后先持久化，再允许网关继续轮询。
             row["backend_task_id"] = job
-            self.save(row)
+            await self.save(row)
             return True
         try:
             refs = []
@@ -233,11 +290,12 @@ class Adapter:
             if not refs:
                 raise ValueError("empty image results")
             row.update(state="succeeded", result={"files": refs})
-            self.save(row)
         except Exception as exc:
             # 此时图片执行已返回，上传失败属于结果发布失败，可以安全释放 GPU。
             LOG.warning("image result publication failed (%s)", type(exc).__name__)
-            self.fail(row, "result_unavailable", "cannot publish image result")
+            await self.fail(row, "result_unavailable", "cannot publish image result")
+            return True
+        await self.save(row)
         return True
 
     async def publish_video(self, row, job_id):
@@ -258,10 +316,11 @@ class Adapter:
                 key = f"outputs/{row['request_id']}/0.mp4"
                 result = await asyncio.to_thread(self.objects.put, key, "video/mp4", body)
             row.update(state="succeeded", result={"files": [result]})
-            self.save(row)
         except Exception as exc:
             LOG.warning("video result publication failed (%s)", type(exc).__name__)
-            self.fail(row, "result_unavailable", "cannot publish video result")
+            await self.fail(row, "result_unavailable", "cannot publish video result")
+            return
+        await self.save(row)
 
     async def refresh_video(self, row):
         request_id = row["request_id"]
@@ -285,8 +344,8 @@ class Adapter:
         except (httpx.HTTPError, ValueError):
             return
         # 查询期间另一副本可能已开始上传或写终态，需要重读最新记录。
-        latest = self.load(request_id)
-        if latest["state"] != "processing" or request_id in self.running:
+        latest = await self.load(request_id)
+        if not latest or latest["state"] != "processing" or request_id in self.running:
             return
         if native.get("job_id", job if self.video_protocol == "jobs" else "") != job:
             return
@@ -294,7 +353,7 @@ class Adapter:
         if native.get("status") == "done":
             self.spawn(request_id, self.publish_video(latest, job))
         elif native.get("status") in ("error", "cancelled", "interrupted"):
-            self.fail(latest, "model_failed", "native video execution failed")
+            await self.fail(latest, "model_failed", "native video execution failed")
 
 
 def image_type(data):
@@ -316,9 +375,11 @@ def canonical_id(value):
 @asynccontextmanager
 async def lifespan(app):
     worker = Adapter()
-    # 一个部署实例持有一个本地账本。禁止第二个进程以同一身份同时派发。
-    with (worker.state_dir / ".lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with ExitStack() as stack:
+        if worker.state_dir is not None:
+            # 本地目录只允许一个持有者。OSS 使用每个请求的独占写入去重。
+            lock = stack.enter_context((worker.state_dir / ".lock").open("a"))
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         app.state.worker = worker
         try:
             yield
@@ -331,6 +392,10 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan)
+
+@app.get("/health/live")
+async def live():
+    return {"live": True}
 
 
 @app.get("/health/ready")
@@ -372,19 +437,20 @@ async def submit(request: Request):
         form, files, headers = worker.multipart(value, fields)
     except (ValueError, KeyError, TypeError, AttributeError) as exc:
         raise HTTPException(400, "invalid model request") from exc
-    row = worker.load(request_id)
-    if row is not None:
-        if row["fingerprint"] != fingerprint:
-            raise HTTPException(409, "request_id already used")
-        return worker.response(row)
     row = {"request_id": request_id, "fingerprint": fingerprint, "capability": capability,
            "state": "processing", "sent": False}
-    worker.save(row)
+    if not await worker.claim(row):
+        existing = await worker.load(request_id)
+        if existing is None:
+            raise HTTPException(503, "cannot read the existing execution record")
+        if existing["fingerprint"] != fingerprint:
+            raise HTTPException(409, "request_id already used")
+        return worker.response(existing)
     task = worker.spawn(request_id, worker.execute(row, path, form, files, headers))
     # 网关连接取消时仍要获取本次推理终态，不能把 HTTP 连接当作执行生命周期。
     if not await asyncio.shield(task):
         raise HTTPException(502, "native model outcome is unknown")
-    return worker.response(worker.load(request_id))
+    return worker.response(await worker.load(request_id))
 
 
 @app.get("/requests/{request_id}")
@@ -395,13 +461,13 @@ async def status(request_id: str, request: Request):
         canonical_id(request_id)
     except ValueError as exc:
         raise HTTPException(400, "invalid request_id") from exc
-    row = worker.load(request_id)
+    row = await worker.load(request_id)
     if row is None:
         raise HTTPException(404, "request not found")
     if row["state"] == "processing" and request_id not in worker.running:
         if not row["sent"]:
-            worker.fail(row, "not_dispatched", "worker stopped before dispatch")
+            await worker.fail(row, "not_dispatched", "worker stopped before dispatch")
         elif row["capability"] == "video":
             await worker.refresh_video(row)
         # 图片模型尚未提供按网关 ID 查询执行状态。发生未知断线时保留记录，等待核对。
-    return worker.response(worker.load(request_id))
+    return worker.response(await worker.load(request_id))
