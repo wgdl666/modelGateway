@@ -87,9 +87,9 @@ func testConfig() config.Config {
 	}
 }
 
-func testInstance(model, capability, endpoint string, capacity int) protocol.Instance {
+func testInstance(model, endpoint string, capacity int) protocol.Instance {
 	return protocol.Instance{
-		ID: uuid.NewString(), ModelKey: model, Capability: capability, Endpoint: endpoint,
+		ID: uuid.NewString(), ModelKey: model, Endpoint: endpoint,
 		HealthURL: endpoint + "/health", Artifact: "sha256-" + strings.Repeat("a", 64),
 		ResourceGroup: "host/gpu0", Capacity: capacity, GroupCapacity: capacity,
 	}
@@ -110,7 +110,7 @@ func testAdmission(i protocol.Instance, id string, units int) store.Admission {
 	raw, _ := json.Marshal(protocol.Submission{Input: input})
 	cfg := testConfig()
 	return store.Admission{
-		ID: id, ModelKey: i.ModelKey, Capability: i.Capability, Payload: raw, Input: input, Units: units,
+		ID: id, ModelKey: i.ModelKey, Payload: raw, Input: input, Units: units,
 		MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout,
 	}
 }
@@ -123,7 +123,7 @@ func succeeded(id string) protocol.ModelResponse {
 
 func TestTwoReplicasQueueLimitAndIdempotency(t *testing.T) {
 	a, b, db := stores(t)
-	i := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8001", 1)
+	i := testInstance(protocol.VideoModel, "http://127.0.0.1:8001", 1)
 	registerReady(t, a, i)
 	same := testAdmission(i, uuid.NewString(), 1)
 	same.MaxWaiting = 1
@@ -153,7 +153,7 @@ func TestTwoReplicasQueueLimitAndIdempotency(t *testing.T) {
 		t.Fatalf("expected count limit, got %v", err)
 	}
 	// 模拟历史记录已用满原字节预算，队列仍按条数受理。
-	if err := db.Request.Create().SetID(uuid.NewString()).SetModelKey(same.ModelKey).SetCapability(same.Capability).
+	if err := db.Request.Create().SetID(uuid.NewString()).SetModelKey(same.ModelKey).
 		SetRequestPayload(same.Payload).SetPayloadBytes(128 << 20).SetUnits(same.Units).
 		SetDeadlineAt(time.Now().UTC().Add(same.BackendTimeout)).Exec(t.Context()); err != nil {
 		t.Fatal(err)
@@ -172,8 +172,8 @@ func TestTwoReplicasQueueLimitAndIdempotency(t *testing.T) {
 
 func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	a, b, db := stores(t)
-	image := testInstance(protocol.OutfitModel, "vton", "http://127.0.0.1:8001", 2)
-	video := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8002", 2)
+	image := testInstance(protocol.OutfitModel, "http://127.0.0.1:8001", 2)
+	video := testInstance(protocol.VideoModel, "http://127.0.0.1:8002", 2)
 	registerReady(t, a, image)
 	registerReady(t, b, video)
 	ids := []string{uuid.NewString(), uuid.NewString()}
@@ -234,14 +234,13 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 
 func TestQueuedUntilMatchingInstanceHasFreshProbe(t *testing.T) {
 	a, b, db := stores(t)
-	matching := testInstance("Vmind_wardrobe_v1.0", "garment_extraction", "http://127.0.0.1:8001", 1)
+	matching := testInstance(protocol.WardrobeModel, "http://127.0.0.1:8001", 1)
 	in := testAdmission(matching, uuid.NewString(), 1)
 	if task, err := a.Admit(t.Context(), in); err != nil || task.State != request.StateQueued {
 		t.Fatalf("admit with no instances: task=%v err=%v", task, err)
 	}
-	// 模拟拆分模型键前留下的注册记录，确认它不能接走新拆衣任务。
-	legacy := testInstance(matching.ModelKey, "cloth_gen", "http://127.0.0.1:8002", 1)
-	registerReady(t, a, legacy)
+	product := testInstance(protocol.ClothGenModel, "http://127.0.0.1:8002", 1)
+	registerReady(t, a, product)
 	if err := a.Register(t.Context(), matching); err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +252,7 @@ func TestQueuedUntilMatchingInstanceHasFreshProbe(t *testing.T) {
 		t.Fatalf("admitted request missing durable publication: %v %v", pending, err)
 	}
 	if task, _, err := b.Claim(t.Context(), testConfig(), in.ID); err != nil || task != nil {
-		t.Fatalf("claimed with wrong capability or stale probe: task=%v err=%v", task, err)
+		t.Fatalf("claimed with wrong model key or stale probe: task=%v err=%v", task, err)
 	}
 	// 模拟消费先延期、发布确认后写回，防止旧确认清掉新投递时间。
 	if err := a.MarkPublished(t.Context(), in.ID, *pending[0].QueuePublishAt); err != nil {
@@ -274,7 +273,7 @@ func TestQueuedUntilMatchingInstanceHasFreshProbe(t *testing.T) {
 
 func TestNativeVideoWithOldProbeNeedsRegisteredTarget(t *testing.T) {
 	a, b, _ := stores(t)
-	video := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8001", 1)
+	video := testInstance(protocol.VideoModel, "http://127.0.0.1:8001", 1)
 	// 旧登记迁移后目标为空，探活快照仍可能处于有效期。
 	registerReady(t, a, video)
 	in := testAdmission(video, uuid.NewString(), 1)
@@ -288,34 +287,11 @@ func TestNativeVideoWithOldProbeNeedsRegisteredTarget(t *testing.T) {
 	}
 }
 
-func TestLegacyRegistrationCannotResumeOrClaim(t *testing.T) {
-	a, b, _ := stores(t)
-	legacy := testInstance("Vmind_wardrobe_v1.0", "cloth_gen", "http://127.0.0.1:8001", 1)
-	// 模拟拆键前已登记的实例和已写入账本的请求。
-	registerReady(t, a, legacy)
-	in := testAdmission(legacy, uuid.NewString(), 1)
-	if _, err := a.Admit(t.Context(), in); err != nil {
-		t.Fatal(err)
-	}
-	if rows, err := b.ListInstances(t.Context()); err != nil || len(rows) != 1 || !rows[0].LegacyRegistration || rows[0].Eligible {
-		t.Fatalf("legacy registration must stay visible without being eligible: rows=%v err=%v", rows, err)
-	}
-	if task, _, err := b.Claim(t.Context(), testConfig(), in.ID); err != nil || task != nil {
-		t.Fatalf("legacy registration accepted a queued task: task=%v err=%v", task, err)
-	}
-	if err := a.Drain(t.Context(), legacy.ID, true); err != nil {
-		t.Fatal(err)
-	}
-	if err := b.Drain(t.Context(), legacy.ID, false); !errors.Is(err, store.ErrLegacyRegistration) {
-		t.Fatalf("resume legacy registration: got %v", err)
-	}
-}
-
 func TestGroupRegistrationAndQueueExpiry(t *testing.T) {
 	a, b, _ := stores(t)
-	i := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8001", 1)
+	i := testInstance(protocol.VideoModel, "http://127.0.0.1:8001", 1)
 	registerReady(t, a, i)
-	inconsistent := testInstance(protocol.OutfitModel, "vton", "http://127.0.0.1:8002", 2)
+	inconsistent := testInstance(protocol.OutfitModel, "http://127.0.0.1:8002", 2)
 	if err := b.Register(t.Context(), inconsistent); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("inconsistent group capacity accepted: %v", err)
 	}

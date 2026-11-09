@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"strings"
+
+	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
 type NativeBackend struct {
@@ -11,13 +13,13 @@ type NativeBackend struct {
 	VTONEdits bool `json:"vton_edits,omitempty"`
 }
 
-func (b NativeBackend) Matches(capability string) bool {
-	return b.Video == (capability == "video")
+func (b NativeBackend) Matches(model string) bool {
+	return b.Video == (model == protocol.VideoModel)
 }
 
 // 原生视频必须登记目标。探针与执行使用同一地址，避免向其他服务发送原生凭据。
-func (b NativeBackend) Accepts(capability, endpoint, healthURL, targetInstance string) bool {
-	if !b.Matches(capability) || b.Video != (targetInstance != "") {
+func (b NativeBackend) Accepts(model, endpoint, healthURL, targetInstance string) bool {
+	if !b.Matches(model) || b.Video != (targetInstance != "") {
 		return false
 	}
 	return strings.TrimSpace(targetInstance) == targetInstance &&

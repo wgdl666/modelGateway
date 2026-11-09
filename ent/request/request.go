@@ -16,8 +16,6 @@ const (
 	FieldID = "request_id"
 	// FieldModelKey holds the string denoting the model_key field in the database.
 	FieldModelKey = "model_key"
-	// FieldCapability holds the string denoting the capability field in the database.
-	FieldCapability = "capability"
 	// FieldTraceID holds the string denoting the trace_id field in the database.
 	FieldTraceID = "trace_id"
 	// FieldRequestPayload holds the string denoting the request_payload field in the database.
@@ -72,7 +70,6 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldModelKey,
-	FieldCapability,
 	FieldTraceID,
 	FieldRequestPayload,
 	FieldPayloadBytes,
@@ -182,11 +179,6 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByModelKey orders the results by the model_key field.
 func ByModelKey(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldModelKey, opts...).ToFunc()
-}
-
-// ByCapability orders the results by the capability field.
-func ByCapability(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldCapability, opts...).ToFunc()
 }
 
 // ByTraceID orders the results by the trace_id field.

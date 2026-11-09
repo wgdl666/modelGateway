@@ -20,8 +20,6 @@ type Request struct {
 	ID string `json:"id,omitempty"`
 	// ModelKey holds the value of the "model_key" field.
 	ModelKey string `json:"model_key,omitempty"`
-	// Capability holds the value of the "capability" field.
-	Capability string `json:"capability,omitempty"`
 	// TraceID holds the value of the "trace_id" field.
 	TraceID string `json:"trace_id,omitempty"`
 	// RequestPayload holds the value of the "request_payload" field.
@@ -82,7 +80,7 @@ func (*Request) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case request.FieldPayloadBytes, request.FieldUnits, request.FieldErrorStatus:
 			values[i] = new(sql.NullInt64)
-		case request.FieldID, request.FieldModelKey, request.FieldCapability, request.FieldTraceID, request.FieldState, request.FieldInstanceID, request.FieldResourceGroup, request.FieldEndpoint, request.FieldArtifactDigest, request.FieldBackendTaskID, request.FieldPollClaim, request.FieldErrorCode, request.FieldErrorMessage:
+		case request.FieldID, request.FieldModelKey, request.FieldTraceID, request.FieldState, request.FieldInstanceID, request.FieldResourceGroup, request.FieldEndpoint, request.FieldArtifactDigest, request.FieldBackendTaskID, request.FieldPollClaim, request.FieldErrorCode, request.FieldErrorMessage:
 			values[i] = new(sql.NullString)
 		case request.FieldQueuePublishAt, request.FieldDeadlineAt, request.FieldStartedAt, request.FieldFinishedAt, request.FieldNextPollAt, request.FieldCreatedAt, request.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -112,12 +110,6 @@ func (_m *Request) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field model_key", values[i])
 			} else if value.Valid {
 				_m.ModelKey = value.String
-			}
-		case request.FieldCapability:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field capability", values[i])
-			} else if value.Valid {
-				_m.Capability = value.String
 			}
 		case request.FieldTraceID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -303,9 +295,6 @@ func (_m *Request) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("model_key=")
 	builder.WriteString(_m.ModelKey)
-	builder.WriteString(", ")
-	builder.WriteString("capability=")
-	builder.WriteString(_m.Capability)
 	builder.WriteString(", ")
 	builder.WriteString("trace_id=")
 	builder.WriteString(_m.TraceID)

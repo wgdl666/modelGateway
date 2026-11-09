@@ -37,7 +37,6 @@ type ModelInstanceMutation struct {
 	typ                     string
 	id                      *string
 	model_key               *string
-	capability              *string
 	endpoint                *string
 	health_url              *string
 	artifact_digest         *string
@@ -200,42 +199,6 @@ func (m *ModelInstanceMutation) OldModelKey(ctx context.Context) (v string, err 
 // ResetModelKey resets all changes to the "model_key" field.
 func (m *ModelInstanceMutation) ResetModelKey() {
 	m.model_key = nil
-}
-
-// SetCapability sets the "capability" field.
-func (m *ModelInstanceMutation) SetCapability(s string) {
-	m.capability = &s
-}
-
-// Capability returns the value of the "capability" field in the mutation.
-func (m *ModelInstanceMutation) Capability() (r string, exists bool) {
-	v := m.capability
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCapability returns the old "capability" field's value of the ModelInstance entity.
-// If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelInstanceMutation) OldCapability(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCapability is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCapability requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCapability: %w", err)
-	}
-	return oldValue.Capability, nil
-}
-
-// ResetCapability resets all changes to the "capability" field.
-func (m *ModelInstanceMutation) ResetCapability() {
-	m.capability = nil
 }
 
 // SetEndpoint sets the "endpoint" field.
@@ -894,12 +857,9 @@ func (m *ModelInstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelInstanceMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 16)
 	if m.model_key != nil {
 		fields = append(fields, modelinstance.FieldModelKey)
-	}
-	if m.capability != nil {
-		fields = append(fields, modelinstance.FieldCapability)
 	}
 	if m.endpoint != nil {
 		fields = append(fields, modelinstance.FieldEndpoint)
@@ -956,8 +916,6 @@ func (m *ModelInstanceMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case modelinstance.FieldModelKey:
 		return m.ModelKey()
-	case modelinstance.FieldCapability:
-		return m.Capability()
 	case modelinstance.FieldEndpoint:
 		return m.Endpoint()
 	case modelinstance.FieldHealthURL:
@@ -999,8 +957,6 @@ func (m *ModelInstanceMutation) OldField(ctx context.Context, name string) (ent.
 	switch name {
 	case modelinstance.FieldModelKey:
 		return m.OldModelKey(ctx)
-	case modelinstance.FieldCapability:
-		return m.OldCapability(ctx)
 	case modelinstance.FieldEndpoint:
 		return m.OldEndpoint(ctx)
 	case modelinstance.FieldHealthURL:
@@ -1046,13 +1002,6 @@ func (m *ModelInstanceMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetModelKey(v)
-		return nil
-	case modelinstance.FieldCapability:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCapability(v)
 		return nil
 	case modelinstance.FieldEndpoint:
 		v, ok := value.(string)
@@ -1253,9 +1202,6 @@ func (m *ModelInstanceMutation) ResetField(name string) error {
 	case modelinstance.FieldModelKey:
 		m.ResetModelKey()
 		return nil
-	case modelinstance.FieldCapability:
-		m.ResetCapability()
-		return nil
 	case modelinstance.FieldEndpoint:
 		m.ResetEndpoint()
 		return nil
@@ -1360,7 +1306,6 @@ type RequestMutation struct {
 	typ                   string
 	id                    *string
 	model_key             *string
-	capability            *string
 	trace_id              *string
 	request_payload       *json.RawMessage
 	appendrequest_payload json.RawMessage
@@ -1533,42 +1478,6 @@ func (m *RequestMutation) OldModelKey(ctx context.Context) (v string, err error)
 // ResetModelKey resets all changes to the "model_key" field.
 func (m *RequestMutation) ResetModelKey() {
 	m.model_key = nil
-}
-
-// SetCapability sets the "capability" field.
-func (m *RequestMutation) SetCapability(s string) {
-	m.capability = &s
-}
-
-// Capability returns the value of the "capability" field in the mutation.
-func (m *RequestMutation) Capability() (r string, exists bool) {
-	v := m.capability
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCapability returns the old "capability" field's value of the Request entity.
-// If the Request object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *RequestMutation) OldCapability(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCapability is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCapability requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCapability: %w", err)
-	}
-	return oldValue.Capability, nil
-}
-
-// ResetCapability resets all changes to the "capability" field.
-func (m *RequestMutation) ResetCapability() {
-	m.capability = nil
 }
 
 // SetTraceID sets the "trace_id" field.
@@ -2589,12 +2498,9 @@ func (m *RequestMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RequestMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 24)
 	if m.model_key != nil {
 		fields = append(fields, request.FieldModelKey)
-	}
-	if m.capability != nil {
-		fields = append(fields, request.FieldCapability)
 	}
 	if m.trace_id != nil {
 		fields = append(fields, request.FieldTraceID)
@@ -2675,8 +2581,6 @@ func (m *RequestMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case request.FieldModelKey:
 		return m.ModelKey()
-	case request.FieldCapability:
-		return m.Capability()
 	case request.FieldTraceID:
 		return m.TraceID()
 	case request.FieldRequestPayload:
@@ -2734,8 +2638,6 @@ func (m *RequestMutation) OldField(ctx context.Context, name string) (ent.Value,
 	switch name {
 	case request.FieldModelKey:
 		return m.OldModelKey(ctx)
-	case request.FieldCapability:
-		return m.OldCapability(ctx)
 	case request.FieldTraceID:
 		return m.OldTraceID(ctx)
 	case request.FieldRequestPayload:
@@ -2797,13 +2699,6 @@ func (m *RequestMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetModelKey(v)
-		return nil
-	case request.FieldCapability:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCapability(v)
 		return nil
 	case request.FieldTraceID:
 		v, ok := value.(string)
@@ -3089,9 +2984,6 @@ func (m *RequestMutation) ResetField(name string) error {
 	switch name {
 	case request.FieldModelKey:
 		m.ResetModelKey()
-		return nil
-	case request.FieldCapability:
-		m.ResetCapability()
 		return nil
 	case request.FieldTraceID:
 		m.ResetTraceID()

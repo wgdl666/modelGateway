@@ -54,29 +54,30 @@ func (w *Reconciler) nativeAuth(backend config.NativeBackend) nativeAuth {
 	return w.nativeImageAuth
 }
 
+// 原生接口路径和文件字段随模型键固定，商品图和拆衣各走自己的入口。
 var nativeRoutes = map[string]struct {
 	path   string
 	images []string
 }{
-	"cloth_gen":          {"/v2/images/product_generation", []string{"image"}},
-	"garment_extraction": {"/v2/images/garment_extraction", []string{"image", "parse_mask"}},
-	"vton":               {"/v2/images/vton", []string{"person_image", "garment_image"}},
-	"body_model":         {"/v2/images/body_model", []string{"image"}},
-	"video":              {"/vton", []string{"image"}},
+	protocol.ClothGenModel: {"/v2/images/product_generation", []string{"image"}},
+	protocol.WardrobeModel: {"/v2/images/garment_extraction", []string{"image", "parse_mask"}},
+	protocol.OutfitModel:   {"/v2/images/vton", []string{"person_image", "garment_image"}},
+	protocol.BodyModel:     {"/v2/images/body_model", []string{"image"}},
+	protocol.VideoModel:    {"/vton", []string{"image"}},
 }
 
-// 图片的文件字段名由能力决定。视频目标来自预留 GPU 时选中的实例。
+// 视频目标来自本次占槽的实例登记，原生服务据此使用对应的 GPU。
 func nativeMultipart(task *ent.Request, input protocol.Submission, backend config.NativeBackend, targetInstance string) (string, *bytes.Buffer, http.Header, error) {
-	route, ok := nativeRoutes[task.Capability]
-	if !ok || !backend.Matches(task.Capability) {
-		return "", nil, nil, errors.New("invalid native backend capability")
+	route, ok := nativeRoutes[task.ModelKey]
+	if !ok || !backend.Matches(task.ModelKey) {
+		return "", nil, nil, errors.New("model key does not match native backend")
 	}
 	fields, images, err := protocol.DecodeInput(input.Input)
 	if err != nil {
 		return "", nil, nil, err
 	}
 	minImages := len(route.images)
-	if task.Capability == "garment_extraction" {
+	if task.ModelKey == protocol.WardrobeModel {
 		minImages = 1
 	}
 	if len(images) < minImages || len(images) > len(route.images) {
@@ -92,7 +93,7 @@ func nativeMultipart(task *ent.Request, input protocol.Submission, backend confi
 		}
 		form[key] = value
 	}
-	fluxEdits := backend.VTONEdits && task.Capability == "vton"
+	fluxEdits := backend.VTONEdits && task.ModelKey == protocol.OutfitModel
 	if fluxEdits {
 		// 国内 FLUX 由 vton LoRA 选择试衣，两个文件按人像、衣物顺序使用同一个字段名。
 		route.path = fluxEditsPath
@@ -178,7 +179,7 @@ func (w *Reconciler) nativeJSON(ctx context.Context, auth nativeAuth, url string
 }
 
 func (w *Reconciler) nativeReady(ctx context.Context, cfg *config.Snapshot, row *ent.ModelInstance, backend config.NativeBackend) bool {
-	if !backend.Accepts(row.Capability, row.Endpoint, row.HealthURL, row.TargetInstance) ||
+	if !backend.Accepts(row.ModelKey, row.Endpoint, row.HealthURL, row.TargetInstance) ||
 		cfg.ValidateEndpoint(row.HealthURL, true) != nil {
 		return false
 	}
@@ -249,7 +250,7 @@ func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, ta
 		return w.dispatchError(task.ID, err)
 	}
 	limit := int64(nativeImageLimit)
-	if task.Capability == "video" {
+	if task.ModelKey == protocol.VideoModel {
 		limit = workerResponseLimit
 	}
 	raw, err := readModelBody(resp.Body, limit)
@@ -257,7 +258,7 @@ func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, ta
 	if err != nil {
 		return w.dispatchError(task.ID, err)
 	}
-	if task.Capability == "video" {
+	if task.ModelKey == protocol.VideoModel {
 		var job nativeJob
 		if json.Unmarshal(raw, &job) != nil || !nativeJobID.MatchString(job.ID) {
 			return w.failDispatch(task.ID, 502, "invalid_model_response", "video admission outcome is unknown", true)
@@ -307,7 +308,7 @@ func (u *resultUploader) publishImages(ctx context.Context, id string, raw []byt
 
 func (w *Reconciler) pollNative(cfg *config.Snapshot, task *ent.Request, backend config.NativeBackend) error {
 	// 图片同步返回成品。连接中断或 LTX 受理响应丢失时，继续保留槽位等待核对。
-	if task.Capability != "video" || !backend.Matches(task.Capability) || !nativeJobID.MatchString(task.BackendTaskID) {
+	if task.ModelKey != protocol.VideoModel || !backend.Matches(task.ModelKey) || !nativeJobID.MatchString(task.BackendTaskID) {
 		return w.pollUnavailable(cfg, task)
 	}
 	auth := w.nativeAuth(backend)

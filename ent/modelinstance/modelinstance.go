@@ -15,8 +15,6 @@ const (
 	FieldID = "instance_id"
 	// FieldModelKey holds the string denoting the model_key field in the database.
 	FieldModelKey = "model_key"
-	// FieldCapability holds the string denoting the capability field in the database.
-	FieldCapability = "capability"
 	// FieldEndpoint holds the string denoting the endpoint field in the database.
 	FieldEndpoint = "endpoint"
 	// FieldHealthURL holds the string denoting the health_url field in the database.
@@ -55,7 +53,6 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldModelKey,
-	FieldCapability,
 	FieldEndpoint,
 	FieldHealthURL,
 	FieldArtifactDigest,
@@ -117,11 +114,6 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByModelKey orders the results by the model_key field.
 func ByModelKey(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldModelKey, opts...).ToFunc()
-}
-
-// ByCapability orders the results by the capability field.
-func ByCapability(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldCapability, opts...).ToFunc()
 }
 
 // ByEndpoint orders the results by the endpoint field.

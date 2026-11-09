@@ -7,27 +7,28 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
 type Config struct {
-	DatabaseURL       string         `json:"database_url"`
-	RabbitMQURL       string         `json:"-"`
-	RabbitMQQueue     string         `json:"rabbitmq_queue"`
-	Listen            string         `json:"listen"`
-	APIToken          string         `json:"api_token"`
-	AdminToken        string         `json:"admin_token"`
-	BackendToken      string         `json:"backend_token"`
-	AllowedNetworks   []string       `json:"backend_cidrs"`
-	AllowedPorts      []string       `json:"backend_ports"`
-	BackendTimeout    time.Duration  `json:"-"`
-	PollInterval      time.Duration  `json:"-"`
-	MaxBodyBytes      int64          `json:"max_body_bytes"`
-	MaxWaiting        int            `json:"max_waiting"`
-	UnitsByCapability map[string]int `json:"units_by_capability"`
+	DatabaseURL     string         `json:"database_url"`
+	RabbitMQURL     string         `json:"-"`
+	RabbitMQQueue   string         `json:"rabbitmq_queue"`
+	Listen          string         `json:"listen"`
+	APIToken        string         `json:"api_token"`
+	AdminToken      string         `json:"admin_token"`
+	BackendToken    string         `json:"backend_token"`
+	AllowedNetworks []string       `json:"backend_cidrs"`
+	AllowedPorts    []string       `json:"backend_ports"`
+	BackendTimeout  time.Duration  `json:"-"`
+	PollInterval    time.Duration  `json:"-"`
+	MaxBodyBytes    int64          `json:"max_body_bytes"`
+	MaxWaiting      int            `json:"max_waiting"`
+	UnitsByModelKey map[string]int `json:"units_by_model_key"`
 
 	NativeBackends         map[string]NativeBackend `json:"native_backends"`
 	NativeResults          NativeResults            `json:"native_results"`
@@ -39,12 +40,17 @@ func Parse(raw []byte) (Config, error) {
 	var c Config
 	wire := struct {
 		*Config
-		BackendTimeout         string `json:"backend_timeout"`
-		NativeExecutionTimeout string `json:"native_execution_timeout"`
-		PollInterval           string `json:"poll_interval"`
+		BackendTimeout         string          `json:"backend_timeout"`
+		NativeExecutionTimeout string          `json:"native_execution_timeout"`
+		PollInterval           string          `json:"poll_interval"`
+		LegacyUnits            json.RawMessage `json:"units_by_capability"`
 	}{Config: &c}
 	if err := json.Unmarshal(raw, &wire); err != nil {
 		return c, errors.New("invalid gateway configuration JSON")
+	}
+	// 配置未迁移时显式拒绝启动或热更新，避免旧权重被忽略后按默认单位超派。
+	if wire.LegacyUnits != nil {
+		return c, errors.New("replace units_by_capability with units_by_model_key")
 	}
 	// 数据库和 MQ 凭据由 Secret 注入，配置中心只保存队列名等非密钥设置。
 	for key, field := range map[string]*string{
@@ -112,9 +118,9 @@ func prepareConfig(c Config) (*Snapshot, error) {
 	if c.BackendTimeout < 0 || c.PollInterval < 0 || c.MaxBodyBytes < 0 || c.MaxWaiting < 0 {
 		return nil, errors.New("queue limits must be positive")
 	}
-	for capability, units := range c.UnitsByCapability {
-		if !slices.Contains([]string{"cloth_gen", "garment_extraction", "vton", "body_model", "video"}, capability) || units < 1 || units > 65536 {
-			return nil, errors.New("invalid capacity units by capability")
+	for model, units := range c.UnitsByModelKey {
+		if !protocol.ValidModelKey(model) || units < 1 || units > 65536 {
+			return nil, errors.New("invalid capacity units by model key")
 		}
 	}
 	state := &Snapshot{Config: c, ports: map[string]bool{}}

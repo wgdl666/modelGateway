@@ -69,11 +69,6 @@ func ModelKey(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldModelKey, v))
 }
 
-// Capability applies equality check predicate on the "capability" field. It's identical to CapabilityEQ.
-func Capability(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEQ(FieldCapability, v))
-}
-
 // Endpoint applies equality check predicate on the "endpoint" field. It's identical to EndpointEQ.
 func Endpoint(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldEndpoint, v))
@@ -207,71 +202,6 @@ func ModelKeyEqualFold(v string) predicate.ModelInstance {
 // ModelKeyContainsFold applies the ContainsFold predicate on the "model_key" field.
 func ModelKeyContainsFold(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldContainsFold(FieldModelKey, v))
-}
-
-// CapabilityEQ applies the EQ predicate on the "capability" field.
-func CapabilityEQ(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEQ(FieldCapability, v))
-}
-
-// CapabilityNEQ applies the NEQ predicate on the "capability" field.
-func CapabilityNEQ(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldNEQ(FieldCapability, v))
-}
-
-// CapabilityIn applies the In predicate on the "capability" field.
-func CapabilityIn(vs ...string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldIn(FieldCapability, vs...))
-}
-
-// CapabilityNotIn applies the NotIn predicate on the "capability" field.
-func CapabilityNotIn(vs ...string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldNotIn(FieldCapability, vs...))
-}
-
-// CapabilityGT applies the GT predicate on the "capability" field.
-func CapabilityGT(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldGT(FieldCapability, v))
-}
-
-// CapabilityGTE applies the GTE predicate on the "capability" field.
-func CapabilityGTE(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldGTE(FieldCapability, v))
-}
-
-// CapabilityLT applies the LT predicate on the "capability" field.
-func CapabilityLT(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldLT(FieldCapability, v))
-}
-
-// CapabilityLTE applies the LTE predicate on the "capability" field.
-func CapabilityLTE(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldLTE(FieldCapability, v))
-}
-
-// CapabilityContains applies the Contains predicate on the "capability" field.
-func CapabilityContains(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldContains(FieldCapability, v))
-}
-
-// CapabilityHasPrefix applies the HasPrefix predicate on the "capability" field.
-func CapabilityHasPrefix(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldHasPrefix(FieldCapability, v))
-}
-
-// CapabilityHasSuffix applies the HasSuffix predicate on the "capability" field.
-func CapabilityHasSuffix(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldHasSuffix(FieldCapability, v))
-}
-
-// CapabilityEqualFold applies the EqualFold predicate on the "capability" field.
-func CapabilityEqualFold(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldEqualFold(FieldCapability, v))
-}
-
-// CapabilityContainsFold applies the ContainsFold predicate on the "capability" field.
-func CapabilityContainsFold(v string) predicate.ModelInstance {
-	return predicate.ModelInstance(sql.FieldContainsFold(FieldCapability, v))
 }
 
 // EndpointEQ applies the EQ predicate on the "endpoint" field.

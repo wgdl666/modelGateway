@@ -14,7 +14,6 @@ import (
 
 type requestView struct {
 	protocol.Response
-	Capability    string     `json:"capability"`
 	TraceID       string     `json:"trace_id,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	StartedAt     *time.Time `json:"started_at,omitempty"`
@@ -28,7 +27,7 @@ type requestView struct {
 
 func viewRequest(row *ent.Request) requestView {
 	return requestView{
-		Response: taskResponse(row), Capability: row.Capability, TraceID: row.TraceID,
+		Response: taskResponse(row), TraceID: row.TraceID,
 		CreatedAt: row.CreatedAt, StartedAt: row.StartedAt, FinishedAt: row.FinishedAt,
 		InstanceID: row.InstanceID, ResourceGroup: row.ResourceGroup, Artifact: row.ArtifactDigest,
 		BackendTaskID: row.BackendTaskID, SlotReserved: row.SlotReserved,

@@ -15,13 +15,13 @@ import (
 
 // Admission 携带本次受理的队列限制，任务入库后沿用当时计算的截止时间。
 type Admission struct {
-	ID, ModelKey, Capability string
-	TraceID                  string
-	Payload                  json.RawMessage
-	Input                    json.RawMessage
-	Units                    int
-	MaxWaiting               int
-	BackendTimeout           time.Duration
+	ID, ModelKey   string
+	TraceID        string
+	Payload        json.RawMessage
+	Input          json.RawMessage
+	Units          int
+	MaxWaiting     int
+	BackendTimeout time.Duration
 }
 
 func sameInput(payload, input json.RawMessage) bool {
@@ -58,7 +58,7 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 		if waiting >= in.MaxWaiting {
 			return ErrFull
 		}
-		task, err = tx.Request.Create().SetID(in.ID).SetModelKey(in.ModelKey).SetCapability(in.Capability).
+		task, err = tx.Request.Create().SetID(in.ID).SetModelKey(in.ModelKey).
 			SetTraceID(in.TraceID).SetRequestPayload(in.Payload).SetPayloadBytes(int64(len(in.Payload))).SetUnits(in.Units).
 			SetCreatedAt(now).SetDeadlineAt(now.Add(in.BackendTimeout)).SetQueuePublishAt(now).Save(ctx)
 		return err
@@ -103,7 +103,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		now := time.Now().UTC()
 		// 同一消息可能重投。按 ID 等待行锁，锁竞争不能被误当成已处理而确认消息。
 		next, err := tx.Request.Query().Where(request.IDEQ(id), request.StateEQ(request.StateQueued), request.DeadlineAtGT(now)).
-			Select(request.FieldID, request.FieldModelKey, request.FieldCapability, request.FieldUnits, request.FieldDeadlineAt, request.FieldQueuePublishAt).
+			Select(request.FieldID, request.FieldModelKey, request.FieldUnits, request.FieldDeadlineAt, request.FieldQueuePublishAt).
 			ForUpdate().Only(ctx)
 		if ent.IsNotFound(err) {
 			return nil
@@ -111,8 +111,9 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		if err != nil {
 			return err
 		}
+		// 同键不同业务的旧登记在迁移时已归档，派发直接按请求的模型键选实例。
 		instances, err := tx.ModelInstance.Query().Where(
-			modelinstance.DeletedAtIsNil(), modelinstance.ModelKeyEQ(next.ModelKey), modelinstance.CapabilityEQ(next.Capability),
+			modelinstance.DeletedAtIsNil(), modelinstance.ModelKeyEQ(next.ModelKey),
 			modelinstance.ReadyEQ(true), modelinstance.DrainingEQ(false), modelinstance.HealthCheckedAtGT(now.Add(-probeMaxAge)),
 		).Order(ent.Asc(modelinstance.FieldID)).All(ctx)
 		if err != nil {
@@ -131,13 +132,9 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 			byGroup[hold.ResourceGroup] += hold.Units
 		}
 		for _, i := range instances {
-			// 旧登记仍保留执行账本，历史组合不再参与新派发。
-			if !protocol.MatchesCapability(i.ModelKey, i.Capability) {
-				continue
-			}
 			// 旧视频登记即使还留有就绪快照，也要先补齐目标才能预留 GPU。
 			backend, direct := cfg.NativeBackends[i.Endpoint]
-			if direct && !backend.Accepts(i.Capability, i.Endpoint, i.HealthURL, i.TargetInstance) {
+			if direct && !backend.Accepts(i.ModelKey, i.Endpoint, i.HealthURL, i.TargetInstance) {
 				continue
 			}
 			free := min(i.CapacityUnits-byInstance[i.ID], i.GroupCapacityUnits-byGroup[i.ResourceGroup])

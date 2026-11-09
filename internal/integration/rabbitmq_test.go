@@ -33,15 +33,23 @@ func TestRabbitMQDispatchRetriesUnavailableModelAndDeduplicates(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]bool{"ready": true})
 		case r.Method == http.MethodPost && r.URL.Path == "/requests":
 			var body protocol.ModelRequest
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			decoder := json.NewDecoder(r.Body)
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&body); err != nil {
 				t.Error(err)
 				w.WriteHeader(400)
 				return
 			}
 			switch body.RequestID {
 			case waitingID:
+				if body.ModelKey != protocol.VideoModel {
+					t.Errorf("wrong worker model key %q", body.ModelKey)
+				}
 				waitingCalls.Add(1)
 			case readyID:
+				if body.ModelKey != protocol.OutfitModel {
+					t.Errorf("wrong worker model key %q", body.ModelKey)
+				}
 				readyCalls.Add(1)
 			default:
 				t.Errorf("unexpected request ID %q", body.RequestID)
@@ -54,8 +62,8 @@ func TestRabbitMQDispatchRetriesUnavailableModelAndDeduplicates(t *testing.T) {
 	defer model.Close()
 	endpoint, _ := url.Parse(model.URL)
 	cfg.AllowedPorts = append(cfg.AllowedPorts, endpoint.Port())
-	waiting := testInstance(protocol.VideoModel, "video", model.URL, 1)
-	ready := testInstance(protocol.OutfitModel, "vton", model.URL, 1)
+	waiting := testInstance(protocol.VideoModel, model.URL, 1)
+	ready := testInstance(protocol.OutfitModel, model.URL, 1)
 	registerReady(t, ledger, ready)
 	// 模拟进程尚未启动发布循环时已受理的请求，旧请求没有模型也不能卡住下一条。
 	if _, err := ledger.Admit(t.Context(), testAdmission(waiting, waitingID, 1)); err != nil {

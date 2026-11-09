@@ -18,8 +18,8 @@ type Request struct{ ent.Schema }
 func (Request) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("id").StorageKey("request_id").SchemaType(map[string]string{dialect.Postgres: "text"}).Immutable(),
+		// 模型键固定本次执行的业务，也用于迁移后回查已受理任务。
 		field.Text("model_key").Immutable(),
-		field.Text("capability").Immutable(),
 		// 查询链路只需要 Trace ID，避免 Ops 列表读取包含图片的请求正文。
 		field.Text("trace_id").Default("").Immutable(),
 		field.JSON("request_payload", json.RawMessage{}).Immutable(),
@@ -58,7 +58,7 @@ func (Request) Annotations() []schema.Annotation {
 
 func (Request) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("model_key", "capability", "created_at", "id").Annotations(entsql.IndexWhere("state = 'queued'")),
+		index.Fields("model_key", "created_at", "id").Annotations(entsql.IndexWhere("state = 'queued'")),
 		index.Fields("queue_publish_at", "id").Annotations(entsql.IndexWhere("state = 'queued' AND queue_publish_at IS NOT NULL")),
 		index.Fields("deadline_at").Annotations(entsql.IndexWhere("state = 'queued'")),
 		index.Fields("resource_group", "instance_id").Annotations(entsql.IndexWhere("slot_reserved")),

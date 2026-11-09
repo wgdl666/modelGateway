@@ -115,8 +115,6 @@ func storeError(c *app.RequestContext, err error, id string) {
 		writeError(c, 404, "not_found", "record does not exist", id)
 	case errors.Is(err, store.ErrConflict):
 		writeError(c, 409, "conflict", "request or instance conflicts with an existing record", id)
-	case errors.Is(err, store.ErrLegacyRegistration):
-		writeError(c, 409, "legacy_registration", "register a new instance with the current model key", id)
 	case errors.Is(err, store.ErrInstanceNotClearable):
 		writeError(c, 409, "instance_not_clearable", err.Error(), id)
 	case errors.Is(err, store.ErrFull):
@@ -174,8 +172,8 @@ func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 	}
 	// 只有运维配置的原生视频地址可以登记 LTX 目标。
 	if backend, direct := cfg.NativeBackends[spec.Endpoint]; direct {
-		if !backend.Accepts(spec.Capability, spec.Endpoint, spec.HealthURL, spec.TargetInstance) {
-			writeError(c, 400, "invalid_instance", "native backend capability, health URL or target_instance does not match", "")
+		if !backend.Accepts(spec.ModelKey, spec.Endpoint, spec.HealthURL, spec.TargetInstance) {
+			writeError(c, 400, "invalid_instance", "native backend does not match model_key, health URL or target_instance", "")
 			return
 		}
 	} else if spec.TargetInstance != "" {
@@ -245,7 +243,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	model := c.Param("model_key")
-	if protocol.Capability(model) == "" {
+	if !protocol.ValidModelKey(model) {
 		writeError(c, 404, "model_not_found", "model is not configured", id)
 		return
 	}
@@ -262,7 +260,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		<-s.uploads
 		return
 	}
-	capability, err := protocol.Route(model, input.Input)
+	err := protocol.ValidateInput(model, input.Input)
 	for _, value := range []string{input.Metadata.TraceID, input.Metadata.UserID} {
 		if len(value) > 256 || strings.ContainsFunc(value, func(r rune) bool { return r < 32 || r == 127 }) {
 			err = errors.New("invalid metadata")
@@ -274,8 +272,9 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	task, err := s.store.Admit(ctx, store.Admission{
-		ID: id, ModelKey: model, Capability: capability, Payload: raw, Input: input.Input,
-		TraceID: input.Metadata.TraceID, Units: max(1, cfg.UnitsByCapability[capability]),
+		ID: id, ModelKey: model, Payload: raw, Input: input.Input,
+		// 占用单位随受理落库，后续配置更新不会改变已排队请求的重量。
+		TraceID: input.Metadata.TraceID, Units: max(1, cfg.UnitsByModelKey[model]),
 		MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout,
 	})
 	<-s.uploads
@@ -284,7 +283,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	// 视频调用方通过查询接口取终态，提交请求无需保持连接。
-	if capability == "video" {
+	if model == protocol.VideoModel {
 		writeJSON(c, 202, protocol.Response{RequestID: id, ModelKey: model, State: string(task.State)})
 		return
 	}

@@ -191,8 +191,8 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 				}
 				return response
 			}
-			imageSpec := testInstance(protocol.OutfitModel, "vton", imageModel.URL, 1)
-			videoSpec := testInstance(protocol.VideoModel, "video", videoModelServer.URL, 1)
+			imageSpec := testInstance(protocol.OutfitModel, imageModel.URL, 1)
+			videoSpec := testInstance(protocol.VideoModel, videoModelServer.URL, 1)
 			videoSpec.ResourceGroup = "host/gpu1"
 			if provider == "oss" {
 				raw, _ := json.Marshal(videoSpec)
@@ -339,7 +339,7 @@ func TestNativeImageWaitTimeoutReleasesSlotAfterExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reconciler.Close()
-	spec := testInstance(protocol.OutfitModel, "vton", model.URL, 1)
+	spec := testInstance(protocol.OutfitModel, model.URL, 1)
 	if err := ledger.Register(t.Context(), spec); err != nil {
 		t.Fatal(err)
 	}

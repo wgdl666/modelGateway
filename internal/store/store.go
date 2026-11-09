@@ -15,7 +15,6 @@ import (
 var (
 	ErrFull                 = errors.New("waiting queue is full")
 	ErrConflict             = errors.New("request or instance conflict")
-	ErrLegacyRegistration   = errors.New("instance model key no longer matches its capability")
 	ErrInstanceNotClearable = errors.New("instance must be paused, not ready and have no in-flight requests")
 )
 

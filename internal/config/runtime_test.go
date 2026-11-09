@@ -2,6 +2,16 @@ package config
 
 import "testing"
 
+func TestParseModelKeyCapacity(t *testing.T) {
+	cfg, err := Parse([]byte(`{"database_url":"postgres://fixture/db","units_by_model_key":{"Vmind_outfit_v1.0":3}}`))
+	if err != nil || cfg.UnitsByModelKey["Vmind_outfit_v1.0"] != 3 {
+		t.Fatalf("model key units were not loaded: %v", err)
+	}
+	if _, err := Parse([]byte(`{"database_url":"postgres://fixture/db","units_by_capability":{"vton":3}}`)); err == nil {
+		t.Fatal("legacy capacity config would silently lose its weight")
+	}
+}
+
 func TestHotReloadKeepsQueueDatabase(t *testing.T) {
 	cfg := Config{
 		DatabaseURL:     "test-original-database",
