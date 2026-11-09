@@ -1,11 +1,8 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
-	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
 )
@@ -36,23 +33,6 @@ func (s *Server) chatCompletions(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 404, "model_not_found", "model is not configured", "")
 		return
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+cfg.VLMAddr+chatCompletionsPath, bytes.NewReader(body))
-	if err != nil {
-		writeError(c, 502, "upstream_unavailable", "VLM request could not be sent", "")
-		return
-	}
-	// 业务凭据只在网关校验，不转发给模型服务。
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.vlm.Do(req)
-	if errors.Is(err, context.DeadlineExceeded) {
-		writeError(c, 504, "upstream_timeout", "VLM response timed out", "")
-		return
-	}
-	if err != nil {
-		writeError(c, 502, "upstream_unavailable", "VLM request could not be sent", "")
-		return
-	}
-	c.SetStatusCode(resp.StatusCode)
-	c.Header("Content-Type", resp.Header.Get("Content-Type"))
-	c.Response.SetBodyStream(resp.Body, int(resp.ContentLength))
+
+	s.forwardDirect(ctx, c, "VLM", "http://"+cfg.VLMAddr+chatCompletionsPath, "application/json", body)
 }

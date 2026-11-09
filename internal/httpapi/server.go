@@ -30,16 +30,16 @@ type Server struct {
 	store   *store.Store
 	runtime *config.Runtime
 	uploads chan struct{}
-	vlm     *http.Client
+	direct  *http.Client
 }
 
 func New(tasks *store.Store, runtime *config.Runtime) *Server {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	// 对话请求可包含原图，只允许直连配置中的私网模型地址。
+	// 同步推理可包含原图，只允许直连配置中的私网模型地址。
 	transport.Proxy = nil
 	return &Server{
 		store: tasks, runtime: runtime, uploads: make(chan struct{}, 2),
-		vlm: &http.Client{
+		direct: &http.Client{
 			Transport:     transport,
 			Timeout:       120 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -80,6 +80,7 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.POST("/v1/gateway/requests/:model_key", s.auth("api", s.submit))
 	h.GET("/v1/gateway/requests", s.auth("api", s.get))
 	h.POST(chatCompletionsPath, s.auth("api", s.chatCompletions))
+	h.POST(decisionPredictPath, s.auth("api", s.decisionPredict))
 	return h
 }
 
@@ -159,11 +160,7 @@ func readBody(c *app.RequestContext, limit int64, value any, id string) ([]byte,
 		writeError(c, 415, "unsupported_media_type", "request must use application/json", id)
 		return nil, false
 	}
-	reader := c.Request.BodyStream()
-	if reader == nil {
-		reader = bytes.NewReader(c.Request.Body())
-	}
-	raw, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	raw, err := readPayload(c, limit)
 	if int64(len(raw)) > limit {
 		c.SetConnectionClose()
 		writeError(c, 413, "request_too_large", "request exceeds its size limit", id)
@@ -174,6 +171,36 @@ func readBody(c *app.RequestContext, limit int64, value any, id string) ([]byte,
 		return nil, false
 	}
 	return raw, true
+}
+
+func readPayload(c *app.RequestContext, limit int64) ([]byte, error) {
+	reader := c.Request.BodyStream()
+	if reader == nil {
+		reader = bytes.NewReader(c.Request.Body())
+	}
+	return io.ReadAll(io.LimitReader(reader, limit+1))
+}
+
+func (s *Server) forwardDirect(ctx context.Context, c *app.RequestContext, model, endpoint, contentType string, body []byte) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		writeError(c, 502, "upstream_unavailable", model+" request could not be sent", "")
+		return
+	}
+	// 业务凭据只在网关校验，模型服务只接收推理请求体及其类型。
+	req.Header.Set("Content-Type", contentType)
+	resp, err := s.direct.Do(req)
+	if errors.Is(err, context.DeadlineExceeded) {
+		writeError(c, 504, "upstream_timeout", model+" response timed out", "")
+		return
+	}
+	if err != nil {
+		writeError(c, 502, "upstream_unavailable", model+" request could not be sent", "")
+		return
+	}
+	c.SetStatusCode(resp.StatusCode)
+	c.Header("Content-Type", resp.Header.Get("Content-Type"))
+	c.Response.SetBodyStream(resp.Body, int(resp.ContentLength))
 }
 
 func (s *Server) ready(ctx context.Context, c *app.RequestContext) {
