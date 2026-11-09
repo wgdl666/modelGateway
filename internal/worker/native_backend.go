@@ -182,15 +182,17 @@ func (w *Reconciler) nativeReady(ctx context.Context, cfg *config.Snapshot, row 
 		cfg.ValidateEndpoint(row.HealthURL, true) != nil {
 		return false
 	}
+	type workerHealth struct {
+		Ready   *bool `json:"ready"`
+		Healthy bool  `json:"healthy"`
+	}
 	var health struct {
 		Ready     *bool  `json:"ready"`
 		Status    string `json:"status"`
 		Instances []struct {
 			Name string `json:"name"`
 		} `json:"instances"`
-		Workers []struct {
-			Healthy bool `json:"healthy"`
-		} `json:"workers"`
+		Workers []workerHealth `json:"workers"`
 	}
 	if w.nativeJSON(ctx, w.nativeAuth(backend), row.HealthURL, &health) != nil {
 		return false
@@ -209,10 +211,11 @@ func (w *Reconciler) nativeReady(ctx context.Context, cfg *config.Snapshot, row 
 	}) {
 		return false
 	}
-	// 集合型健康接口可能只有部分 worker 可用，至少一个可用时才允许调度。
-	return health.Workers == nil || slices.ContainsFunc(health.Workers, func(w struct {
-		Healthy bool `json:"healthy"`
-	}) bool {
+	// 国内 FLUX 用 ready 表示可接单，旧实例的同一信号由 healthy 提供。
+	return health.Workers == nil || slices.ContainsFunc(health.Workers, func(w workerHealth) bool {
+		if w.Ready != nil {
+			return *w.Ready
+		}
 		return w.Healthy
 	})
 }

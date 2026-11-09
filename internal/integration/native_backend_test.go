@@ -248,7 +248,7 @@ func TestNativeImageWaitTimeoutReleasesSlotAfterExecution(t *testing.T) {
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method + " " + r.URL.Path {
 		case "GET /health":
-			_, _ = io.WriteString(w, `{"ready":true}`)
+			_, _ = io.WriteString(w, `{"status":"ok","workers":[{"ready":true,"healthy":false}]}`)
 		case "POST /v1/images/edits":
 			if r.FormValue("model") != "FLUX.2-klein-9B" || r.FormValue("lora_name") != "vton" ||
 				r.FormValue("response_format") != "b64_json" || r.MultipartForm == nil {
@@ -303,9 +303,17 @@ func TestNativeImageWaitTimeoutReleasesSlotAfterExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reconciler.Close()
-	registerReady(t, ledger, testInstance(protocol.OutfitModel, "vton", model.URL, 1))
+	spec := testInstance(protocol.OutfitModel, "vton", model.URL, 1)
+	if err := ledger.Register(t.Context(), spec); err != nil {
+		t.Fatal(err)
+	}
 	base := startHTTPServer(t, httpapi.New(ledger, runtime))
 	reconciler.Start()
+	// FLUX 实例依赖真实探针变为可派发，避免预置 Ready 掩盖协议差异。
+	waitForNativeTest(t, "FLUX readiness", func() bool {
+		row, err := db.ModelInstance.Get(t.Context(), spec.ID)
+		return err == nil && row.Ready
+	})
 	client := &http.Client{Timeout: 4 * time.Second}
 	defer client.CloseIdleConnections()
 
