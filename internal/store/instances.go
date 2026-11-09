@@ -36,7 +36,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance) error {
 				return ErrConflict
 			}
 			// 相同部署重复注册是幂等操作，不改排空状态、健康快照或任务账本。
-			if old.ModelKey == spec.ModelKey && old.Capability == spec.Capability && old.Endpoint == spec.Endpoint &&
+			if old.ModelKey == spec.ModelKey && old.Endpoint == spec.Endpoint &&
 				old.HealthURL == spec.HealthURL && old.ArtifactDigest == spec.Artifact && old.ResourceGroup == spec.ResourceGroup &&
 				old.TargetInstance == spec.TargetInstance &&
 				old.GroupCapacityUnits == spec.GroupCapacity && old.CapacityUnits == spec.Capacity &&
@@ -60,7 +60,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance) error {
 		}
 		// 同一执行地址的新实例不能绕过仍在执行的旧实例及其资源组。
 		sameEndpoint, err := tx.ModelInstance.Query().Where(
-			modelinstance.DeletedAtIsNil(), modelinstance.ModelKeyEQ(spec.ModelKey), modelinstance.CapabilityEQ(spec.Capability),
+			modelinstance.DeletedAtIsNil(), modelinstance.ModelKeyEQ(spec.ModelKey),
 			modelinstance.EndpointEQ(spec.Endpoint),
 		).All(ctx)
 		if err != nil {
@@ -76,7 +76,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance) error {
 			}
 		}
 		return tx.ModelInstance.Create().
-			SetID(spec.ID).SetModelKey(spec.ModelKey).SetCapability(spec.Capability).
+			SetID(spec.ID).SetModelKey(spec.ModelKey).
 			SetEndpoint(spec.Endpoint).SetHealthURL(spec.HealthURL).SetArtifactDigest(spec.Artifact).
 			SetResourceGroup(spec.ResourceGroup).SetTargetInstance(spec.TargetInstance).SetGroupCapacityUnits(spec.GroupCapacity).
 			SetCapacityUnits(spec.Capacity).SetMachineID(spec.MachineID).SetGpuDevices(spec.GPUDevices).Exec(ctx)
@@ -90,13 +90,10 @@ func (s *Store) Drain(ctx context.Context, id string, draining bool) error {
 			return err
 		}
 		if !draining {
-			// 原登记用于追溯历史请求。重新接单时须用当前模型键登记新实例。
-			if !protocol.MatchesCapability(instance.ModelKey, instance.Capability) {
-				return ErrLegacyRegistration
-			}
+			// 同一模型和地址只能有一条接单登记，恢复旧部署时不能绕过这项限制。
 			conflict, err := tx.ModelInstance.Query().Where(
 				modelinstance.IDNEQ(id), modelinstance.ModelKeyEQ(instance.ModelKey),
-				modelinstance.CapabilityEQ(instance.Capability), modelinstance.EndpointEQ(instance.Endpoint),
+				modelinstance.EndpointEQ(instance.Endpoint),
 				modelinstance.DeletedAtIsNil(), modelinstance.DrainingEQ(false),
 			).Exist(ctx)
 			if err != nil {

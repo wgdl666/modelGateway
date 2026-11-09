@@ -26,12 +26,6 @@ func (_c *ModelInstanceCreate) SetModelKey(v string) *ModelInstanceCreate {
 	return _c
 }
 
-// SetCapability sets the "capability" field.
-func (_c *ModelInstanceCreate) SetCapability(v string) *ModelInstanceCreate {
-	_c.mutation.SetCapability(v)
-	return _c
-}
-
 // SetEndpoint sets the "endpoint" field.
 func (_c *ModelInstanceCreate) SetEndpoint(v string) *ModelInstanceCreate {
 	_c.mutation.SetEndpoint(v)
@@ -262,9 +256,6 @@ func (_c *ModelInstanceCreate) check() error {
 	if _, ok := _c.mutation.ModelKey(); !ok {
 		return &ValidationError{Name: "model_key", err: errors.New(`ent: missing required field "ModelInstance.model_key"`)}
 	}
-	if _, ok := _c.mutation.Capability(); !ok {
-		return &ValidationError{Name: "capability", err: errors.New(`ent: missing required field "ModelInstance.capability"`)}
-	}
 	if _, ok := _c.mutation.Endpoint(); !ok {
 		return &ValidationError{Name: "endpoint", err: errors.New(`ent: missing required field "ModelInstance.endpoint"`)}
 	}
@@ -352,10 +343,6 @@ func (_c *ModelInstanceCreate) createSpec() (*ModelInstance, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.ModelKey(); ok {
 		_spec.SetField(modelinstance.FieldModelKey, field.TypeString, value)
 		_node.ModelKey = value
-	}
-	if value, ok := _c.mutation.Capability(); ok {
-		_spec.SetField(modelinstance.FieldCapability, field.TypeString, value)
-		_node.Capability = value
 	}
 	if value, ok := _c.mutation.Endpoint(); ok {
 		_spec.SetField(modelinstance.FieldEndpoint, field.TypeString, value)

@@ -27,12 +27,6 @@ func (_c *RequestCreate) SetModelKey(v string) *RequestCreate {
 	return _c
 }
 
-// SetCapability sets the "capability" field.
-func (_c *RequestCreate) SetCapability(v string) *RequestCreate {
-	_c.mutation.SetCapability(v)
-	return _c
-}
-
 // SetTraceID sets the "trace_id" field.
 func (_c *RequestCreate) SetTraceID(v string) *RequestCreate {
 	_c.mutation.SetTraceID(v)
@@ -419,9 +413,6 @@ func (_c *RequestCreate) check() error {
 	if _, ok := _c.mutation.ModelKey(); !ok {
 		return &ValidationError{Name: "model_key", err: errors.New(`ent: missing required field "Request.model_key"`)}
 	}
-	if _, ok := _c.mutation.Capability(); !ok {
-		return &ValidationError{Name: "capability", err: errors.New(`ent: missing required field "Request.capability"`)}
-	}
 	if _, ok := _c.mutation.TraceID(); !ok {
 		return &ValidationError{Name: "trace_id", err: errors.New(`ent: missing required field "Request.trace_id"`)}
 	}
@@ -529,10 +520,6 @@ func (_c *RequestCreate) createSpec() (*Request, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ModelKey(); ok {
 		_spec.SetField(request.FieldModelKey, field.TypeString, value)
 		_node.ModelKey = value
-	}
-	if value, ok := _c.mutation.Capability(); ok {
-		_spec.SetField(request.FieldCapability, field.TypeString, value)
-		_node.Capability = value
 	}
 	if value, ok := _c.mutation.TraceID(); ok {
 		_spec.SetField(request.FieldTraceID, field.TypeString, value)

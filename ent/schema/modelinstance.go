@@ -17,8 +17,8 @@ type ModelInstance struct{ ent.Schema }
 func (ModelInstance) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("id").StorageKey("instance_id").SchemaType(map[string]string{dialect.Postgres: "text"}).Immutable(),
+		// 同一模型键只对应一种业务，实例以模型键加入候选集合。
 		field.Text("model_key").Immutable(),
-		field.Text("capability").Immutable(),
 		field.Text("endpoint").Immutable(),
 		field.Text("health_url").Immutable(),
 		field.Text("artifact_digest").Immutable(),
@@ -46,5 +46,5 @@ func (ModelInstance) Annotations() []schema.Annotation {
 }
 
 func (ModelInstance) Indexes() []ent.Index {
-	return []ent.Index{index.Fields("model_key", "capability"), index.Fields("resource_group")}
+	return []ent.Index{index.Fields("model_key"), index.Fields("resource_group")}
 }

@@ -25,10 +25,19 @@ func OpenDatabase(ctx context.Context, dsn string) (*ent.Client, error) {
 	db := stdlib.OpenDB(*cfg)
 	// 延续原 pgxpool 的连接上限，避免换为 Ent 后由标准连接池无限扩张连接数。
 	db.SetMaxOpenConns(max(4, runtime.NumCPU()))
-	client := ent.NewClient(ent.Driver(sql.OpenDB(dialect.Postgres, db)))
-	if err := db.PingContext(ctx); err != nil {
-		_ = client.Close()
+	// 旧表仍可能有同键不同业务的登记。迁移前禁止启动消费者，避免误派。
+	var legacySchema bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS (
+		SELECT 1 FROM pg_catalog.pg_attribute
+		WHERE attrelid IN (to_regclass('model_instances'), to_regclass('requests'))
+			AND attname = 'capability' AND NOT attisdropped
+	)`).Scan(&legacySchema); err != nil {
+		_ = db.Close()
 		return nil, errors.New("cannot connect to configured PostgreSQL")
 	}
-	return client, nil
+	if legacySchema {
+		_ = db.Close()
+		return nil, errors.New("apply the model-key-only database migration before starting the gateway")
+	}
+	return ent.NewClient(ent.Driver(sql.OpenDB(dialect.Postgres, db))), nil
 }

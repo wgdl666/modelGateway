@@ -23,9 +23,10 @@ func (s *Store) ClaimPoll(ctx context.Context) (*ent.Request, error) {
 	}
 	defer tx.Rollback()
 	now := time.Now().UTC()
+	// 回查沿用派发账本里的原地址和任务 ID，模型键只决定回查协议。
 	task, err := tx.Request.Query().Where(request.SlotReservedEQ(true), request.NextPollAtLTE(now)).
 		Order(ent.Asc(request.FieldNextPollAt, request.FieldID)).ForUpdate(sql.WithLockAction(sql.SkipLocked)).
-		Select(request.FieldID, request.FieldEndpoint, request.FieldCapability, request.FieldBackendTaskID).First(ctx)
+		Select(request.FieldID, request.FieldEndpoint, request.FieldModelKey, request.FieldBackendTaskID).First(ctx)
 	if ent.IsNotFound(err) {
 		return nil, nil
 	}

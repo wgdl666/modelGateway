@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	wardrobeModel = "Vmind_wardrobe_v1.0"
-	clothGenModel = "Vmind_cloth_gen_v1.0"
+	WardrobeModel = "Vmind_wardrobe_v1.0"
+	ClothGenModel = "Vmind_cloth_gen_v1.0"
 	OutfitModel   = "Vmind_outfit_v1.0"
-	bodyModel     = "Vmind_bodymodel_v1.0"
+	BodyModel     = "Vmind_bodymodel_v1.0"
 	VideoModel    = "Vmind_outfit_video_v1.0"
 )
 
@@ -31,7 +31,6 @@ var (
 type Instance struct {
 	ID             string `json:"instance_id"`
 	ModelKey       string `json:"model_key"`
-	Capability     string `json:"capability"`
 	Endpoint       string `json:"endpoint"`
 	HealthURL      string `json:"health_url"`
 	Artifact       string `json:"artifact_digest"`
@@ -45,7 +44,7 @@ type Instance struct {
 
 // Valid 检查部署身份和容量。地址还需按当前配置的出站白名单验证。
 func (i Instance) Valid() bool {
-	return ValidInstanceID(i.ID) && MatchesCapability(i.ModelKey, i.Capability) &&
+	return ValidInstanceID(i.ID) && ValidModelKey(i.ModelKey) &&
 		i.ResourceGroup != "" && len(i.ResourceGroup) <= 256 && validArtifact(i.Artifact) &&
 		i.Capacity >= 1 && i.Capacity <= 65536 && i.GroupCapacity >= 1 && i.GroupCapacity <= 65536
 }
@@ -65,9 +64,8 @@ type Submission struct {
 }
 
 type ModelRequest struct {
-	RequestID  string `json:"request_id"`
-	ModelKey   string `json:"model_key"`
-	Capability string `json:"capability"`
+	RequestID string `json:"request_id"`
+	ModelKey  string `json:"model_key"`
 	Submission
 }
 
@@ -152,27 +150,14 @@ func validArtifact(value string) bool {
 	return err == nil
 }
 
-// Capability 固定模型键的执行能力，使实例注册和请求派发使用同一份映射。
-func Capability(model string) string {
+// ValidModelKey 限定公开模型键。业务含义变化时使用新键，避免旧登记接到不同业务的请求。
+func ValidModelKey(model string) bool {
 	switch model {
-	case wardrobeModel:
-		return "garment_extraction"
-	case clothGenModel:
-		return "cloth_gen"
-	case OutfitModel:
-		return "vton"
-	case bodyModel:
-		return "body_model"
-	case VideoModel:
-		return "video"
+	case WardrobeModel, ClothGenModel, OutfitModel, BodyModel, VideoModel:
+		return true
 	default:
-		return ""
+		return false
 	}
-}
-
-// MatchesCapability 统一校验登记、恢复接单和派发，避免旧组合重新进入调度。
-func MatchesCapability(model, capability string) bool {
-	return capability != "" && Capability(model) == capability
 }
 
 type InputImage struct {
@@ -199,48 +184,47 @@ func DecodeInput(input json.RawMessage) (map[string]json.RawMessage, []InputImag
 	return fields, images, nil
 }
 
-// 模型键选定能力，业务字段只用于校验。缺少拆衣输入时不能转成商品图请求。
-func Route(model string, input json.RawMessage) (string, error) {
-	capability := Capability(model)
-	if capability == "" {
-		return "", errors.New("unknown model")
+// ValidateInput 按模型键校验业务字段。缺少拆衣输入时不能转成商品图请求。
+func ValidateInput(model string, input json.RawMessage) error {
+	if !ValidModelKey(model) {
+		return errors.New("unknown model")
 	}
 	fields, images, err := DecodeInput(input)
 	if err != nil {
-		return "", err
+		return err
 	}
 	minImages, maxImages := 1, 1
 	var allowed []string
 	switch model {
-	case clothGenModel:
+	case ClothGenModel:
 		allowed = []string{"garment_name", "garment_role"}
-	case wardrobeModel:
+	case WardrobeModel:
 		if len(images) == 1 && fields["bbox"] == nil && fields["parse_labels"] == nil {
-			return "", errors.New("garment extraction requires bbox or parser input")
+			return errors.New("garment extraction requires bbox or parser input")
 		}
 		maxImages = 2
 		allowed = []string{"garment_name", "garment_role", "bbox", "bbox_format", "parse_labels"}
 	case OutfitModel:
 		minImages, maxImages = 2, 2
 		allowed = []string{"prompt"}
-	case bodyModel:
+	case BodyModel:
 		allowed = []string{"gender"}
 	case VideoModel:
 		allowed = []string{"prompt", "motion_tips"}
 	}
 	if len(images) < minImages || len(images) > maxImages {
-		return "", errors.New("wrong number of input images")
+		return errors.New("wrong number of input images")
 	}
 	for key, raw := range fields {
 		if !slices.Contains(allowed, key) || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-			return "", errors.New("unsupported business field")
+			return errors.New("unsupported business field")
 		}
 		var target any
 		switch key {
 		case "bbox":
 			var coordinates []float64
 			if json.Unmarshal(raw, &coordinates) != nil || len(coordinates) != 4 {
-				return "", errors.New("bbox must contain four coordinates")
+				return errors.New("bbox must contain four coordinates")
 			}
 			continue
 		case "parse_labels":
@@ -249,8 +233,8 @@ func Route(model string, input json.RawMessage) (string, error) {
 			target = new(string)
 		}
 		if json.Unmarshal(raw, target) != nil {
-			return "", errors.New("invalid business field")
+			return errors.New("invalid business field")
 		}
 	}
-	return capability, nil
+	return nil
 }

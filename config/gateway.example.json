@@ -15,5 +15,9 @@
   "backend_timeout": "600s",
   "poll_interval": "1s",
   "max_body_bytes": 67108864,
-  "max_waiting": 128
+  "max_waiting": 128,
+  "units_by_model_key": {
+    "Vmind_outfit_v1.0": 1,
+    "Vmind_outfit_video_v1.0": 1
+  }
 }

@@ -8,7 +8,6 @@ import (
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
-	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
 // 等待响应时只取响应字段和截止时间，避免反复读取入队保存的大图。
@@ -21,12 +20,11 @@ func (s *Store) Get(ctx context.Context, id string) (*ent.Request, error) {
 
 type InstanceView struct {
 	*ent.ModelInstance
-	ReservedUnits      int  `json:"reserved_units"`
-	ReservedRequests   int  `json:"reserved_requests"`
-	Healthy            bool `json:"healthy"`
-	Eligible           bool `json:"eligible"`
-	Clearable          bool `json:"clearable,omitempty"`
-	LegacyRegistration bool `json:"legacy_registration,omitempty"`
+	ReservedUnits    int  `json:"reserved_units"`
+	ReservedRequests int  `json:"reserved_requests"`
+	Healthy          bool `json:"healthy"`
+	Eligible         bool `json:"eligible"`
+	Clearable        bool `json:"clearable,omitempty"`
 }
 
 func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
@@ -49,11 +47,10 @@ func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
 	for _, row := range rows {
 		// 预留单位和请求数分别返回，避免把加权容量显示为在途任务数。
 		healthy := instanceHealthy(row, now)
-		legacy := !protocol.MatchesCapability(row.ModelKey, row.Capability)
 		result = append(result, InstanceView{
 			ModelInstance: row, ReservedUnits: units[row.ID], ReservedRequests: requests[row.ID],
-			Healthy: healthy, Eligible: healthy && !row.Draining && !legacy,
-			Clearable: instanceClearable(row, healthy) && requests[row.ID] == 0, LegacyRegistration: legacy,
+			Healthy: healthy, Eligible: healthy && !row.Draining,
+			Clearable: instanceClearable(row, healthy) && requests[row.ID] == 0,
 		})
 	}
 	return result, nil
@@ -68,7 +65,7 @@ type RequestFilter struct {
 
 // 运维查询只读取执行归属与状态，原始媒体仍留在队列账本里。
 var requestSummaryFields = []string{
-	request.FieldID, request.FieldModelKey, request.FieldCapability, request.FieldTraceID,
+	request.FieldID, request.FieldModelKey, request.FieldTraceID,
 	request.FieldState, request.FieldCreatedAt, request.FieldStartedAt, request.FieldFinishedAt,
 	request.FieldInstanceID, request.FieldResourceGroup, request.FieldArtifactDigest,
 	request.FieldBackendTaskID, request.FieldSlotReserved, request.FieldErrorCode,
@@ -83,7 +80,8 @@ func (s *Store) ListRequests(ctx context.Context, filter RequestFilter) ([]*ent.
 		query.Where(request.TraceIDEQ(filter.TraceID))
 	}
 	if filter.Model != "" {
-		query.Where(request.Or(request.ModelKeyEQ(filter.Model), request.CapabilityEQ(filter.Model)))
+		// 使用调用时的完整模型键，避免不同版本的请求被归到同一组。
+		query.Where(request.ModelKeyEQ(filter.Model))
 	}
 	if filter.InstanceID != "" {
 		query.Where(request.InstanceIDEQ(filter.InstanceID))

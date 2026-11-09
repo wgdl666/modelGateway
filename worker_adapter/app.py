@@ -24,15 +24,16 @@ from fastapi.responses import JSONResponse
 LOG = logging.getLogger("vmind-worker-adapter")
 MAX_JSON = 65 * 1024**2
 MAX_VIDEO = 200 * 1024**2
+WARDROBE_MODEL = "Vmind_wardrobe_v1.0"
+OUTFIT_MODEL = "Vmind_outfit_v1.0"
+VIDEO_MODEL = "Vmind_outfit_video_v1.0"
 ROUTES = {
-    # 商品图和拆衣使用不同的模型键，适配器按固定组合接单。
-    "cloth_gen": ("Vmind_cloth_gen_v1.0", "/v2/images/product_generation", ("image",)),
-    "garment_extraction": (
-        "Vmind_wardrobe_v1.0", "/v2/images/garment_extraction", ("image", "parse_mask")
-    ),
-    "vton": ("Vmind_outfit_v1.0", "/v2/images/vton", ("person_image", "garment_image")),
-    "body_model": ("Vmind_bodymodel_v1.0", "/v2/images/body_model", ("image",)),
-    "video": ("Vmind_outfit_video_v1.0", "/vton", ("image",)),
+    # 网关和适配器使用同一模型键，拆衣输入不会流入商品图接口。
+    "Vmind_cloth_gen_v1.0": ("/v2/images/product_generation", ("image",)),
+    WARDROBE_MODEL: ("/v2/images/garment_extraction", ("image", "parse_mask")),
+    OUTFIT_MODEL: ("/v2/images/vton", ("person_image", "garment_image")),
+    "Vmind_bodymodel_v1.0": ("/v2/images/body_model", ("image",)),
+    VIDEO_MODEL: ("/vton", ("image",)),
 }
 
 
@@ -113,9 +114,9 @@ class Adapter:
         self.bearer = "Bearer " + os.environ["VMIND_WORKER_BEARER"]
         if len(self.bearer) < len("Bearer ") + 24:
             raise ValueError("worker bearer is too short")
-        self.capabilities = set(os.environ["VMIND_WORKER_CAPABILITIES"].split(","))
-        if not self.capabilities or not self.capabilities <= ROUTES.keys():
-            raise ValueError("invalid worker capabilities")
+        self.model_keys = set(os.environ["VMIND_WORKER_MODEL_KEYS"].split(","))
+        if not self.model_keys <= ROUTES.keys():
+            raise ValueError("invalid worker model keys")
         self.instance_id = os.environ["VMIND_WORKER_INSTANCE_ID"]
         self.artifact = os.environ["VMIND_WORKER_ARTIFACT_DIGEST"]
         self.native = os.environ["VMIND_NATIVE_ORIGIN"].rstrip("/")
@@ -125,7 +126,7 @@ class Adapter:
         if self.video_protocol not in ("gateway", "jobs"):
             raise ValueError("invalid native video protocol")
         self.video_target = os.environ.get("VMIND_NATIVE_VIDEO_TARGET", "").strip()
-        if self.video_protocol == "jobs" and "video" in self.capabilities and not self.video_target:
+        if self.video_protocol == "jobs" and VIDEO_MODEL in self.model_keys and not self.video_target:
             raise ValueError("native video target instance is required")
         self.native_headers = {}
         if token := os.environ.get("VMIND_NATIVE_TOKEN"):
@@ -210,7 +211,8 @@ class Adapter:
     def multipart(self, value, path, fields):
         business = value["input"]
         images = business["images"]
-        minimum = len(fields) if value["capability"] != "garment_extraction" else 1
+        model_key = value["model_key"]
+        minimum = 1 if model_key == WARDROBE_MODEL else len(fields)
         if not isinstance(images, list) or not minimum <= len(images) <= len(fields):
             raise ValueError("invalid images")
         files = []
@@ -224,13 +226,13 @@ class Adapter:
             key: item if isinstance(item, str) else json.dumps(item, ensure_ascii=False)
             for key, item in business.items() if key != "images"
         }
-        if self.vton_edits and value["capability"] == "vton":
+        if self.vton_edits and model_key == OUTFIT_MODEL:
             # 国内 FLUX 服务的试衣入口使用两个同名 image 文件，由 LoRA 选择试衣能力。
             path = "/v1/images/edits"
             files = [("image", (f"{name}.{mime[6:]}", data, mime)) for name, (_, data, mime) in files]
             form.update(model="FLUX.2-klein-9B", lora_name="vton", lora_strength="1.0",
                         n="1", size="768x1024", response_format="b64_json")
-        if value["capability"] == "video" and self.video_protocol == "jobs":
+        if model_key == VIDEO_MODEL and self.video_protocol == "jobs":
             # 原生视频服务包含多个实例，固定本部署的目标以兑现网关登记的 GPU 分组。
             form["target_instance"] = self.video_target
         metadata = value.get("metadata") or {}
@@ -250,7 +252,7 @@ class Adapter:
             await self.save(row)
         headers = {**self.native_headers, **headers}
         try:
-            if row["capability"] == "video" and self.video_protocol == "gateway":
+            if row["model_key"] == VIDEO_MODEL and self.video_protocol == "gateway":
                 multipart = self.http.build_request("POST", self.native + path, data=form, files=files)
                 envelope = {
                     "task_id": UUID(row["request_id"]).hex,
@@ -267,22 +269,22 @@ class Adapter:
             if response.status_code in (400, 401, 403, 413, 415, 422, 429):
                 await self.fail(row, "model_rejected", "native model rejected the request before execution")
                 return True
-            if (self.vton_edits and row["capability"] == "vton" and response.status_code == 404
+            if (self.vton_edits and row["model_key"] == OUTFIT_MODEL and response.status_code == 404
                     and response.headers.get("content-type", "").startswith("text/plain")
                     and response.content.strip().lower() == b"not found"):
                 # 国内入口的纯文本 404 表示路由没有匹配，模型尚未接单，可以释放容量。
                 await self.fail(row, "native_route_unavailable", "native image route is unavailable")
                 return True
             if not response.is_success:
-                LOG.warning("native model response status=%s capability=%s request_id=%s",
-                            response.status_code, row["capability"], row["request_id"])
+                LOG.warning("native model response status=%s model_key=%s request_id=%s",
+                            response.status_code, row["model_key"], row["request_id"])
                 return False
         except (httpx.ConnectError, httpx.ConnectTimeout):
             await self.fail(row, "native_unreachable", "model connection was not established")
             return True
         except (httpx.HTTPError, ValueError):
             return False
-        if row["capability"] == "video":
+        if row["model_key"] == VIDEO_MODEL:
             expected = "gw-" + UUID(row["request_id"]).hex
             try:
                 job = response.json().get("job_id")
@@ -388,6 +390,10 @@ def canonical_id(value):
     return value
 
 
+def request_fingerprint(identity):
+    return hashlib.sha256(json.dumps(identity, sort_keys=True, allow_nan=False).encode()).hexdigest()
+
+
 @asynccontextmanager
 async def lifespan(app):
     worker = Adapter()
@@ -422,7 +428,7 @@ async def ready(request: Request):
         response = await worker.http.get(worker.health_url, headers=worker.native_headers, timeout=2.0)
         data = response.json()
         ready = response.is_success and (data.get("ready") is True or ("ready" not in data and data.get("status") == "ok"))
-        if worker.video_protocol == "jobs" and "video" in worker.capabilities:
+        if worker.video_protocol == "jobs" and VIDEO_MODEL in worker.model_keys:
             ready = ready and any(item.get("name") == worker.video_target for item in data.get("instances", []))
         if "workers" in data:
             # 国内图片服务以 ready 标记可接单的实例，外层 status 只代表服务进程存活。
@@ -443,23 +449,27 @@ async def submit(request: Request):
             raise HTTPException(413, "request is too large")
     try:
         value = json.loads(raw)
+        # 旧消息的两个字段可能表达不同业务，升级后只接受单一模型键的请求。
+        if "capability" in value:
+            raise ValueError("use model_key only")
         request_id = canonical_id(value["request_id"])
-        capability = value["capability"]
-        model, path, fields = ROUTES[capability]
-        if capability not in worker.capabilities or model != value["model_key"]:
-            raise ValueError("unexpected model capability")
-        fingerprint = hashlib.sha256(
-            json.dumps([model, capability, value["input"]], sort_keys=True, allow_nan=False).encode()
-        ).hexdigest()
+        model_key = value["model_key"]
+        if model_key not in worker.model_keys:
+            raise ValueError("unexpected model key")
+        path, fields = ROUTES[model_key]
+        fingerprint = request_fingerprint([model_key, value["input"]])
         path, form, files, headers = worker.multipart(value, path, fields)
     except (ValueError, KeyError, TypeError, AttributeError) as exc:
         raise HTTPException(400, "invalid model request") from exc
-    row = {"request_id": request_id, "fingerprint": fingerprint, "capability": capability,
+    row = {"request_id": request_id, "fingerprint": fingerprint, "model_key": model_key,
            "state": "processing", "sent": False}
     if not await worker.claim(row):
         existing = await worker.load(request_id)
         if existing is None:
             raise HTTPException(503, "cannot read the existing execution record")
+        # 旧记录的指纹包含历史能力。保留旧记录的重试语义，避免同一请求重复执行。
+        if "model_key" not in existing:
+            fingerprint = request_fingerprint([model_key, existing.get("capability"), value["input"]])
         if existing["fingerprint"] != fingerprint:
             raise HTTPException(409, "request_id already used")
         return worker.response(existing)
@@ -484,7 +494,8 @@ async def status(request_id: str, request: Request):
     if row["state"] == "processing" and request_id not in worker.running:
         if not row["sent"]:
             await worker.fail(row, "not_dispatched", "worker stopped before dispatch")
-        elif row["capability"] == "video":
+        # 旧适配器账本只有能力字段。按原任务回查视频，等旧账本退出保留期后可删除这个分支。
+        elif row.get("model_key") == VIDEO_MODEL or ("model_key" not in row and row.get("capability") == "video"):
             await worker.refresh_video(row)
         # 图片模型尚未提供按网关 ID 查询执行状态。发生未知断线时保留记录，等待核对。
     return worker.response(await worker.load(request_id))

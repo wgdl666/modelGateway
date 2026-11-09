@@ -149,7 +149,7 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request, targetInst
 	var raw []byte
 	if !direct {
 		var err error
-		raw, err = json.Marshal(protocol.ModelRequest{RequestID: task.ID, ModelKey: task.ModelKey, Capability: task.Capability, Submission: payload})
+		raw, err = json.Marshal(protocol.ModelRequest{RequestID: task.ID, ModelKey: task.ModelKey, Submission: payload})
 		if err != nil {
 			return w.failDispatch(task.ID, 500, "invalid_saved_request", "saved request is invalid", false)
 		}

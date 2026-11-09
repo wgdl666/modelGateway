@@ -66,22 +66,37 @@ func startHTTPServer(t *testing.T, app *httpapi.Server) string {
 
 func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 	a, b, _ := stores(t)
-	spec := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8001", 2)
+	spec := testInstance(protocol.VideoModel, "http://127.0.0.1:8001", 2)
 	registerReady(t, a, spec)
 	id := uuid.NewString()
-	submission := testAdmission(spec, id, 2)
-	submission.TraceID = "trace-for-ops"
-	if _, err := a.Admit(t.Context(), submission); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := a.Claim(t.Context(), testConfig(), id); err != nil {
-		t.Fatal(err)
-	}
-	runtime, err := config.NewRuntime(testConfig())
+	cfg := testConfig()
+	cfg.UnitsByModelKey = map[string]int{spec.ModelKey: 2}
+	runtime, err := config.NewRuntime(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	base := startHTTPServer(t, httpapi.New(b, runtime))
+	// 从生成入口受理，确认按模型键配置的两单位确实进入账本并用于预留。
+	submit := `{"input":{"images":[{"mime_type":"image/png","data":"eA=="}]},"metadata":{"trace_id":"trace-for-ops"}}`
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, base+"/v1/gateway/requests/"+spec.ModelKey, strings.NewReader(submit))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiToken)
+	req.Header.Set("Idempotency-Key", id)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, readErr := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if readErr != nil || res.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit status=%d response=%s error=%v", res.StatusCode, body, readErr)
+	}
+	if task, _, err := a.Claim(t.Context(), cfg, id); err != nil || task == nil || task.Units != 2 {
+		t.Fatalf("model key capacity not reserved: task=%v err=%v", task, err)
+	}
 	get := func(path, token string, want int) []byte {
 		t.Helper()
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+path, nil)
@@ -101,7 +116,7 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 		return raw
 	}
 	get("/v1/admin/requests", apiToken, 401)
-	list := get("/v1/admin/requests?trace_id=trace-for-ops&state=processing", adminToken, 200)
+	list := get("/v1/admin/requests?trace_id=trace-for-ops&state=processing&model="+spec.ModelKey, adminToken, 200)
 	type requestView struct {
 		protocol.Response
 		TraceID      string `json:"trace_id"`
@@ -112,7 +127,8 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 		Total int
 	}
 	if err := json.Unmarshal(list, &page); err != nil || page.Total != 1 || len(page.Items) != 1 ||
-		page.Items[0].RequestID != id || !page.Items[0].SlotReserved || strings.Contains(string(list), "request_payload") {
+		page.Items[0].RequestID != id || page.Items[0].ModelKey != spec.ModelKey || !page.Items[0].SlotReserved ||
+		strings.Contains(string(list), "request_payload") || strings.Contains(string(list), `"capability"`) {
 		t.Fatalf("invalid list %s, error %v", list, err)
 	}
 	instances := get("/v1/instances", adminToken, 200)
@@ -124,7 +140,7 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 	}
 	detail := get("/v1/admin/requests/"+id, adminToken, 200)
 	var task requestView
-	if err := json.Unmarshal(detail, &task); err != nil || task.TraceID != submission.TraceID ||
+	if err := json.Unmarshal(detail, &task); err != nil || task.TraceID != "trace-for-ops" ||
 		task.State != "succeeded" || task.Result == nil || len(task.Result.Files) != 1 || task.SlotReserved {
 		t.Fatalf("invalid detail %s, error %v", detail, err)
 	}
@@ -169,7 +185,7 @@ func TestHertzRoutingAndValidation(t *testing.T) {
 func TestClearInstanceKeepsRequestHistory(t *testing.T) {
 	a, b, db := stores(t)
 	ctx := t.Context()
-	spec := testInstance(protocol.VideoModel, "video", "http://127.0.0.1:8001", 1)
+	spec := testInstance(protocol.VideoModel, "http://127.0.0.1:8001", 1)
 	if err := a.Register(ctx, spec); err != nil {
 		t.Fatal(err)
 	}

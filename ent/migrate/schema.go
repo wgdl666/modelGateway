@@ -13,7 +13,6 @@ var (
 	ModelInstancesColumns = []*schema.Column{
 		{Name: "instance_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "model_key", Type: field.TypeString, Size: 2147483647},
-		{Name: "capability", Type: field.TypeString, Size: 2147483647},
 		{Name: "endpoint", Type: field.TypeString, Size: 2147483647},
 		{Name: "health_url", Type: field.TypeString, Size: 2147483647},
 		{Name: "artifact_digest", Type: field.TypeString, Size: 2147483647},
@@ -37,14 +36,14 @@ var (
 		PrimaryKey: []*schema.Column{ModelInstancesColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "modelinstance_model_key_capability",
+				Name:    "modelinstance_model_key",
 				Unique:  false,
-				Columns: []*schema.Column{ModelInstancesColumns[1], ModelInstancesColumns[2]},
+				Columns: []*schema.Column{ModelInstancesColumns[1]},
 			},
 			{
 				Name:    "modelinstance_resource_group",
 				Unique:  false,
-				Columns: []*schema.Column{ModelInstancesColumns[6]},
+				Columns: []*schema.Column{ModelInstancesColumns[5]},
 			},
 		},
 	}
@@ -52,7 +51,6 @@ var (
 	RequestsColumns = []*schema.Column{
 		{Name: "request_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "model_key", Type: field.TypeString, Size: 2147483647},
-		{Name: "capability", Type: field.TypeString, Size: 2147483647},
 		{Name: "trace_id", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "request_payload", Type: field.TypeJSON},
 		{Name: "payload_bytes", Type: field.TypeInt64},
@@ -84,9 +82,9 @@ var (
 		PrimaryKey: []*schema.Column{RequestsColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "request_model_key_capability_created_at_request_id",
+				Name:    "request_model_key_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[2], RequestsColumns[24], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[23], RequestsColumns[0]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -94,7 +92,7 @@ var (
 			{
 				Name:    "request_queue_publish_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[8], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[7], RequestsColumns[0]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued' AND queue_publish_at IS NOT NULL",
 				},
@@ -102,7 +100,7 @@ var (
 			{
 				Name:    "request_deadline_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[15]},
+				Columns: []*schema.Column{RequestsColumns[14]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -110,7 +108,7 @@ var (
 			{
 				Name:    "request_resource_group_instance_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[11], RequestsColumns[10]},
+				Columns: []*schema.Column{RequestsColumns[10], RequestsColumns[9]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "slot_reserved",
 				},
@@ -118,7 +116,7 @@ var (
 			{
 				Name:    "request_next_poll_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[18]},
+				Columns: []*schema.Column{RequestsColumns[17]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "slot_reserved",
 				},
@@ -126,12 +124,12 @@ var (
 			{
 				Name:    "request_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[24], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[23], RequestsColumns[0]},
 			},
 			{
 				Name:    "request_trace_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[3]},
+				Columns: []*schema.Column{RequestsColumns[2]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "trace_id <> ''",
 				},

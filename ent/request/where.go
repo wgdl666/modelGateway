@@ -69,11 +69,6 @@ func ModelKey(v string) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldModelKey, v))
 }
 
-// Capability applies equality check predicate on the "capability" field. It's identical to CapabilityEQ.
-func Capability(v string) predicate.Request {
-	return predicate.Request(sql.FieldEQ(FieldCapability, v))
-}
-
 // TraceID applies equality check predicate on the "trace_id" field. It's identical to TraceIDEQ.
 func TraceID(v string) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldTraceID, v))
@@ -237,71 +232,6 @@ func ModelKeyEqualFold(v string) predicate.Request {
 // ModelKeyContainsFold applies the ContainsFold predicate on the "model_key" field.
 func ModelKeyContainsFold(v string) predicate.Request {
 	return predicate.Request(sql.FieldContainsFold(FieldModelKey, v))
-}
-
-// CapabilityEQ applies the EQ predicate on the "capability" field.
-func CapabilityEQ(v string) predicate.Request {
-	return predicate.Request(sql.FieldEQ(FieldCapability, v))
-}
-
-// CapabilityNEQ applies the NEQ predicate on the "capability" field.
-func CapabilityNEQ(v string) predicate.Request {
-	return predicate.Request(sql.FieldNEQ(FieldCapability, v))
-}
-
-// CapabilityIn applies the In predicate on the "capability" field.
-func CapabilityIn(vs ...string) predicate.Request {
-	return predicate.Request(sql.FieldIn(FieldCapability, vs...))
-}
-
-// CapabilityNotIn applies the NotIn predicate on the "capability" field.
-func CapabilityNotIn(vs ...string) predicate.Request {
-	return predicate.Request(sql.FieldNotIn(FieldCapability, vs...))
-}
-
-// CapabilityGT applies the GT predicate on the "capability" field.
-func CapabilityGT(v string) predicate.Request {
-	return predicate.Request(sql.FieldGT(FieldCapability, v))
-}
-
-// CapabilityGTE applies the GTE predicate on the "capability" field.
-func CapabilityGTE(v string) predicate.Request {
-	return predicate.Request(sql.FieldGTE(FieldCapability, v))
-}
-
-// CapabilityLT applies the LT predicate on the "capability" field.
-func CapabilityLT(v string) predicate.Request {
-	return predicate.Request(sql.FieldLT(FieldCapability, v))
-}
-
-// CapabilityLTE applies the LTE predicate on the "capability" field.
-func CapabilityLTE(v string) predicate.Request {
-	return predicate.Request(sql.FieldLTE(FieldCapability, v))
-}
-
-// CapabilityContains applies the Contains predicate on the "capability" field.
-func CapabilityContains(v string) predicate.Request {
-	return predicate.Request(sql.FieldContains(FieldCapability, v))
-}
-
-// CapabilityHasPrefix applies the HasPrefix predicate on the "capability" field.
-func CapabilityHasPrefix(v string) predicate.Request {
-	return predicate.Request(sql.FieldHasPrefix(FieldCapability, v))
-}
-
-// CapabilityHasSuffix applies the HasSuffix predicate on the "capability" field.
-func CapabilityHasSuffix(v string) predicate.Request {
-	return predicate.Request(sql.FieldHasSuffix(FieldCapability, v))
-}
-
-// CapabilityEqualFold applies the EqualFold predicate on the "capability" field.
-func CapabilityEqualFold(v string) predicate.Request {
-	return predicate.Request(sql.FieldEqualFold(FieldCapability, v))
-}
-
-// CapabilityContainsFold applies the ContainsFold predicate on the "capability" field.
-func CapabilityContainsFold(v string) predicate.Request {
-	return predicate.Request(sql.FieldContainsFold(FieldCapability, v))
 }
 
 // TraceIDEQ applies the EQ predicate on the "trace_id" field.
