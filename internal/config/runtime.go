@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"net"
 	"net/netip"
@@ -25,6 +26,7 @@ type Config struct {
 	AllowedNetworks   []string       `json:"backend_cidrs"`
 	AllowedPorts      []string       `json:"backend_ports"`
 	VLMAddr           string         `json:"vlm_addr"`
+	DecisionAddr      string         `json:"decision_addr"`
 	BackendTimeout    time.Duration  `json:"-"`
 	PollInterval      time.Duration  `json:"-"`
 	MaxBodyBytes      int64          `json:"max_body_bytes"`
@@ -132,11 +134,17 @@ func prepareConfig(c Config) (*Snapshot, error) {
 	if len(state.networks) == 0 || len(state.ports) == 0 {
 		return nil, errors.New("explicit backend network and port allowlists required")
 	}
-	if c.VLMAddr != "" {
-		// VLM 固定使用单一私网地址，避免为对话流量扩大媒体执行实例的地址白名单。
-		addr, err := netip.ParseAddrPort(c.VLMAddr)
+	// 同步推理走各自固定的私网地址，避免扩大媒体执行实例的地址白名单。
+	for _, upstream := range []struct{ key, address string }{
+		{"vlm_addr", c.VLMAddr},
+		{"decision_addr", c.DecisionAddr},
+	} {
+		if upstream.address == "" {
+			continue
+		}
+		addr, err := netip.ParseAddrPort(upstream.address)
 		if err != nil || !addr.Addr().IsPrivate() || addr.Port() == 0 {
-			return nil, errors.New("vlm_addr must be a private IP with an explicit port")
+			return nil, fmt.Errorf("%s must be a private IP with an explicit port", upstream.key)
 		}
 	}
 	if err := state.validateNative(); err != nil {

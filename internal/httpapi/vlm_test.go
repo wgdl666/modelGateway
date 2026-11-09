@@ -11,9 +11,9 @@ import (
 	"github.com/wgdl666/modelGateway/internal/config"
 )
 
-type vlmRoundTrip func(*http.Request) (*http.Response, error)
+type directRoundTrip func(*http.Request) (*http.Response, error)
 
-func (f vlmRoundTrip) RoundTrip(req *http.Request) (*http.Response, error) {
+func (f directRoundTrip) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
@@ -33,7 +33,7 @@ func TestChatCompletions(t *testing.T) {
 	}
 	s := New(nil, runtime)
 	calls := 0
-	s.vlm.Transport = vlmRoundTrip(func(r *http.Request) (*http.Response, error) {
+	s.direct.Transport = directRoundTrip(func(r *http.Request) (*http.Response, error) {
 		calls++
 		defer r.Body.Close()
 		raw, err := io.ReadAll(r.Body)
