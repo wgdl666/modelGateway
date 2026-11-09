@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"mime"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 
@@ -28,10 +29,21 @@ type Server struct {
 	store   *store.Store
 	runtime *config.Runtime
 	uploads chan struct{}
+	vlm     *http.Client
 }
 
 func New(tasks *store.Store, runtime *config.Runtime) *Server {
-	return &Server{store: tasks, runtime: runtime, uploads: make(chan struct{}, 2)}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// 对话请求可包含原图，只允许直连配置中的私网模型地址。
+	transport.Proxy = nil
+	return &Server{
+		store: tasks, runtime: runtime, uploads: make(chan struct{}, 2),
+		vlm: &http.Client{
+			Transport:     transport,
+			Timeout:       120 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+	}
 }
 
 type runtimeKey struct{}
@@ -61,6 +73,7 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.POST("/v1/gateway/requests/cancel", s.auth("api", s.cancelRequest))
 	h.POST("/v1/gateway/requests/:model_key", s.auth("api", s.submit))
 	h.GET("/v1/gateway/requests", s.auth("api", s.get))
+	h.POST(chatCompletionsPath, s.auth("api", s.chatCompletions))
 	return h
 }
 
