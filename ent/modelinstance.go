@@ -28,8 +28,6 @@ type ModelInstance struct {
 	ArtifactDigest string `json:"artifact_digest,omitempty"`
 	// ResourceGroup holds the value of the "resource_group" field.
 	ResourceGroup string `json:"resource_group,omitempty"`
-	// TargetInstance holds the value of the "target_instance" field.
-	TargetInstance string `json:"target_instance,omitempty"`
 	// GroupCapacityUnits holds the value of the "group_capacity_units" field.
 	GroupCapacityUnits int `json:"group_capacity_units,omitempty"`
 	// CapacityUnits holds the value of the "capacity_units" field.
@@ -64,7 +62,7 @@ func (*ModelInstance) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case modelinstance.FieldGroupCapacityUnits, modelinstance.FieldCapacityUnits:
 			values[i] = new(sql.NullInt64)
-		case modelinstance.FieldID, modelinstance.FieldModelKey, modelinstance.FieldEndpoint, modelinstance.FieldHealthURL, modelinstance.FieldArtifactDigest, modelinstance.FieldResourceGroup, modelinstance.FieldTargetInstance, modelinstance.FieldMachineID:
+		case modelinstance.FieldID, modelinstance.FieldModelKey, modelinstance.FieldEndpoint, modelinstance.FieldHealthURL, modelinstance.FieldArtifactDigest, modelinstance.FieldResourceGroup, modelinstance.FieldMachineID:
 			values[i] = new(sql.NullString)
 		case modelinstance.FieldHealthCheckedAt, modelinstance.FieldDeletedAt, modelinstance.FieldCreatedAt, modelinstance.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -118,12 +116,6 @@ func (_m *ModelInstance) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field resource_group", values[i])
 			} else if value.Valid {
 				_m.ResourceGroup = value.String
-			}
-		case modelinstance.FieldTargetInstance:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field target_instance", values[i])
-			} else if value.Valid {
-				_m.TargetInstance = value.String
 			}
 		case modelinstance.FieldGroupCapacityUnits:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -238,9 +230,6 @@ func (_m *ModelInstance) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("resource_group=")
 	builder.WriteString(_m.ResourceGroup)
-	builder.WriteString(", ")
-	builder.WriteString("target_instance=")
-	builder.WriteString(_m.TargetInstance)
 	builder.WriteString(", ")
 	builder.WriteString("group_capacity_units=")
 	builder.WriteString(fmt.Sprintf("%v", _m.GroupCapacityUnits))

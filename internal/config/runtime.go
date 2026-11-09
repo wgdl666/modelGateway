@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -178,7 +179,7 @@ func (r *Runtime) Reload(c Config) error {
 	if next.RabbitMQURL != r.current.RabbitMQURL || next.RabbitMQQueue != r.current.RabbitMQQueue {
 		return errors.New("changing RabbitMQ requires draining and restarting the gateway")
 	}
-	// 已派发的请求按原地址回查，协议、视频目标和结果桶都归本次部署所有。
+	// 已派发的请求按原地址回查，切换协议或结果桶前须等原任务结束。
 	if !maps.Equal(next.NativeBackends, r.current.NativeBackends) || next.NativeResults != r.current.NativeResults {
 		return errors.New("changing native backends or result storage requires draining and restarting the gateway")
 	}
@@ -186,12 +187,20 @@ func (r *Runtime) Reload(c Config) error {
 	return nil
 }
 
-// 注册和实际出站都限制到允许的字面 IP 与端口，健康地址可带明确路径。
+// 出站只允许登记的 IP 和端口。单卡地址保留路径，拒绝会被代理改写到其他路径的写法。
 func (s *Snapshot) ValidateEndpoint(endpoint string, health bool) error {
 	u, err := url.Parse(endpoint)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil ||
-		u.ForceQuery || u.RawQuery != "" || u.Fragment != "" || (!health && strings.Trim(u.Path, "/") != "") {
+		u.ForceQuery || u.RawQuery != "" || u.Fragment != "" {
 		return errors.New("invalid endpoint")
+	}
+	if u.RawPath != "" || u.EscapedPath() != u.Path {
+		return errors.New("invalid endpoint path")
+	}
+	if u.Path != "" && u.Path != "/" {
+		if path.Clean(u.Path) != strings.TrimSuffix(u.Path, "/") || (!health && !gpuEndpointPath.MatchString(u.Path)) {
+			return errors.New("invalid endpoint path")
+		}
 	}
 	ip := net.ParseIP(u.Hostname())
 	port := u.Port()

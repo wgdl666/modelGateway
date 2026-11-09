@@ -95,11 +95,10 @@ func reserved(ctx context.Context, client *ent.RequestClient) ([]reservation, er
 	return occupied, err
 }
 
-func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.Request, *ent.ModelInstance, error) {
+func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.Request, error) {
 	var task *ent.Request
-	var instance *ent.ModelInstance
 	err := s.serialize(ctx, func(tx *ent.Tx) error {
-		task, instance = nil, nil
+		task = nil
 		now := time.Now().UTC()
 		// 同一消息可能重投。按 ID 等待行锁，锁竞争不能被误当成已处理而确认消息。
 		next, err := tx.Request.Query().Where(request.IDEQ(id), request.StateEQ(request.StateQueued), request.DeadlineAtGT(now)).
@@ -132,9 +131,8 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 			byGroup[hold.ResourceGroup] += hold.Units
 		}
 		for _, i := range instances {
-			// 旧视频登记即使还留有就绪快照，也要先补齐目标才能预留 GPU。
-			backend, direct := cfg.NativeBackends[i.Endpoint]
-			if direct && !backend.Accepts(i.ModelKey, i.Endpoint, i.HealthURL, i.TargetInstance) {
+			// 地址退出原生配置后，旧探活快照不能让它按 Worker 协议接单。
+			if !cfg.AcceptsInstanceAddress(i.ModelKey, i.Endpoint, i.HealthURL) {
 				continue
 			}
 			free := min(i.CapacityUnits-byInstance[i.ID], i.GroupCapacityUnits-byGroup[i.ResourceGroup])
@@ -146,23 +144,18 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 				return err
 			}
 			nextPoll := next.DeadlineAt.Add(2 * time.Second)
-			if direct {
+			if _, direct := cfg.NativeBackends[i.Endpoint]; direct {
 				// 原生调用可晚于上游返回，给原派发者留足执行和写终态的时间。
 				nextPoll = now.Add(cfg.NativeExecutionTimeout).Add(ExecutionWriteTimeout)
 			}
 			task, err = tx.Request.UpdateOneID(id).SetState(request.StateProcessing).SetSlotReserved(true).ClearQueuePublishAt().
 				SetInstanceID(i.ID).SetResourceGroup(i.ResourceGroup).SetEndpoint(i.Endpoint).SetArtifactDigest(i.ArtifactDigest).
 				SetStartedAt(now).SetNextPollAt(nextPoll).Save(ctx)
-			if err != nil {
-				return err
-			}
-			// 将预留容量时选中的实例交给派发，LTX 目标与 GPU 分组来自同一条登记。
-			instance = i
-			return nil
+			return err
 		}
 		return deferPublication(ctx, tx, next)
 	})
-	return task, instance, err
+	return task, err
 }
 
 func deferPublication(ctx context.Context, tx *ent.Tx, task *ent.Request) error {

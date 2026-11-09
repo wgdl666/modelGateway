@@ -187,7 +187,7 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	var wg sync.WaitGroup
 	for n := range 20 {
 		wg.Go(func() {
-			task, _, err := []*store.Store{a, b}[(n/2)%2].Claim(t.Context(), testConfig(), ids[n%2])
+			task, err := []*store.Store{a, b}[(n/2)%2].Claim(t.Context(), testConfig(), ids[n%2])
 			if err != nil {
 				t.Errorf("claim: %v", err)
 			}
@@ -209,7 +209,7 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	if err := a.DispatchFailure(t.Context(), first, 504, "backend_timeout", "unknown", true); err != nil {
 		t.Fatal(err)
 	}
-	if next, _, err := b.Claim(t.Context(), testConfig(), waiting); next != nil || err != nil {
+	if next, err := b.Claim(t.Context(), testConfig(), waiting); next != nil || err != nil {
 		t.Fatalf("unknown task released capacity: %v %v", next, err)
 	}
 	poll, err := b.ClaimPoll(t.Context())
@@ -226,7 +226,7 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	if err != nil || task.State != request.StateFailed || task.SlotReserved {
 		t.Fatalf("late completion rewrote failed state or leaked capacity: %v %v", task, err)
 	}
-	next, _, err := b.Claim(t.Context(), testConfig(), waiting)
+	next, err := b.Claim(t.Context(), testConfig(), waiting)
 	if err != nil || next == nil || next.ID != waiting || next.Units != 2 {
 		t.Fatalf("queued task was not dispatched after slot release: %v %v", next, err)
 	}
@@ -251,7 +251,7 @@ func TestQueuedUntilMatchingInstanceHasFreshProbe(t *testing.T) {
 	if err != nil || len(pending) != 1 || pending[0].ID != in.ID {
 		t.Fatalf("admitted request missing durable publication: %v %v", pending, err)
 	}
-	if task, _, err := b.Claim(t.Context(), testConfig(), in.ID); err != nil || task != nil {
+	if task, err := b.Claim(t.Context(), testConfig(), in.ID); err != nil || task != nil {
 		t.Fatalf("claimed with wrong model key or stale probe: task=%v err=%v", task, err)
 	}
 	// 模拟消费先延期、发布确认后写回，防止旧确认清掉新投递时间。
@@ -266,24 +266,23 @@ func TestQueuedUntilMatchingInstanceHasFreshProbe(t *testing.T) {
 	if err := a.RecordProbe(t.Context(), matching.ID, time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
-	if task, _, err := b.Claim(t.Context(), testConfig(), in.ID); err != nil || task == nil || task.ID != in.ID || task.InstanceID != matching.ID || task.State != request.StateProcessing {
+	if task, err := b.Claim(t.Context(), testConfig(), in.ID); err != nil || task == nil || task.ID != in.ID || task.InstanceID != matching.ID || task.State != request.StateProcessing {
 		t.Fatalf("claim after fresh probe: task=%v err=%v", task, err)
 	}
 }
 
-func TestNativeVideoWithOldProbeNeedsRegisteredTarget(t *testing.T) {
+func TestScopedVideoWithoutNativeConfigDoesNotFallBackToWorker(t *testing.T) {
 	a, b, _ := stores(t)
-	video := testInstance(protocol.VideoModel, "http://127.0.0.1:8001", 1)
-	// 旧登记迁移后目标为空，探活快照仍可能处于有效期。
+	video := testInstance(protocol.VideoModel, "http://127.0.0.1:8001/gpu0", 1)
+	video.HealthURL = video.Endpoint + "/healthz"
+	// 去掉原生配置后，已有探活快照仍可能处于有效期。
 	registerReady(t, a, video)
 	in := testAdmission(video, uuid.NewString(), 1)
 	if _, err := a.Admit(t.Context(), in); err != nil {
 		t.Fatal(err)
 	}
-	cfg := testConfig()
-	cfg.NativeBackends = map[string]config.NativeBackend{video.Endpoint: {Video: true}}
-	if task, instance, err := b.Claim(t.Context(), cfg, in.ID); err != nil || task != nil || instance != nil {
-		t.Fatalf("native video claimed a request without a registered target: task=%v instance=%v err=%v", task, instance, err)
+	if task, err := b.Claim(t.Context(), testConfig(), in.ID); err != nil || task != nil {
+		t.Fatalf("single GPU endpoint silently switched to Worker dispatch: task=%v err=%v", task, err)
 	}
 }
 

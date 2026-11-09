@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -100,7 +99,7 @@ func (w *Reconciler) modelCall(ctx context.Context, cfg *config.Snapshot, method
 	if cfg.BackendToken != "" {
 		req.Header.Set("Authorization", "Bearer "+cfg.BackendToken)
 	}
-	resp, err := w.modelHTTP(req)
+	resp, err := w.modelHTTP(req, false)
 	if err != nil {
 		return nil, err
 	}
@@ -112,19 +111,16 @@ func (w *Reconciler) modelCall(ctx context.Context, cfg *config.Snapshot, method
 	return raw, nil
 }
 
-func (w *Reconciler) modelHTTP(req *http.Request) (*http.Response, error) {
+func (w *Reconciler) modelHTTP(req *http.Request, nativeSubmission bool) (*http.Response, error) {
 	resp, err := w.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
-		// 国内 FLUX 的路由未命中用纯文本 404 表示，能确认模型尚未接单。
-		if req.Method == http.MethodPost && req.URL.Path == fluxEditsPath &&
-			resp.StatusCode == http.StatusNotFound && strings.HasPrefix(resp.Header.Get("Content-Type"), "text/plain") {
-			if raw, err := readModelBody(resp.Body, 64); err == nil && strings.EqualFold(strings.TrimSpace(string(raw)), "not found") {
-				return nil, errNativeRouteUnavailable
-			}
+		// 只有原生提交阶段的标准路由拒绝能确认未受理，回查 404 无法确认执行终态。
+		if nativeSubmission && resp.StatusCode == http.StatusNotFound && nativeRouteNotFound(resp) {
+			return nil, errNativeRouteUnavailable
 		}
 		return nil, modelStatusError(resp.StatusCode)
 	}
@@ -142,7 +138,7 @@ func readModelBody(body io.Reader, limit int64) ([]byte, error) {
 	return raw, nil
 }
 
-func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request, targetInstance string) error {
+func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 	var payload protocol.Submission
 	if err := json.Unmarshal(task.RequestPayload, &payload); err != nil {
 		return w.failDispatch(task.ID, 500, "invalid_saved_request", "saved request is invalid", false)
@@ -170,7 +166,7 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request, targetInst
 	ctx, cancel := context.WithDeadline(w.ctx, deadline)
 	defer cancel()
 	if direct {
-		return w.executeNative(ctx, cfg, task, payload, backend, targetInstance)
+		return w.executeNative(ctx, cfg, task, payload, backend)
 	}
 	response, err := w.modelCall(ctx, cfg, http.MethodPost, task.Endpoint, "/requests", raw)
 	if err != nil {
@@ -259,14 +255,16 @@ func (w *Reconciler) probe(cfg *config.Snapshot) error {
 			ctx, cancel := context.WithTimeout(w.ctx, 3*time.Second)
 			defer cancel()
 			var ready bool
-			if backend, direct := cfg.NativeBackends[row.Endpoint]; direct {
-				ready = w.nativeReady(ctx, cfg, row, backend)
-			} else {
-				raw, callErr := w.modelCall(ctx, cfg, http.MethodGet, row.HealthURL, "", nil)
-				var health struct {
-					Ready bool `json:"ready"`
+			if cfg.AcceptsInstanceAddress(row.ModelKey, row.Endpoint, row.HealthURL) {
+				if backend, direct := cfg.NativeBackends[row.Endpoint]; direct {
+					ready = w.nativeReady(ctx, cfg, row, backend)
+				} else {
+					raw, callErr := w.modelCall(ctx, cfg, http.MethodGet, row.HealthURL, "", nil)
+					var health struct {
+						Ready bool `json:"ready"`
+					}
+					ready = callErr == nil && json.Unmarshal(raw, &health) == nil && health.Ready
 				}
-				ready = callErr == nil && json.Unmarshal(raw, &health) == nil && health.Ready
 			}
 			if err := w.store.RecordProbe(w.ctx, row.ID, checked, ready); err != nil && w.ctx.Err() == nil {
 				slog.Error("model health update failed", "error_type", fmt.Sprintf("%T", err))

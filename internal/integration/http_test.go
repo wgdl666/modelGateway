@@ -94,7 +94,7 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 	if readErr != nil || res.StatusCode != http.StatusAccepted {
 		t.Fatalf("submit status=%d response=%s error=%v", res.StatusCode, body, readErr)
 	}
-	if task, _, err := a.Claim(t.Context(), cfg, id); err != nil || task == nil || task.Units != 2 {
+	if task, err := a.Claim(t.Context(), cfg, id); err != nil || task == nil || task.Units != 2 {
 		t.Fatalf("model key capacity not reserved: task=%v err=%v", task, err)
 	}
 	get := func(path, token string, want int) []byte {
@@ -227,7 +227,7 @@ func TestClearInstanceKeepsRequestHistory(t *testing.T) {
 	if _, err := a.Admit(ctx, testAdmission(spec, id, 1)); err != nil {
 		t.Fatal(err)
 	}
-	if row, _, err := a.Claim(ctx, testConfig(), id); err != nil || row == nil {
+	if row, err := a.Claim(ctx, testConfig(), id); err != nil || row == nil {
 		t.Fatalf("claim: %v %v", row, err)
 	}
 	if err := a.Drain(ctx, spec.ID, true); err != nil {

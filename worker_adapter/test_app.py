@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import httpx
 
-from app import Adapter, VIDEO_MODEL, WARDROBE_MODEL, app
+from app import Adapter, OUTFIT_MODEL, VIDEO_MODEL, WARDROBE_MODEL, app
 
 
 class ModelKeyWorkerTests(unittest.IsolatedAsyncioTestCase):
@@ -15,18 +15,19 @@ class ModelKeyWorkerTests(unittest.IsolatedAsyncioTestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.calls = []
+        self.native_response = httpx.Response(422)
 
         async def native(request):
             self.calls.append((request.method, request.url.path))
             if request.method == "GET":
                 return httpx.Response(200, json={"job_id": "old-job", "status": "error"})
-            return httpx.Response(422)
+            return self.native_response
 
         # 保留真实的请求处理和文件账本，只替换原生服务与对象存储启动配置。
         worker = Adapter.__new__(Adapter)
         worker.state_dir = Path(directory.name)
         worker.bearer = "Bearer worker-test"
-        worker.model_keys = {WARDROBE_MODEL, "Vmind_cloth_gen_v1.0", VIDEO_MODEL}
+        worker.model_keys = {OUTFIT_MODEL, WARDROBE_MODEL, "Vmind_cloth_gen_v1.0", VIDEO_MODEL}
         worker.native = "http://native"
         worker.native_headers = {}
         worker.video_protocol = "jobs"
@@ -63,6 +64,26 @@ class ModelKeyWorkerTests(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual(result.status_code, 400)
         self.assertEqual(len(self.calls), 2)
+
+    async def test_native_404_only_finishes_confirmed_rejections(self):
+        for response, expected_state in (
+            (httpx.Response(404, json={"detail": "Not Found"}), "failed"),
+            (httpx.Response(404, text="not found\n"), "failed"),
+            (httpx.Response(404, json={"detail": "garment not found"}), "processing"),
+        ):
+            with self.subTest(body=response.text):
+                self.native_response = response
+                request_id = str(uuid4())
+                result = await self.client.post("/requests", json={
+                    "request_id": request_id, "model_key": OUTFIT_MODEL,
+                    "input": {"images": self.input["images"] * 2},
+                })
+                self.assertEqual(result.status_code, 200 if expected_state == "failed" else 502, result.text)
+                self.assertEqual(self.calls[-1], ("POST", "/v2/images/vton"))
+                status = await self.client.get(f"/requests/{request_id}")
+                self.assertEqual(status.json()["state"], expected_state)
+                if expected_state == "failed":
+                    self.assertEqual(status.json()["error"]["code"], "native_route_unavailable")
 
     async def test_old_video_keeps_fingerprint_and_backend_job(self):
         request_id = str(uuid4())

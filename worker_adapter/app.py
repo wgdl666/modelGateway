@@ -37,6 +37,18 @@ ROUTES = {
 }
 
 
+def native_route_not_found(response: httpx.Response) -> bool:
+    content_type = response.headers.get("content-type", "").partition(";")[0].strip().lower()
+    if content_type == "text/plain":
+        return response.content.strip().lower() == b"not found"
+    if content_type == "application/json":
+        try:
+            return response.json() == {"detail": "Not Found"}
+        except ValueError:
+            return False
+    return False
+
+
 class Objects:
     def __init__(self):
         self.provider = os.environ["VMIND_RESULT_PROVIDER"]
@@ -269,11 +281,9 @@ class Adapter:
             if response.status_code in (400, 401, 403, 413, 415, 422, 429):
                 await self.fail(row, "model_rejected", "native model rejected the request before execution")
                 return True
-            if (self.vton_edits and row["model_key"] == OUTFIT_MODEL and response.status_code == 404
-                    and response.headers.get("content-type", "").startswith("text/plain")
-                    and response.content.strip().lower() == b"not found"):
-                # 国内入口的纯文本 404 表示路由没有匹配，模型尚未接单，可以释放容量。
-                await self.fail(row, "native_route_unavailable", "native image route is unavailable")
+            # 提交时的标准路由拒绝能确认模型没接单，其他 404 仍需保留执行记录等待核对。
+            if response.status_code == 404 and native_route_not_found(response):
+                await self.fail(row, "native_route_unavailable", "native model route is unavailable")
                 return True
             if not response.is_success:
                 LOG.warning("native model response status=%s model_key=%s request_id=%s",

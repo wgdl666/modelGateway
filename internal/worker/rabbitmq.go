@@ -138,14 +138,14 @@ func (w *Reconciler) consumeQueued(ch *amqp091.Channel, queue string) error {
 				return amqp091.ErrClosed
 			}
 			if id := string(delivery.Body); protocol.ValidID(id) {
-				// 领取和派发共用配置快照及所选实例。失败时关闭通道，让 broker 重投未确认的消息。
+				// 领取时保存派发和回查共用的地址。失败时关闭通道，让 broker 重投未确认的消息。
 				cfg := w.runtime.Current()
-				task, instance, err := w.store.Claim(w.ctx, cfg.Config, id)
+				task, err := w.store.Claim(w.ctx, cfg.Config, id)
 				if err != nil {
 					return err
 				}
 				if task != nil {
-					if err := w.execute(cfg, task, instance.TargetInstance); err != nil {
+					if err := w.execute(cfg, task); err != nil {
 						return err
 					}
 				}

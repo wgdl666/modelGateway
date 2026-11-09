@@ -23,8 +23,6 @@ func (ModelInstance) Fields() []ent.Field {
 		field.Text("health_url").Immutable(),
 		field.Text("artifact_digest").Immutable(),
 		field.Text("resource_group").Immutable(),
-		// LTX 目标随 GPU 分组固定，探活和派发都依据这条登记。
-		field.Text("target_instance").Default("").Immutable(),
 		field.Int("group_capacity_units").Positive().Immutable(),
 		field.Int("capacity_units").Positive().Immutable(),
 		field.Text("machine_id").Default("").Immutable(),

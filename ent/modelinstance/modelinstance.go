@@ -23,8 +23,6 @@ const (
 	FieldArtifactDigest = "artifact_digest"
 	// FieldResourceGroup holds the string denoting the resource_group field in the database.
 	FieldResourceGroup = "resource_group"
-	// FieldTargetInstance holds the string denoting the target_instance field in the database.
-	FieldTargetInstance = "target_instance"
 	// FieldGroupCapacityUnits holds the string denoting the group_capacity_units field in the database.
 	FieldGroupCapacityUnits = "group_capacity_units"
 	// FieldCapacityUnits holds the string denoting the capacity_units field in the database.
@@ -57,7 +55,6 @@ var Columns = []string{
 	FieldHealthURL,
 	FieldArtifactDigest,
 	FieldResourceGroup,
-	FieldTargetInstance,
 	FieldGroupCapacityUnits,
 	FieldCapacityUnits,
 	FieldMachineID,
@@ -81,8 +78,6 @@ func ValidColumn(column string) bool {
 }
 
 var (
-	// DefaultTargetInstance holds the default value on creation for the "target_instance" field.
-	DefaultTargetInstance string
 	// GroupCapacityUnitsValidator is a validator for the "group_capacity_units" field. It is called by the builders before save.
 	GroupCapacityUnitsValidator func(int) error
 	// CapacityUnitsValidator is a validator for the "capacity_units" field. It is called by the builders before save.
@@ -134,11 +129,6 @@ func ByArtifactDigest(opts ...sql.OrderTermOption) OrderOption {
 // ByResourceGroup orders the results by the resource_group field.
 func ByResourceGroup(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldResourceGroup, opts...).ToFunc()
-}
-
-// ByTargetInstance orders the results by the target_instance field.
-func ByTargetInstance(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldTargetInstance, opts...).ToFunc()
 }
 
 // ByGroupCapacityUnits orders the results by the group_capacity_units field.

@@ -16,40 +16,36 @@ import (
 func init() {
 	modelinstanceFields := schema.ModelInstance{}.Fields()
 	_ = modelinstanceFields
-	// modelinstanceDescTargetInstance is the schema descriptor for target_instance field.
-	modelinstanceDescTargetInstance := modelinstanceFields[6].Descriptor()
-	// modelinstance.DefaultTargetInstance holds the default value on creation for the target_instance field.
-	modelinstance.DefaultTargetInstance = modelinstanceDescTargetInstance.Default.(string)
 	// modelinstanceDescGroupCapacityUnits is the schema descriptor for group_capacity_units field.
-	modelinstanceDescGroupCapacityUnits := modelinstanceFields[7].Descriptor()
+	modelinstanceDescGroupCapacityUnits := modelinstanceFields[6].Descriptor()
 	// modelinstance.GroupCapacityUnitsValidator is a validator for the "group_capacity_units" field. It is called by the builders before save.
 	modelinstance.GroupCapacityUnitsValidator = modelinstanceDescGroupCapacityUnits.Validators[0].(func(int) error)
 	// modelinstanceDescCapacityUnits is the schema descriptor for capacity_units field.
-	modelinstanceDescCapacityUnits := modelinstanceFields[8].Descriptor()
+	modelinstanceDescCapacityUnits := modelinstanceFields[7].Descriptor()
 	// modelinstance.CapacityUnitsValidator is a validator for the "capacity_units" field. It is called by the builders before save.
 	modelinstance.CapacityUnitsValidator = modelinstanceDescCapacityUnits.Validators[0].(func(int) error)
 	// modelinstanceDescMachineID is the schema descriptor for machine_id field.
-	modelinstanceDescMachineID := modelinstanceFields[9].Descriptor()
+	modelinstanceDescMachineID := modelinstanceFields[8].Descriptor()
 	// modelinstance.DefaultMachineID holds the default value on creation for the machine_id field.
 	modelinstance.DefaultMachineID = modelinstanceDescMachineID.Default.(string)
 	// modelinstanceDescReady is the schema descriptor for ready field.
-	modelinstanceDescReady := modelinstanceFields[11].Descriptor()
+	modelinstanceDescReady := modelinstanceFields[10].Descriptor()
 	// modelinstance.DefaultReady holds the default value on creation for the ready field.
 	modelinstance.DefaultReady = modelinstanceDescReady.Default.(bool)
 	// modelinstanceDescHealthCheckedAt is the schema descriptor for health_checked_at field.
-	modelinstanceDescHealthCheckedAt := modelinstanceFields[12].Descriptor()
+	modelinstanceDescHealthCheckedAt := modelinstanceFields[11].Descriptor()
 	// modelinstance.DefaultHealthCheckedAt holds the default value on creation for the health_checked_at field.
 	modelinstance.DefaultHealthCheckedAt = modelinstanceDescHealthCheckedAt.Default.(func() time.Time)
 	// modelinstanceDescDraining is the schema descriptor for draining field.
-	modelinstanceDescDraining := modelinstanceFields[13].Descriptor()
+	modelinstanceDescDraining := modelinstanceFields[12].Descriptor()
 	// modelinstance.DefaultDraining holds the default value on creation for the draining field.
 	modelinstance.DefaultDraining = modelinstanceDescDraining.Default.(bool)
 	// modelinstanceDescCreatedAt is the schema descriptor for created_at field.
-	modelinstanceDescCreatedAt := modelinstanceFields[15].Descriptor()
+	modelinstanceDescCreatedAt := modelinstanceFields[14].Descriptor()
 	// modelinstance.DefaultCreatedAt holds the default value on creation for the created_at field.
 	modelinstance.DefaultCreatedAt = modelinstanceDescCreatedAt.Default.(func() time.Time)
 	// modelinstanceDescUpdatedAt is the schema descriptor for updated_at field.
-	modelinstanceDescUpdatedAt := modelinstanceFields[16].Descriptor()
+	modelinstanceDescUpdatedAt := modelinstanceFields[15].Descriptor()
 	// modelinstance.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	modelinstance.DefaultUpdatedAt = modelinstanceDescUpdatedAt.Default.(func() time.Time)
 	// modelinstance.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
