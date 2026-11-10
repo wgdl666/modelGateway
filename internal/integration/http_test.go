@@ -128,9 +128,16 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 	}
 	if err := json.Unmarshal(list, &page); err != nil || page.Total != 1 || len(page.Items) != 1 ||
 		page.Items[0].RequestID != id || page.Items[0].ModelKey != spec.ModelKey || !page.Items[0].SlotReserved ||
-		strings.Contains(string(list), "request_payload") || strings.Contains(string(list), `"capability"`) {
+		strings.Contains(string(list), "request_payload") || strings.Contains(string(list), `"capability"`) ||
+		strings.Contains(string(list), "mime_type") || strings.Contains(string(list), "parameters") {
 		t.Fatalf("invalid list %s, error %v", list, err)
 	}
+	media := get("/v1/admin/requests/"+id+"/media?kind=input&index=0", adminToken, 200)
+	if string(media) != "x" {
+		t.Fatalf("input media = %q", media)
+	}
+	get("/v1/admin/requests/"+id+"/media?kind=input&index=1", adminToken, 404)
+	get("/v1/admin/requests/"+id+"/media?kind=output&index=0", adminToken, 404)
 	instances := get("/v1/instances", adminToken, 200)
 	if !strings.Contains(string(instances), `"reserved_units":2`) || !strings.Contains(string(instances), `"reserved_requests":1`) {
 		t.Fatalf("invalid instance capacities %s", instances)
@@ -141,7 +148,9 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 	detail := get("/v1/admin/requests/"+id, adminToken, 200)
 	var task requestView
 	if err := json.Unmarshal(detail, &task); err != nil || task.TraceID != "trace-for-ops" ||
-		task.State != "succeeded" || task.Result == nil || len(task.Result.Files) != 1 || task.SlotReserved {
+		task.State != "succeeded" || task.Result == nil || len(task.Result.Files) != 1 || task.SlotReserved ||
+		strings.Contains(string(detail), "eA==") || strings.Contains(string(detail), "request_payload") ||
+		!strings.Contains(string(detail), `"parameters":{}`) || !strings.Contains(string(detail), `"role":"image"`) {
 		t.Fatalf("invalid detail %s, error %v", detail, err)
 	}
 }

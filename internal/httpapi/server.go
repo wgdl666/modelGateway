@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -26,11 +27,19 @@ import (
 )
 
 // Server 固定每次入站请求的配置快照，让鉴权、地址校验和受理使用同一份配置。
+type objectReader interface {
+	Get(ctx context.Context, object protocol.Object) (io.ReadCloser, int64, error)
+}
+
 type Server struct {
 	store   *store.Store
 	runtime *config.Runtime
 	uploads chan struct{}
 	direct  *http.Client
+
+	objectsOnce sync.Once
+	objects     objectReader
+	objectsErr  error
 }
 
 func New(tasks *store.Store, runtime *config.Runtime) *Server {
@@ -75,6 +84,7 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.POST("/v1/resource-groups", s.auth("admin", s.createResourceGroup))
 	h.PATCH("/v1/resource-groups", s.auth("admin", s.updateResourceGroup))
 	h.GET("/v1/admin/requests", s.auth("admin", s.listRequests))
+	h.GET("/v1/admin/requests/:id/media", s.auth("admin", s.requestMedia))
 	h.GET("/v1/admin/requests/:id", s.auth("admin", s.requestDetail))
 	h.POST("/v1/gateway/requests/cancel", s.auth("api", s.cancelRequest))
 	h.POST("/v1/gateway/requests/:model_key", s.auth("api", s.submit))
