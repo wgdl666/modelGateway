@@ -52,7 +52,7 @@ func New(tasks *store.Store, runtime *config.Runtime) (*Reconciler, error) {
 		return nil, errors.New("invalid RabbitMQ connection configuration")
 	}
 	// 原生路由和结果桶属于部署配置，客户端与执行器共享同一份固定配置。
-	if len(cfg.NativeBackends) != 0 {
+	if len(cfg.NativeBackends) != 0 || len(cfg.NativeModels) != 0 {
 		var err error
 		w.nativeImageAuth, err = readNativeAuth("MODEL_GATEWAY_NATIVE_IMAGE")
 		if err != nil {
@@ -70,7 +70,8 @@ func New(tasks *store.Store, runtime *config.Runtime) (*Reconciler, error) {
 	w.ctx, w.cancel = context.WithCancel(context.Background())
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	transport.DialContext = (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+	transport.DialContext = backendDialer(net.DefaultResolver.LookupNetIP, dialer.DialContext)
 	w.client = &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return w, nil
 }
@@ -114,6 +115,14 @@ func (w *Reconciler) modelCall(ctx context.Context, cfg *config.Snapshot, method
 }
 
 func (w *Reconciler) modelHTTP(req *http.Request, nativeSubmission bool) (*http.Response, error) {
+	// Validate each request, including health, polling and artifact downloads.
+	// The transport pins DNS answers at dial time; pooled connections have already
+	// passed that check. Synchronous upstreams retain their separate fixed policy.
+	cfg := w.runtime.Current()
+	if err := cfg.ValidateEndpoint(req.URL.String(), true); err != nil {
+		return nil, err
+	}
+	req = req.WithContext(context.WithValue(req.Context(), backendPolicyKey{}, cfg))
 	resp, err := w.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -162,7 +171,7 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 	if err := json.Unmarshal(task.RequestPayload, &payload); err != nil {
 		return w.failDispatch(task, 500, "invalid_saved_request", "saved request is invalid", false)
 	}
-	backend, direct := cfg.NativeBackends[task.Endpoint]
+	backend, direct := cfg.NativeBackendFor(task.ModelKey, task.Endpoint)
 	var raw []byte
 	if !direct {
 		var err error
@@ -249,7 +258,7 @@ func (w *Reconciler) saveModelResponse(cfg *config.Snapshot, task *ent.Request, 
 }
 
 func (w *Reconciler) pollModel(cfg *config.Snapshot, task *ent.Request) error {
-	if backend, direct := cfg.NativeBackends[task.Endpoint]; direct {
+	if backend, direct := cfg.NativeBackendFor(task.ModelKey, task.Endpoint); direct {
 		return w.pollNative(cfg, task, backend)
 	}
 	ctx, cancel := context.WithTimeout(w.ctx, 3*time.Second)
@@ -283,7 +292,7 @@ func (w *Reconciler) probe(cfg *config.Snapshot) error {
 		probes.Go(func() {
 			var ready bool
 			if cfg.AcceptsInstanceAddress(row.ModelKey, row.Endpoint, row.HealthURL) {
-				target := protocol.InstanceTarget{ModelKey: row.ModelKey, Endpoint: row.Endpoint, HealthURL: row.HealthURL}
+				target := protocol.InstanceTarget{ModelKey: row.ModelKey, Endpoint: row.Endpoint, HealthURL: row.HealthURL, GPUDevices: row.GpuDevices}
 				result, err := w.ProbeInstance(w.ctx, cfg, target)
 				ready = err == nil && result.Ready
 			}

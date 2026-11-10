@@ -160,7 +160,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 				return err
 			}
 			nextPoll := next.DeadlineAt.Add(2 * time.Second)
-			if _, direct := cfg.NativeBackends[i.Endpoint]; direct {
+			if _, direct := cfg.NativeBackendFor(next.ModelKey, i.Endpoint); direct {
 				// 原生调用可晚于上游返回，给原派发者留足执行和写终态的时间。
 				nextPoll = now.Add(cfg.NativeExecutionTimeout).Add(ExecutionWriteTimeout)
 			}

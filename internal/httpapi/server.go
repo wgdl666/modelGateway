@@ -12,7 +12,6 @@ import (
 	"mime"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -243,14 +242,13 @@ func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_instance", "invalid model instance specification", "")
 		return
 	}
-	target := protocol.InstanceTarget{ModelKey: spec.ModelKey, Endpoint: spec.Endpoint, HealthURL: spec.HealthURL}
+	target := protocol.InstanceTarget{ModelKey: spec.ModelKey, Endpoint: spec.Endpoint, HealthURL: spec.HealthURL, GPUDevices: spec.GPUDevices}
 	if err := cfg.ValidateInstanceTarget(target); err != nil {
 		writeError(c, 400, "invalid_instance", err.Error(), "")
 		return
 	}
 	// 原生视频地址选择实际 worker，登记卡号必须与地址中的卡号一致。
-	if cfg.NativeBackends[spec.Endpoint].Video && (len(spec.GPUDevices) != 1 ||
-		!strings.HasSuffix(spec.Endpoint, "/gpu"+strconv.Itoa(spec.GPUDevices[0]))) {
+	if !cfg.AcceptsInstanceGPU(spec.ModelKey, spec.Endpoint, spec.GPUDevices) {
 		writeError(c, 400, "invalid_instance", "physical GPU does not match the video endpoint", "")
 		return
 	}

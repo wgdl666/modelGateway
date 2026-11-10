@@ -1,0 +1,11 @@
+{
+  "backend_cidrs": ["10.96.0.0/16"],
+  "backend_ports": ["443", "8443"],
+  "backend_public_hosts": ["*.seetacloud.com"],
+  "native_backends": {},
+  "native_models": {
+    "Vmind_outfit_v1.0": {},
+    "Vmind_bodymodel_v1.0": {},
+    "Vmind_outfit_video_v1.0": {"video": true}
+  }
+}

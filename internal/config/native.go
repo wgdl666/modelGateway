@@ -4,17 +4,48 @@ import (
 	"errors"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
 var gpuEndpointPath = regexp.MustCompile(`^/gpu(0|[1-9][0-9]*)$`)
+var gpuEndpointSuffix = regexp.MustCompile(`/gpu(0|[1-9][0-9]*)$`)
+
+// A video instance identifies one physical GPU. Named GPU paths must agree;
+// endpoints using dedicated ports or other base paths remain valid.
+func (c Config) AcceptsInstanceGPU(model, endpoint string, devices []int) bool {
+	backend, native := c.NativeBackendFor(model, endpoint)
+	if !native || !backend.Video {
+		return true
+	}
+	if len(devices) != 1 || devices[0] < 0 {
+		return false
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return false
+	}
+	match := gpuEndpointSuffix.FindStringSubmatch(u.Path)
+	return match == nil || match[1] == strconv.Itoa(devices[0])
+}
 
 type NativeBackend struct {
-	// 地址固定使用图片或视频协议，避免通过实例登记改变该地址可用的原生凭据。
+	// 按模型类型选择原生协议；执行地址来自实例登记。
 	Video     bool `json:"video,omitempty"`
 	VTONEdits bool `json:"vton_edits,omitempty"`
+}
+
+// NativeBackendFor selects the protocol, never an address. Execution always uses
+// the endpoint captured from the selected instance. Explicit legacy bindings
+// remain supported during migration; new GPU instances need no binding here.
+func (c Config) NativeBackendFor(model, endpoint string) (NativeBackend, bool) {
+	if backend, ok := c.NativeBackends[endpoint]; ok {
+		return backend, true
+	}
+	backend, ok := c.NativeModels[model]
+	return backend, ok
 }
 
 func (b NativeBackend) Matches(model string) bool {
@@ -51,12 +82,14 @@ func (c Config) AcceptsInstanceAddress(model, endpoint, healthURL string) bool {
 	if protocol.SynchronousKind(model) != "" {
 		return c.acceptsSynchronousTarget(model, endpoint, healthURL)
 	}
-	backend, direct := c.NativeBackends[endpoint]
+	backend, direct := c.NativeBackendFor(model, endpoint)
 	gpu := isGPUEndpoint(endpoint)
 	if !direct {
-		return !gpu
+		u, err := url.Parse(endpoint)
+		return err == nil && !gpu && (u.Path == "" || u.Path == "/")
 	}
-	if !backend.Matches(model) || backend.Video != gpu {
+	_, legacy := c.NativeBackends[endpoint]
+	if !backend.Matches(model) || (legacy && backend.Video != gpu) {
 		return false
 	}
 	if backend.Video {
@@ -73,8 +106,13 @@ type NativeResults struct {
 	Endpoint string `json:"endpoint,omitempty"`
 }
 
-// 原生协议由运维配置绑定到原生地址，注册凭据只能选择已允许的执行地址。
+// 协议按模型配置；旧地址绑定保留用于兼容迁移。
 func (s *Snapshot) validateNative() error {
+	for model, backend := range s.NativeModels {
+		if !protocol.ValidModelKey(model) || protocol.SynchronousKind(model) != "" || !backend.Matches(model) || (backend.Video && backend.VTONEdits) {
+			return errors.New("invalid native_models protocol")
+		}
+	}
 	for endpoint, backend := range s.NativeBackends {
 		if strings.HasSuffix(endpoint, "/") || s.ValidateEndpoint(endpoint, false) != nil {
 			return errors.New("invalid native_backends endpoint")

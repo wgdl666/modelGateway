@@ -45,9 +45,10 @@ type Instance struct {
 }
 
 type InstanceTarget struct {
-	ModelKey  string `json:"model_key"`
-	Endpoint  string `json:"endpoint"`
-	HealthURL string `json:"health_url"`
+	ModelKey   string `json:"model_key"`
+	Endpoint   string `json:"endpoint"`
+	HealthURL  string `json:"health_url"`
+	GPUDevices []int  `json:"gpu_devices,omitempty"`
 }
 
 type InstanceHealth struct {
