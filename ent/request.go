@@ -38,6 +38,8 @@ type Request struct {
 	InstanceID string `json:"instance_id,omitempty"`
 	// ResourceGroup holds the value of the "resource_group" field.
 	ResourceGroup string `json:"resource_group,omitempty"`
+	// ResourceGroups holds the value of the "resource_groups" field.
+	ResourceGroups []string `json:"resource_groups,omitempty"`
 	// Endpoint holds the value of the "endpoint" field.
 	Endpoint string `json:"endpoint,omitempty"`
 	// ArtifactDigest holds the value of the "artifact_digest" field.
@@ -74,7 +76,7 @@ func (*Request) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case request.FieldRequestPayload, request.FieldResult:
+		case request.FieldRequestPayload, request.FieldResourceGroups, request.FieldResult:
 			values[i] = new([]byte)
 		case request.FieldSlotReserved:
 			values[i] = new(sql.NullBool)
@@ -167,6 +169,14 @@ func (_m *Request) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field resource_group", values[i])
 			} else if value.Valid {
 				_m.ResourceGroup = value.String
+			}
+		case request.FieldResourceGroups:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field resource_groups", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ResourceGroups); err != nil {
+					return fmt.Errorf("unmarshal field resource_groups: %w", err)
+				}
 			}
 		case request.FieldEndpoint:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -324,6 +334,9 @@ func (_m *Request) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("resource_group=")
 	builder.WriteString(_m.ResourceGroup)
+	builder.WriteString(", ")
+	builder.WriteString("resource_groups=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ResourceGroups))
 	builder.WriteString(", ")
 	builder.WriteString("endpoint=")
 	builder.WriteString(_m.Endpoint)

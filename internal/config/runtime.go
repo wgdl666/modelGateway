@@ -134,7 +134,7 @@ func prepareConfig(c Config) (*Snapshot, error) {
 		return nil, errors.New("queue limits must be positive")
 	}
 	for model, units := range c.UnitsByModelKey {
-		if !protocol.ValidModelKey(model) || units < 1 || units > 65536 {
+		if (!protocol.ValidModelKey(model) && protocol.SynchronousKind(model) == "") || units < 1 || units > 65536 {
 			return nil, errors.New("invalid capacity units by model key")
 		}
 	}

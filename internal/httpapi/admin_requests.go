@@ -19,22 +19,24 @@ import (
 
 type requestView struct {
 	protocol.Response
-	TraceID       string     `json:"trace_id,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	StartedAt     *time.Time `json:"started_at,omitempty"`
-	FinishedAt    *time.Time `json:"finished_at,omitempty"`
-	InstanceID    string     `json:"instance_id,omitempty"`
-	ResourceGroup string     `json:"resource_group,omitempty"`
-	Artifact      string     `json:"artifact_digest,omitempty"`
-	BackendTaskID string     `json:"backend_task_id,omitempty"`
-	SlotReserved  bool       `json:"slot_reserved"`
+	TraceID        string     `json:"trace_id,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	FinishedAt     *time.Time `json:"finished_at,omitempty"`
+	InstanceID     string     `json:"instance_id,omitempty"`
+	ResourceGroup  string     `json:"resource_group,omitempty"`
+	ResourceGroups []string   `json:"resource_groups,omitempty"`
+	Endpoint       string     `json:"endpoint,omitempty"`
+	Artifact       string     `json:"artifact_digest,omitempty"`
+	BackendTaskID  string     `json:"backend_task_id,omitempty"`
+	SlotReserved   bool       `json:"slot_reserved"`
 }
 
 func viewRequest(row *ent.Request) requestView {
 	return requestView{
 		Response: taskResponse(row), TraceID: row.TraceID,
 		CreatedAt: row.CreatedAt, StartedAt: row.StartedAt, FinishedAt: row.FinishedAt,
-		InstanceID: row.InstanceID, ResourceGroup: row.ResourceGroup, Artifact: row.ArtifactDigest,
+		InstanceID: row.InstanceID, ResourceGroup: row.ResourceGroup, ResourceGroups: row.ResourceGroups, Endpoint: row.Endpoint, Artifact: row.ArtifactDigest,
 		BackendTaskID: row.BackendTaskID, SlotReserved: row.SlotReserved,
 	}
 }

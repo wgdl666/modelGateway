@@ -5,6 +5,7 @@ import (
 	"mime"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
 const decisionPredictPath = "/v1/decision/predict"
@@ -40,5 +41,5 @@ func (s *Server) decisionPredict(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_multipart", "could not read multipart request", "")
 		return
 	}
-	forwardDirect(ctx, c, s.direct, "Decision", "http://"+cfg.DecisionAddr+"/v1/predict", contentType, body)
+	s.forwardSynchronous(ctx, c, s.direct, protocol.DecisionModel, "/v1/predict", contentType, body)
 }

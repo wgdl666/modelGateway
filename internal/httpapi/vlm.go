@@ -16,7 +16,7 @@ func (s *Server) chatCompletions(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 404, "model_not_found", "model is not configured", "")
 		return
 	}
-	// 对话服务返回文本。保留 OpenAI 请求体和响应，避免转入只保存媒体文件的任务队列。
+	// 对话响应仍保留 OpenAI 格式和流式传输，登记与容量由统一账本决定。
 	var fields map[string]json.RawMessage
 	select {
 	case s.uploads <- struct{}{}:
@@ -35,5 +35,5 @@ func (s *Server) chatCompletions(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	forwardDirect(ctx, c, s.direct, "VLM", "http://"+cfg.VLMAddr+chatCompletionsPath, "application/json", body)
+	s.forwardSynchronous(ctx, c, s.direct, protocol.DreamModel, chatCompletionsPath, "application/json", body)
 }

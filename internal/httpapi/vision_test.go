@@ -58,13 +58,13 @@ func TestVisionHealth(t *testing.T) {
 	}
 	got := call(cfg.AdminToken)
 	var models []visionModelHealth
-	if got.Code != 200 || json.Unmarshal(got.Body.Bytes(), &models) != nil || calls != 1 || len(models) != 5 {
+	if got.Code != 200 || json.Unmarshal(got.Body.Bytes(), &models) != nil || calls != 1 || len(models) != 6 {
 		t.Fatalf("vision health: %d %s, upstream calls %d", got.Code, got.Body, calls)
 	}
 	// 聚合降级仍应分别展示正常、未就绪和无探测结果，避免一个后端影响其他模型的显示。
 	want := map[string]string{
-		"Vmind_human_parse_v1.0": "true", "human-yolo": "false", "Vmind_segment_person_bria_v1.0": "true",
-		"Vmind_segment_subject_bria_v1.0": "true", "lens-distortion-correction": "null",
+		"facesim": "false", "Vmind_human_parse_v1.0": "true", "Vmind_human_yolo_v1.0": "false", "Vmind_segment_person_bria_v1.0": "true",
+		"Vmind_segment_subject_bria_v1.0": "true", "Vmind_lens_distortion_correction_v1.0": "null",
 	}
 	for _, model := range models {
 		ready, _ := json.Marshal(model.Ready)
@@ -76,8 +76,8 @@ func TestVisionHealth(t *testing.T) {
 	upstreamBody = `not json`
 	got = call(cfg.AdminToken)
 	models = nil
-	if got.Code != 200 || json.Unmarshal(got.Body.Bytes(), &models) != nil || len(models) != 5 {
-		t.Fatalf("malformed upstream should preserve five models: %d %s", got.Code, got.Body)
+	if got.Code != 200 || json.Unmarshal(got.Body.Bytes(), &models) != nil || len(models) != 6 {
+		t.Fatalf("malformed upstream should preserve six models: %d %s", got.Code, got.Body)
 	}
 	for _, model := range models {
 		if model.Ready != nil {
@@ -188,35 +188,7 @@ func TestVisionInference(t *testing.T) {
 			}
 		})
 	}
-	if got := call(parser+"?image_url=http://internal/photo", cfg.APIToken, jsonType, image); got.Code != 200 || got.Body.String() != `{"success":true}` {
-		t.Fatalf("parser response was not forwarded: %d", got.Code)
-	}
-	form.Reset()
-	out = multipart.NewWriter(&form)
-	file, err := out.CreateFormFile("file", "photo.jpg")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.WriteString(file, strings.Repeat("x", 4500)); err != nil {
-		t.Fatal(err)
-	}
-	if err := out.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if got := call(segment, cfg.APIToken, out.FormDataContentType(), form.String()); got.Code != 200 ||
-		string(got.Header().ContentType()) != "image/png" || got.Body.String() != "png-data" || calls != 2 {
-		t.Fatalf("segment response was not forwarded: %d, calls %d", got.Code, calls)
-	}
-	cfg.VisionMaxBodyBytes = 10 << 10
-	if err := runtime.Reload(cfg); err != nil {
-		t.Fatal(err)
-	}
-	if got := call(parser, cfg.APIToken, jsonType, largeImage); got.Code != 200 || calls != 3 {
-		t.Fatalf("vision upload override returned %d, calls %d", got.Code, calls)
-	}
-	if runtime.Current().MaxBodyBytes != cfg.MaxBodyBytes {
-		t.Fatal("vision upload override changed the general request limit")
-	}
+	// 成功转发、多模型协议及原图预算在真实 HTTP + PG 集成测试中验证。
 	cfg.VisionAddr = "8.8.8.8:18280"
 	if runtime.Reload(cfg) == nil {
 		t.Fatal("a public vision address must be rejected")

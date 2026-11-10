@@ -9,8 +9,10 @@ import (
 )
 
 type VisionService struct {
-	Ready  *bool           `json:"ready"`
-	Health json.RawMessage `json:"health"`
+	TargetedDispatch bool            `json:"targeted_dispatch"`
+	Endpoint         string          `json:"endpoint"`
+	Ready            *bool           `json:"ready"`
+	Health           json.RawMessage `json:"health"`
 }
 
 // ReadVision 接受聚合 503 的细项。一张卡异常时，仍保留其他实际副本的探测结果。

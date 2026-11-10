@@ -40,6 +40,10 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 		now := time.Now().UTC()
 		old, err := tx.Request.Get(ctx, in.ID)
 		if err == nil {
+			// 同步流无法重放。重复键明确冲突，不允许另一连接接管或再次执行。
+			if protocol.SynchronousKind(in.ModelKey) != "" {
+				return ErrConflict
+			}
 			if old.ModelKey != in.ModelKey || !sameInput(old.RequestPayload, in.Input) {
 				return ErrConflict
 			}
@@ -48,6 +52,16 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 		}
 		if !ent.IsNotFound(err) {
 			return err
+		}
+		// 同步连接不能在未登记时保留原请求；异步任务保持原有持久排队等待部署的语义。
+		if protocol.SynchronousKind(in.ModelKey) != "" {
+			registered, err := tx.ModelInstance.Query().Where(modelinstance.ModelKeyEQ(in.ModelKey), modelinstance.DeletedAtIsNil()).Exist(ctx)
+			if err != nil {
+				return err
+			}
+			if !registered {
+				return ErrModelUnregistered
+			}
 		}
 		// 实例短时下线时仍可接单。派发再查健康和可用容量，超过原截止时间的任务按排队超时结束。
 		// 同模型只按等待条数限流，可串行化事务避免多个副本同时接单超额。
@@ -60,9 +74,14 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 		if waiting >= in.MaxWaiting {
 			return ErrFull
 		}
-		task, err = tx.Request.Create().SetID(in.ID).SetModelKey(in.ModelKey).
+		create := tx.Request.Create().SetID(in.ID).SetModelKey(in.ModelKey).
 			SetTraceID(in.TraceID).SetRequestPayload(in.Payload).SetPayloadBytes(int64(len(in.Payload))).SetUnits(in.Units).
-			SetCreatedAt(now).SetDeadlineAt(now.Add(in.BackendTimeout)).SetQueuePublishAt(now).Save(ctx)
+			SetCreatedAt(now).SetDeadlineAt(now.Add(in.BackendTimeout))
+		// 同步响应由原连接读取，容量仍在 PG 竞争；不能再投 MQ 产生第二次模型执行。
+		if protocol.SynchronousKind(in.ModelKey) == "" {
+			create.SetQueuePublishAt(now)
+		}
+		task, err = create.Save(ctx)
 		return err
 	})
 	return task, err
@@ -82,19 +101,32 @@ func (s *Store) MarkPublished(ctx context.Context, id string, due time.Time) err
 }
 
 type reservation struct {
-	InstanceID    string `json:"instance_id"`
-	ResourceGroup string `json:"resource_group"`
-	Units         int    `json:"units"`
-	Requests      int    `json:"requests"`
+	InstanceID     string
+	ResourceGroup  string
+	ResourceGroups []string
+	Endpoint       string
+	Units          int
+	Requests       int
 }
 
 // 派发与 Ops 查询共用容量占用口径，等待结果确认的任务继续占用槽位。
 func reserved(ctx context.Context, client *ent.RequestClient) ([]reservation, error) {
-	var occupied []reservation
-	err := client.Query().Where(request.SlotReservedEQ(true)).
-		GroupBy(request.FieldInstanceID, request.FieldResourceGroup).
-		Aggregate(ent.As(ent.Sum(request.FieldUnits), "units"), ent.As(ent.Count(), "requests")).Scan(ctx, &occupied)
-	return occupied, err
+	rows, err := client.Query().Where(request.SlotReservedEQ(true)).Select(request.FieldInstanceID,
+		request.FieldResourceGroup, request.FieldResourceGroups, request.FieldEndpoint, request.FieldUnits).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	occupied := make([]reservation, 0, len(rows))
+	for _, row := range rows {
+		groups := row.ResourceGroups
+		if len(groups) == 0 {
+			// 滚动发布中的旧网关只会写单卡请求，沿用其冻结的主组直到旧副本退出。
+			groups = []string{row.ResourceGroup}
+		}
+		occupied = append(occupied, reservation{InstanceID: row.InstanceID, ResourceGroup: row.ResourceGroup,
+			ResourceGroups: groups, Endpoint: row.Endpoint, Units: row.Units, Requests: 1})
+	}
+	return occupied, nil
 }
 
 func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.Request, error) {
@@ -119,39 +151,55 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		// 同键不同业务的旧登记在迁移时已归档，派发直接按请求的模型键选实例。
 		instances, err := tx.ModelInstance.Query().Where(
 			modelinstance.DeletedAtIsNil(), modelinstance.ModelKeyEQ(next.ModelKey),
-			modelinstance.ReadyEQ(true), modelinstance.DrainingEQ(false), modelinstance.HealthCheckedAtGT(now.Add(-probeMaxAge)),
+			modelinstance.ReadyEQ(true), modelinstance.DrainingEQ(false),
 		).Order(ent.Asc(modelinstance.FieldID)).All(ctx)
 		if err != nil {
 			return err
 		}
 		if len(instances) == 0 {
+			if protocol.SynchronousKind(next.ModelKey) != "" {
+				return nil
+			}
 			return deferPublication(ctx, tx, next)
 		}
-		groups := make([]string, 0, len(instances))
-		for _, instance := range instances {
-			groups = append(groups, instance.ResourceGroup)
-		}
-		// 共享锁与容量更新互斥；修改返回后，新派发不能沿用旧上限。
-		limits, err := groupCapacities(ctx, tx.ResourceGroup.Query().
-			Where(resourcegroup.IDIn(groups...)).Order(resourcegroup.ByID()).ForShare())
+		// 同一事务锁定物理卡的容量，多卡实例必须一次拿齐全部额度。
+		groups, err := tx.ResourceGroup.Query().Order(resourcegroup.ByID()).ForShare().All(ctx)
 		if err != nil {
 			return err
 		}
+		limits := make(map[string]int, len(groups))
+		for _, group := range groups {
+			limits[group.ID] = group.CapacityUnits
+		}
+		gpuGroups := indexGPUResourceGroups(groups)
 		occupied, err := reserved(ctx, tx.Request)
 		if err != nil {
 			return err
 		}
-		byInstance, byGroup := map[string]int{}, map[string]int{}
+		byExecution, byGroup := map[string]int{}, map[string]int{}
 		for _, hold := range occupied {
-			byInstance[hold.InstanceID] += hold.Units
-			byGroup[hold.ResourceGroup] += hold.Units
+			// 人物/主体抠图等不同模型键共用执行端，不能各自获得一份独立并发。
+			byExecution[hold.ResourceGroup+"\x00"+hold.Endpoint] += hold.Units
+			for _, group := range hold.ResourceGroups {
+				byGroup[group] += hold.Units
+			}
 		}
 		for _, i := range instances {
 			// 地址退出原生配置后，旧探活快照不能让它按 Worker 协议接单。
-			if !cfg.AcceptsInstanceAddress(i.ModelKey, i.Endpoint, i.HealthURL) {
+			if !instanceHealthy(i, now) || !cfg.AcceptsInstanceAddress(i.ModelKey, i.Endpoint, i.HealthURL) {
 				continue
 			}
-			free := min(i.CapacityUnits-byInstance[i.ID], limits[i.ResourceGroup]-byGroup[i.ResourceGroup])
+			memberships := []string{i.ResourceGroup}
+			if len(i.GpuDevices) > 1 {
+				memberships = gpuGroups.instanceGroups(i)
+				if len(memberships) != len(i.GpuDevices) {
+					continue
+				}
+			}
+			free := i.CapacityUnits - byExecution[i.ResourceGroup+"\x00"+i.Endpoint]
+			for _, group := range memberships {
+				free = min(free, limits[group]-byGroup[group])
+			}
 			if free < next.Units {
 				continue
 			}
@@ -160,15 +208,18 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 				return err
 			}
 			nextPoll := next.DeadlineAt.Add(2 * time.Second)
-			if _, direct := cfg.NativeBackends[i.Endpoint]; direct {
+			if _, direct := cfg.NativeBackends[i.Endpoint]; direct || protocol.SynchronousKind(i.ModelKey) != "" {
 				// 原生调用可晚于上游返回，给原派发者留足执行和写终态的时间。
 				nextPoll = now.Add(cfg.NativeExecutionTimeout).Add(ExecutionWriteTimeout)
 			}
 			// 回队后会生成新的领取标识，旧一轮的响应不能写入后续重试。
 			task, err = tx.Request.UpdateOneID(id).SetState(request.StateProcessing).SetSlotReserved(true).ClearQueuePublishAt().
-				SetInstanceID(i.ID).SetResourceGroup(i.ResourceGroup).SetEndpoint(i.Endpoint).SetArtifactDigest(i.ArtifactDigest).
+				SetInstanceID(i.ID).SetResourceGroup(i.ResourceGroup).SetResourceGroups(memberships).SetEndpoint(i.Endpoint).SetArtifactDigest(i.ArtifactDigest).
 				SetStartedAt(now).SetNextPollAt(nextPoll).SetPollClaim(uuid.NewString()).Save(ctx)
 			return err
+		}
+		if protocol.SynchronousKind(next.ModelKey) != "" {
+			return nil
 		}
 		return deferPublication(ctx, tx, next)
 	})
@@ -192,7 +243,7 @@ func (s *Store) RequeueDispatch(ctx context.Context, id string, startedAt time.T
 	_, err := s.db.Request.Update().Where(request.IDEQ(id), request.StateEQ(request.StateProcessing),
 		request.SlotReservedEQ(true), request.StartedAtEQ(startedAt), request.PollClaimEQ(claim), request.BackendTaskIDEQ("")).
 		SetState(request.StateQueued).SetSlotReserved(false).SetQueuePublishAt(due).
-		SetInstanceID("").SetResourceGroup("").SetEndpoint("").SetArtifactDigest("").
+		SetInstanceID("").SetResourceGroup("").SetResourceGroups([]string{}).SetEndpoint("").SetArtifactDigest("").
 		ClearStartedAt().ClearNextPollAt().SetPollClaim("").Save(ctx)
 	return err
 }
@@ -219,5 +270,13 @@ func (s *Store) Expire(ctx context.Context) error {
 	_, err := s.db.Request.Update().Where(request.StateEQ(request.StateQueued), request.DeadlineAtLTE(now)).
 		SetState(request.StateFailed).SetErrorCode("queue_timeout").SetErrorMessage("request expired before dispatch").
 		SetErrorStatus(504).SetFinishedAt(now).Save(ctx)
+	if err != nil {
+		return err
+	}
+	// 同步执行的进程消失后无法回查上游任务，明确标记结果未知并保留容量，禁止静默重复执行。
+	_, err = s.db.Request.Update().Where(request.ModelKeyIn(protocol.SynchronousModels()...),
+		request.StateEQ(request.StateProcessing), request.SlotReservedEQ(true), request.NextPollAtLTE(now)).
+		SetState(request.StateFailed).SetErrorCode("backend_outcome_unknown").SetErrorMessage("synchronous model outcome is unknown").
+		SetErrorStatus(504).SetFinishedAt(now).ClearNextPollAt().Save(ctx)
 	return err
 }

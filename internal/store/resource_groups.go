@@ -98,7 +98,9 @@ func (s *Store) ListResourceGroups(ctx context.Context) ([]ResourceGroupView, er
 		}
 	}
 	for _, hold := range holds {
-		units[hold.ResourceGroup] += hold.Units
+		for _, group := range hold.ResourceGroups {
+			units[group] += hold.Units
+		}
 	}
 	// 从组表起查以保留空组，占用口径和派发共用账本。
 	views := make([]ResourceGroupView, 0, len(groups))
@@ -109,18 +111,6 @@ func (s *Store) ListResourceGroups(ctx context.Context) ([]ResourceGroupView, er
 		})
 	}
 	return views, nil
-}
-
-func groupCapacities(ctx context.Context, query *ent.ResourceGroupQuery) (map[string]int, error) {
-	groups, err := query.Select(resourcegroup.FieldID, resourcegroup.FieldCapacityUnits).All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	limits := make(map[string]int, len(groups))
-	for _, group := range groups {
-		limits[group.ID] = group.CapacityUnits
-	}
-	return limits, nil
 }
 
 type physicalGPU struct {
@@ -142,6 +132,10 @@ func indexGPUResourceGroups(groups []*ent.ResourceGroup) gpuGroupIndex {
 
 // 多卡模型只有一个实例 ID，每张参与执行的卡都能从资源组跳转到它。
 func (index gpuGroupIndex) instanceGroups(row *ent.ModelInstance) []string {
+	// CPU 服务仍需独立容量组，只是不占用任何物理 GPU。
+	if len(row.GpuDevices) == 0 {
+		return []string{row.ResourceGroup}
+	}
 	groups := make([]string, 0, len(row.GpuDevices))
 	for _, device := range row.GpuDevices {
 		if id := index[physicalGPU{row.MachineID, device}]; id != "" {

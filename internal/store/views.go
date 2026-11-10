@@ -72,7 +72,7 @@ func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
 			ModelInstance: row, ReservedUnits: units[row.ID], ReservedRequests: requests[row.ID],
 			// 暂停后不再写探活，更新时间可识别同一份编辑草稿。
 			ConfigRevision: row.UpdatedAt.UTC().Format(time.RFC3339Nano),
-			Healthy:        healthy, Eligible: healthy && !row.Draining && !synchronous,
+			Healthy:        healthy, Eligible: healthy && !row.Draining,
 			Clearable: instanceClearable(row, healthy) && requests[row.ID] == 0,
 		})
 	}
@@ -90,7 +90,7 @@ type RequestFilter struct {
 var requestSummaryFields = []string{
 	request.FieldID, request.FieldModelKey, request.FieldTraceID,
 	request.FieldState, request.FieldCreatedAt, request.FieldStartedAt, request.FieldFinishedAt,
-	request.FieldInstanceID, request.FieldResourceGroup, request.FieldArtifactDigest,
+	request.FieldInstanceID, request.FieldResourceGroup, request.FieldResourceGroups, request.FieldEndpoint, request.FieldArtifactDigest,
 	request.FieldBackendTaskID, request.FieldSlotReserved, request.FieldErrorCode,
 }
 

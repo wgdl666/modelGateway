@@ -106,6 +106,18 @@ func (_u *RequestUpdate) SetNillableResourceGroup(v *string) *RequestUpdate {
 	return _u
 }
 
+// SetResourceGroups sets the "resource_groups" field.
+func (_u *RequestUpdate) SetResourceGroups(v []string) *RequestUpdate {
+	_u.mutation.SetResourceGroups(v)
+	return _u
+}
+
+// AppendResourceGroups appends value to the "resource_groups" field.
+func (_u *RequestUpdate) AppendResourceGroups(v []string) *RequestUpdate {
+	_u.mutation.AppendResourceGroups(v)
+	return _u
+}
+
 // SetEndpoint sets the "endpoint" field.
 func (_u *RequestUpdate) SetEndpoint(v string) *RequestUpdate {
 	_u.mutation.SetEndpoint(v)
@@ -376,6 +388,14 @@ func (_u *RequestUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.ResourceGroup(); ok {
 		_spec.SetField(request.FieldResourceGroup, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ResourceGroups(); ok {
+		_spec.SetField(request.FieldResourceGroups, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedResourceGroups(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, request.FieldResourceGroups, value)
+		})
+	}
 	if value, ok := _u.mutation.Endpoint(); ok {
 		_spec.SetField(request.FieldEndpoint, field.TypeString, value)
 	}
@@ -525,6 +545,18 @@ func (_u *RequestUpdateOne) SetNillableResourceGroup(v *string) *RequestUpdateOn
 	if v != nil {
 		_u.SetResourceGroup(*v)
 	}
+	return _u
+}
+
+// SetResourceGroups sets the "resource_groups" field.
+func (_u *RequestUpdateOne) SetResourceGroups(v []string) *RequestUpdateOne {
+	_u.mutation.SetResourceGroups(v)
+	return _u
+}
+
+// AppendResourceGroups appends value to the "resource_groups" field.
+func (_u *RequestUpdateOne) AppendResourceGroups(v []string) *RequestUpdateOne {
+	_u.mutation.AppendResourceGroups(v)
 	return _u
 }
 
@@ -827,6 +859,14 @@ func (_u *RequestUpdateOne) sqlSave(ctx context.Context) (_node *Request, err er
 	}
 	if value, ok := _u.mutation.ResourceGroup(); ok {
 		_spec.SetField(request.FieldResourceGroup, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ResourceGroups(); ok {
+		_spec.SetField(request.FieldResourceGroups, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedResourceGroups(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, request.FieldResourceGroups, value)
+		})
 	}
 	if value, ok := _u.mutation.Endpoint(); ok {
 		_spec.SetField(request.FieldEndpoint, field.TypeString, value)

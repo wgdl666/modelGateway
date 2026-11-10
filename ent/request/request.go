@@ -34,6 +34,8 @@ const (
 	FieldInstanceID = "instance_id"
 	// FieldResourceGroup holds the string denoting the resource_group field in the database.
 	FieldResourceGroup = "resource_group"
+	// FieldResourceGroups holds the string denoting the resource_groups field in the database.
+	FieldResourceGroups = "resource_groups"
 	// FieldEndpoint holds the string denoting the endpoint field in the database.
 	FieldEndpoint = "endpoint"
 	// FieldArtifactDigest holds the string denoting the artifact_digest field in the database.
@@ -79,6 +81,7 @@ var Columns = []string{
 	FieldSlotReserved,
 	FieldInstanceID,
 	FieldResourceGroup,
+	FieldResourceGroups,
 	FieldEndpoint,
 	FieldArtifactDigest,
 	FieldBackendTaskID,
@@ -118,6 +121,8 @@ var (
 	DefaultInstanceID string
 	// DefaultResourceGroup holds the default value on creation for the "resource_group" field.
 	DefaultResourceGroup string
+	// DefaultResourceGroups holds the default value on creation for the "resource_groups" field.
+	DefaultResourceGroups []string
 	// DefaultEndpoint holds the default value on creation for the "endpoint" field.
 	DefaultEndpoint string
 	// DefaultArtifactDigest holds the default value on creation for the "artifact_digest" field.
