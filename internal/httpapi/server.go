@@ -255,7 +255,7 @@ func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	var artifact string
-	if spec.Artifact == "" {
+	if spec.Artifact == "" && protocol.SynchronousKind(spec.ModelKey) == "" {
 		// 登记时重新读取服务上报，表单预览可能来自更早的一次部署。
 		health, err := s.probe(ctx, cfg, target)
 		if err == nil {
@@ -276,7 +276,7 @@ func (s *Server) probeInstance(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	target.Endpoint = strings.TrimRight(target.Endpoint, "/")
-	if !protocol.ValidModelKey(target.ModelKey) {
+	if !protocol.ValidModelKey(target.ModelKey) && protocol.SynchronousKind(target.ModelKey) == "" {
 		writeError(c, 400, "invalid_instance", "unknown model_key", "")
 		return
 	}

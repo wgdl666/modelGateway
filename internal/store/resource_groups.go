@@ -7,6 +7,7 @@ import (
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/resourcegroup"
+	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
 var (
@@ -19,8 +20,9 @@ var (
 
 type ResourceGroupView struct {
 	*ent.ResourceGroup
-	InstanceCount int `json:"instance_count"`
-	ReservedUnits int `json:"reserved_units"`
+	InstanceCount            int `json:"instance_count"`
+	ReservedUnits            int `json:"reserved_units"`
+	SynchronousInstanceCount int `json:"synchronous_instance_count,omitempty"`
 }
 
 func (s *Store) CreateResourceGroup(ctx context.Context, id, machineID string, gpu, capacity int) (*ent.ResourceGroup, error) {
@@ -74,21 +76,26 @@ func (s *Store) ListResourceGroups(ctx context.Context) ([]ResourceGroupView, er
 	if err != nil {
 		return nil, err
 	}
-	var counts []struct {
-		Group string `json:"resource_group"`
-		Count int    `json:"count"`
-	}
-	if err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).
-		GroupBy(modelinstance.FieldResourceGroup).Aggregate(ent.Count()).Scan(ctx, &counts); err != nil {
+	rows, err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).
+		Select(modelinstance.FieldResourceGroup, modelinstance.FieldModelKey, modelinstance.FieldMachineID, modelinstance.FieldGpuDevices).All(ctx)
+	if err != nil {
 		return nil, err
 	}
 	holds, err := reserved(ctx, s.db.Request)
 	if err != nil {
 		return nil, err
 	}
-	instances, units := make(map[string]int), make(map[string]int)
-	for _, row := range counts {
-		instances[row.Group] = row.Count
+	instances, synchronous, units := make(map[string]int), make(map[string]int), make(map[string]int)
+	gpuGroups := indexGPUResourceGroups(groups)
+	for _, row := range rows {
+		if protocol.SynchronousKind(row.ModelKey) == "" {
+			instances[row.ResourceGroup]++
+			continue
+		}
+		for _, id := range gpuGroups.instanceGroups(row) {
+			instances[id]++
+			synchronous[id]++
+		}
 	}
 	for _, hold := range holds {
 		units[hold.ResourceGroup] += hold.Units
@@ -98,6 +105,7 @@ func (s *Store) ListResourceGroups(ctx context.Context) ([]ResourceGroupView, er
 	for _, group := range groups {
 		views = append(views, ResourceGroupView{
 			ResourceGroup: group, InstanceCount: instances[group.ID], ReservedUnits: units[group.ID],
+			SynchronousInstanceCount: synchronous[group.ID],
 		})
 	}
 	return views, nil
@@ -113,4 +121,32 @@ func groupCapacities(ctx context.Context, query *ent.ResourceGroupQuery) (map[st
 		limits[group.ID] = group.CapacityUnits
 	}
 	return limits, nil
+}
+
+type physicalGPU struct {
+	machine string
+	device  int
+}
+
+type gpuGroupIndex map[physicalGPU]string
+
+func indexGPUResourceGroups(groups []*ent.ResourceGroup) gpuGroupIndex {
+	index := make(gpuGroupIndex, len(groups))
+	for _, group := range groups {
+		if group.GpuDevice != nil {
+			index[physicalGPU{group.MachineID, *group.GpuDevice}] = group.ID
+		}
+	}
+	return index
+}
+
+// 多卡模型只有一个实例 ID，每张参与执行的卡都能从资源组跳转到它。
+func (index gpuGroupIndex) instanceGroups(row *ent.ModelInstance) []string {
+	groups := make([]string, 0, len(row.GpuDevices))
+	for _, device := range row.GpuDevices {
+		if id := index[physicalGPU{row.MachineID, device}]; id != "" {
+			groups = append(groups, id)
+		}
+	}
+	return groups
 }

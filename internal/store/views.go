@@ -8,6 +8,7 @@ import (
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
 // 等待响应时只取响应字段和截止时间，避免反复读取入队保存的大图。
@@ -20,12 +21,14 @@ func (s *Store) Get(ctx context.Context, id string) (*ent.Request, error) {
 
 type InstanceView struct {
 	*ent.ModelInstance
-	ConfigRevision   string `json:"config_revision"`
-	ReservedUnits    int    `json:"reserved_units"`
-	ReservedRequests int    `json:"reserved_requests"`
-	Healthy          bool   `json:"healthy"`
-	Eligible         bool   `json:"eligible"`
-	Clearable        bool   `json:"clearable,omitempty"`
+	ConfigRevision   string   `json:"config_revision"`
+	ReservedUnits    int      `json:"reserved_units"`
+	ReservedRequests int      `json:"reserved_requests"`
+	Healthy          bool     `json:"healthy"`
+	Eligible         bool     `json:"eligible"`
+	Clearable        bool     `json:"clearable,omitempty"`
+	Synchronous      bool     `json:"synchronous,omitempty"`
+	ResourceGroups   []string `json:"resource_groups,omitempty"`
 }
 
 func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
@@ -33,10 +36,15 @@ func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
 	if err != nil {
 		return nil, err
 	}
-	limits, err := groupCapacities(ctx, s.db.ResourceGroup.Query())
+	groups, err := s.db.ResourceGroup.Query().All(ctx)
 	if err != nil {
 		return nil, err
 	}
+	limits := make(map[string]int, len(groups))
+	for _, group := range groups {
+		limits[group.ID] = group.CapacityUnits
+	}
+	gpuGroups := indexGPUResourceGroups(groups)
 	holds, err := reserved(ctx, s.db.Request)
 	if err != nil {
 		return nil, err
@@ -54,11 +62,17 @@ func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
 		row.GroupCapacityUnits = limits[row.ResourceGroup]
 		// 预留单位和请求数分别返回，避免把加权容量显示为在途任务数。
 		healthy := instanceHealthy(row, now)
+		synchronous := protocol.SynchronousKind(row.ModelKey) != ""
+		var memberships []string
+		if synchronous {
+			memberships = gpuGroups.instanceGroups(row)
+		}
 		result = append(result, InstanceView{
+			Synchronous: synchronous, ResourceGroups: memberships,
 			ModelInstance: row, ReservedUnits: units[row.ID], ReservedRequests: requests[row.ID],
 			// 暂停后不再写探活，更新时间可识别同一份编辑草稿。
 			ConfigRevision: row.UpdatedAt.UTC().Format(time.RFC3339Nano),
-			Healthy:        healthy, Eligible: healthy && !row.Draining,
+			Healthy:        healthy, Eligible: healthy && !row.Draining && !synchronous,
 			Clearable: instanceClearable(row, healthy) && requests[row.ID] == 0,
 		})
 	}

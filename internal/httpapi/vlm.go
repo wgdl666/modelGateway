@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
 const chatCompletionsPath = "/v1/chat/completions"
@@ -29,7 +30,7 @@ func (s *Server) chatCompletions(ctx context.Context, c *app.RequestContext) {
 	}
 	var model string
 	// 网关用上游的 served-model-name 校验请求，调用方使用同一个发布标识。
-	if err := json.Unmarshal(fields["model"], &model); err != nil || model != "Vmind_dream_v1" {
+	if err := json.Unmarshal(fields["model"], &model); err != nil || model != protocol.DreamModel {
 		writeError(c, 404, "model_not_found", "model is not configured", "")
 		return
 	}

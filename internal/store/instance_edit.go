@@ -28,6 +28,10 @@ func (s *Store) EditInstance(ctx context.Context, cfg config.Config, id string, 
 		if err != nil {
 			return err
 		}
+		// 同步登记的设备列表来自实际部署，队列编辑器只能携带一个组。
+		if protocol.SynchronousKind(row.ModelKey) != "" {
+			return ErrInstanceAddress
+		}
 		// 返回丢失后的原样重试不会重置探活或影响已恢复的接单状态。
 		if row.Endpoint == settings.Endpoint && row.HealthURL == settings.HealthURL &&
 			row.ResourceGroup == settings.ResourceGroup && row.CapacityUnits == settings.Capacity {

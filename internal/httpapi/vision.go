@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
 type visionRoute struct {
@@ -23,11 +24,11 @@ type visionRoute struct {
 // 只开放固定推理路径和内联入图字段，避免调用方借用 G6 的网络和存储权限拉取图片。
 var visionRoutes = []visionRoute{
 	{
-		path: "/human-parser/human_parser/predict", modelKey: "Vmind_human_parse_v1.0",
+		path: "/human-parser/human_parser/predict", modelKey: protocol.HumanParseModel,
 		mediaType: "application/json", fields: []string{"image"},
 	},
 	{
-		path: "/human-yolo/predict", modelKey: "human-yolo",
+		path: "/human-yolo/predict", modelKey: protocol.HumanYOLOModel,
 		mediaType: "multipart/form-data", fields: []string{"file", "image", "conf", "iou"},
 	},
 	{
@@ -35,15 +36,15 @@ var visionRoutes = []visionRoute{
 		mediaType: "multipart/form-data", fields: []string{"file_a", "file_b", "image_a", "image_b", "face_index_a", "face_index_b"},
 	},
 	{
-		path: "/segment-person/api/segment", modelKey: "Vmind_segment_person_bria_v1.0",
+		path: "/segment-person/api/segment", modelKey: protocol.SegmentPersonModel,
 		mediaType: "multipart/form-data", fields: []string{"file", "image", "method", "preprocess", "output", "trace_id"},
 	},
 	{
-		path: "/segment-person/api/segment_subject", modelKey: "Vmind_segment_subject_bria_v1.0",
+		path: "/segment-person/api/segment_subject", modelKey: protocol.SegmentSubjectModel,
 		mediaType: "multipart/form-data", fields: []string{"file", "image", "method", "output", "trace_id"},
 	},
 	{
-		path: "/lens_distortion_correction/correct", modelKey: "lens-distortion-correction",
+		path: "/lens_distortion_correction/correct", modelKey: protocol.LensCorrectionModel,
 		mediaType: "application/json", fields: []string{"base64", "mirror_lens", "crop", "sampler", "preset"},
 	},
 }

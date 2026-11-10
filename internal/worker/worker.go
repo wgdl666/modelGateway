@@ -278,6 +278,9 @@ func (w *Reconciler) probe(cfg *config.Snapshot) error {
 	// 同轮并行探测，单个模型超时不会阻断其他资源组的健康更新。
 	var probes sync.WaitGroup
 	for _, row := range rows {
+		if protocol.SynchronousKind(row.ModelKey) != "" {
+			continue
+		}
 		probes.Go(func() {
 			var ready bool
 			if cfg.AcceptsInstanceAddress(row.ModelKey, row.Endpoint, row.HealthURL) {
@@ -327,6 +330,8 @@ func (w *Reconciler) runVideoPublisher() {
 // 派发、回查和视频发布各用独立协程，慢传输不会占用状态查询的并发。
 func (w *Reconciler) Start() {
 	w.runWorker("model health probe failed", probeInterval, func() error { return w.probe(w.runtime.Current()) })
+	// 同步上游有独立探活预算，不阻塞图像和视频派单使用的探针。
+	w.runWorker("synchronous model health probe failed", 5*time.Second, func() error { return w.probeSynchronous(w.runtime.Current()) })
 	w.runWorker("queue expiry failed", 200*time.Millisecond, func() error { return w.store.Expire(w.ctx) })
 	w.runRabbit("queue publication failed", w.publishQueued)
 	for range 2 {

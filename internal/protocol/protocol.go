@@ -58,7 +58,7 @@ type InstanceHealth struct {
 // Valid 检查部署身份和容量。地址还需按当前配置的出站白名单验证。
 func (i Instance) Valid() bool {
 	// 服务未上报摘要时留空，避免把未知部署记成某个真实版本。
-	return ValidInstanceID(i.ID) && ValidModelKey(i.ModelKey) &&
+	return ValidInstanceID(i.ID) && (ValidModelKey(i.ModelKey) || SynchronousKind(i.ModelKey) != "") &&
 		ValidResourceGroupID(i.ResourceGroup) && (i.Artifact == "" || ValidArtifact(i.Artifact)) &&
 		i.Capacity >= 1 && i.Capacity <= MaxCapacityUnits
 }

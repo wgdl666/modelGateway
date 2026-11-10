@@ -8,13 +8,19 @@ import (
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/ent/resourcegroup"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
 const probeMaxAge = 9 * time.Second
 
 func instanceHealthy(row *ent.ModelInstance, now time.Time) bool {
-	return row.Ready && row.HealthCheckedAt.After(now.Add(-probeMaxAge))
+	maxAge := probeMaxAge
+	if protocol.SynchronousKind(row.ModelKey) != "" {
+		// G6 聚合探活在单个副本异常时会跨多批超时，使用同步探针的周期和超时预算。
+		maxAge = 35 * time.Second
+	}
+	return row.Ready && row.HealthCheckedAt.After(now.Add(-maxAge))
 }
 
 // 未探测和未就绪是不同状态；暂停后过期的探活结果按未就绪处理。
@@ -36,10 +42,24 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 		if err != nil {
 			return err
 		}
-		// 同卡容量只对绑定到实际部署设备的实例生效。
-		if group.GpuDevice != nil && (group.MachineID != spec.MachineID ||
-			len(spec.GPUDevices) != 1 || spec.GPUDevices[0] != *group.GpuDevice) {
+		// 单卡队列实例保持原绑定。多卡 Dream 以首张卡为主组，其他物理卡也必须已登记。
+		synchronous := protocol.SynchronousKind(spec.ModelKey) != ""
+		if synchronous && group.GpuDevice == nil {
 			return ErrResourceGroupDeviceMismatch
+		}
+		if group.GpuDevice != nil && (group.MachineID != spec.MachineID || len(spec.GPUDevices) == 0 ||
+			spec.GPUDevices[0] != *group.GpuDevice || (spec.ModelKey != protocol.DreamModel && len(spec.GPUDevices) != 1)) {
+			return ErrResourceGroupDeviceMismatch
+		}
+		if synchronous && len(spec.GPUDevices) > 1 {
+			n, err := tx.ResourceGroup.Query().Where(resourcegroup.MachineIDEQ(spec.MachineID),
+				resourcegroup.GpuDeviceIn(spec.GPUDevices...)).Count(ctx)
+			if err != nil {
+				return err
+			}
+			if n != len(spec.GPUDevices) {
+				return ErrResourceGroupDeviceMismatch
+			}
 		}
 		old, err := tx.ModelInstance.Get(ctx, spec.ID)
 		if err == nil {
