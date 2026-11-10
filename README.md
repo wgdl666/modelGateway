@@ -24,6 +24,21 @@
 
 派发时按模型键查找健康且未暂停的实例，再检查实例和共享资源组的容量。暂时没有可用实例时，任务保持 `queued`，记录下次投递时间。`backend_timeout` 默认 600 秒，用于排队和上游等待。使用 Worker 协议的实例也用这份预算完成首次模型调用。截止时仍在队列的任务进入 `failed`，错误码为 `queue_timeout`。
 
+### G6 视觉推理
+
+在目标环境的网关配置中设置 `vision_addr`（私网 IP 和端口），例如美东路演 G6 的 `172.31.43.7:18280`。以下入口使用 API Bearer token，同步返回 G6 的状态码和结果。G6 负责选择执行卡；这些请求无需幂等键，也不进入生成任务队列。
+
+| POST 路径 | 请求体 |
+|---|---|
+| `/v1/vision/human-parser/human_parser/predict` | JSON，`image` 为 Base64 |
+| `/v1/vision/human-yolo/predict` | multipart，`file` 或 Base64 `image`，可选 `conf`、`iou` |
+| `/v1/vision/facesim/compare` | multipart，`file_a`/`file_b` 或 Base64 `image_a`/`image_b`，可选 `face_index_a`、`face_index_b` |
+| `/v1/vision/segment-person/api/segment` | multipart，`file` 或 Base64 `image`，`method=person-birefnet-portrait`，可选 `preprocess`、`output`、`trace_id` |
+| `/v1/vision/segment-person/api/segment_subject` | multipart，`file` 或 Base64 `image`，`method=person-bria-rmbg`，可选 `output`、`trace_id` |
+| `/v1/vision/lens_distortion_correction/correct` | JSON，`base64` 为图片，可选 `mirror_lens`、`crop`、`sampler`、`preset` |
+
+请将图片直接放在请求体内。入口拒绝 URL、对象存储路径及表中未列出的字段，避免调用方借用 G6 的网络和存储权限。
+
 ## 实例管理
 
 先在 Ops 的“GPU 资源组”页面建组，或用管理凭据调用 `POST /v1/resource-groups`。请求体示例为 `{"id":"g7e/gpu0","machine_id":"g7e-a","gpu_device":0,"capacity_units":1}`。同一机器上的同一物理卡只能建一个组。

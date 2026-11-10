@@ -81,6 +81,9 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.GET("/v1/gateway/requests", s.auth("api", s.get))
 	h.POST(chatCompletionsPath, s.auth("api", s.chatCompletions))
 	h.POST(decisionPredictPath, s.auth("api", s.decisionPredict))
+	for _, route := range visionRoutes {
+		h.POST("/v1/vision"+route.path, s.auth("api", s.visionPredict(route)))
+	}
 	return h
 }
 

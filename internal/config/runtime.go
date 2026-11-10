@@ -29,6 +29,7 @@ type Config struct {
 	AllowedPorts    []string       `json:"backend_ports"`
 	VLMAddr         string         `json:"vlm_addr"`
 	DecisionAddr    string         `json:"decision_addr"`
+	VisionAddr      string         `json:"vision_addr"`
 	BackendTimeout  time.Duration  `json:"-"`
 	PollInterval    time.Duration  `json:"-"`
 	MaxBodyBytes    int64          `json:"max_body_bytes"`
@@ -146,6 +147,7 @@ func prepareConfig(c Config) (*Snapshot, error) {
 	for _, upstream := range []struct{ key, address string }{
 		{"vlm_addr", c.VLMAddr},
 		{"decision_addr", c.DecisionAddr},
+		{"vision_addr", c.VisionAddr},
 	} {
 		if upstream.address == "" {
 			continue
