@@ -117,7 +117,8 @@ func (s *Store) ListRequests(ctx context.Context, filter RequestFilter) ([]*ent.
 }
 
 func (s *Store) RequestDetail(ctx context.Context, id string) (*ent.Request, error) {
-	// 详情只补对象引用和终态错误，禁止将 Base64 输入带到 Ops。
-	fields := append(append([]string(nil), requestSummaryFields...), request.FieldResult, request.FieldErrorMessage)
+	// 详情读取受理正文，以便返回去掉图片字节的业务参数。列表仍然不读取这列。
+	fields := append(append([]string(nil), requestSummaryFields...),
+		request.FieldRequestPayload, request.FieldResult, request.FieldErrorMessage)
 	return s.db.Request.Query().Where(request.IDEQ(id)).Select(fields...).Only(ctx)
 }

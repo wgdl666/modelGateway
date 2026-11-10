@@ -1,15 +1,20 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"strconv"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 	"github.com/wgdl666/modelGateway/internal/store"
+	"github.com/wgdl666/modelGateway/internal/worker"
 )
 
 type requestView struct {
@@ -84,6 +89,28 @@ func (s *Server) listRequests(ctx context.Context, c *app.RequestContext) {
 	writeJSON(c, 200, map[string]any{"items": items, "total": total})
 }
 
+type inspectedRequest struct {
+	requestView
+	Parameters json.RawMessage     `json:"parameters"`
+	Inputs     []protocol.MediaRef `json:"inputs"`
+	Outputs    []protocol.MediaRef `json:"outputs"`
+}
+
+func inspectRequest(row *ent.Request) inspectedRequest {
+	view := viewRequest(row)
+	parameters := json.RawMessage(`{}`)
+	inputs := []protocol.MediaRef{}
+	if params, refs, _, err := protocol.PreviewSubmission(row.ModelKey, row.RequestPayload); err == nil {
+		parameters = params
+		inputs = refs
+	}
+	outputs := []protocol.MediaRef{}
+	if view.Result != nil {
+		outputs = protocol.OutputMedia(view.Result.Files)
+	}
+	return inspectedRequest{requestView: view, Parameters: parameters, Inputs: inputs, Outputs: outputs}
+}
+
 func (s *Server) requestDetail(ctx context.Context, c *app.RequestContext) {
 	id := c.Param("id")
 	if !protocol.ValidID(id) {
@@ -95,5 +122,99 @@ func (s *Server) requestDetail(ctx context.Context, c *app.RequestContext) {
 		storeError(c, err, id)
 		return
 	}
-	writeJSON(c, 200, viewRequest(row))
+	writeJSON(c, 200, inspectRequest(row))
+}
+
+const (
+	maxImageBytes = 64 << 20
+	maxVideoBytes = 200 << 20
+)
+
+func (s *Server) objectReader(cfg *config.Snapshot) (objectReader, error) {
+	if s.objects != nil {
+		return s.objects, nil
+	}
+	s.objectsOnce.Do(func() {
+		s.objects, s.objectsErr = worker.OpenResultStore(cfg.NativeResults)
+	})
+	return s.objects, s.objectsErr
+}
+
+func mediaLimit(mime string) int64 {
+	if mime == "video/mp4" {
+		return maxVideoBytes
+	}
+	return maxImageBytes
+}
+
+func allowedInputMIME(mime string) bool {
+	switch mime {
+	case "image/png", "image/jpeg", "image/webp", "image/gif":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Server) requestMedia(ctx context.Context, c *app.RequestContext) {
+	id := c.Param("id")
+	if !protocol.ValidID(id) {
+		writeError(c, 400, "invalid_request_id", "request_id must be a UUID", "")
+		return
+	}
+	kind := c.Query("kind")
+	index, err := strconv.Atoi(c.Query("index"))
+	if (kind != "input" && kind != "output") || err != nil || index < 0 {
+		writeError(c, 400, "invalid_media", "media kind and index are required", id)
+		return
+	}
+	row, err := s.store.RequestDetail(ctx, id)
+	if err != nil {
+		storeError(c, err, id)
+		return
+	}
+	switch kind {
+	case "input":
+		_, _, images, err := protocol.PreviewSubmission(row.ModelKey, row.RequestPayload)
+		if err != nil || index >= len(images) || !allowedInputMIME(images[index].MIMEType) || int64(len(images[index].Data)) > maxImageBytes {
+			writeError(c, 404, "media_unavailable", "input image is unavailable", id)
+			return
+		}
+		image := images[index]
+		writeMedia(c, image.MIMEType, bytes.NewReader(image.Data), int64(len(image.Data)))
+	default:
+		view := taskResponse(row)
+		if view.Result == nil || index >= len(view.Result.Files) {
+			writeError(c, 404, "media_unavailable", "output is unavailable", id)
+			return
+		}
+		file := view.Result.Files[index]
+		mime := protocol.OutputMIME(file.Key)
+		if mime == "" || !protocol.MatchesOutputKey(id, index, file.Key) {
+			writeError(c, 404, "media_unavailable", "output is unavailable", id)
+			return
+		}
+		reader, err := s.objectReader(requestConfig(ctx))
+		if err != nil {
+			writeError(c, 502, "result_unavailable", "result storage is unavailable", id)
+			return
+		}
+		body, size, err := reader.Get(ctx, file)
+		if err != nil || size <= 0 || size > mediaLimit(mime) {
+			if body != nil {
+				_ = body.Close()
+			}
+			writeError(c, 404, "media_unavailable", "output is unavailable", id)
+			return
+		}
+		writeMedia(c, mime, body, size)
+	}
+}
+
+func writeMedia(c *app.RequestContext, contentType string, body io.Reader, size int64) {
+	c.Response.Header.Set("Content-Type", contentType)
+	c.Response.Header.Set("Cache-Control", "private, no-store")
+	c.Response.Header.Set("X-Content-Type-Options", "nosniff")
+	c.SetStatusCode(200)
+	c.Response.SetBodyStream(body, int(size))
 }

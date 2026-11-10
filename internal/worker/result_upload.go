@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss"
@@ -20,6 +21,29 @@ import (
 type resultUploader struct {
 	config config.NativeResults
 	put    func(ctx context.Context, key, contentType string, body io.ReadSeeker, size int64) error
+	get    func(ctx context.Context, key string) (io.ReadCloser, int64, error)
+}
+
+// ResultStore 读取本网关写入结果桶的成品。调用方仍然要核对对象属于哪一次请求。
+type ResultStore struct{ *resultUploader }
+
+func OpenResultStore(cfg config.NativeResults) (*ResultStore, error) {
+	store, err := newResultUploader(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &ResultStore{store}, nil
+}
+
+func (s *ResultStore) Get(ctx context.Context, object protocol.Object) (io.ReadCloser, int64, error) {
+	if s == nil || s.resultUploader == nil || s.get == nil {
+		return nil, 0, errors.New("result storage is not configured")
+	}
+	if object.Provider != s.config.Provider || object.Region != s.config.Region || object.Bucket != s.config.Bucket ||
+		object.Key == "" || strings.Contains(object.Key, "..") || strings.HasPrefix(object.Key, "/") {
+		return nil, 0, errors.New("object is outside configured result storage")
+	}
+	return s.get(ctx, object.Key)
 }
 
 // 桶和凭据由网关部署指定，业务请求只能得到生成文件的引用。
@@ -49,6 +73,17 @@ func newResultUploader(cfg config.NativeResults) (*resultUploader, error) {
 			})
 			return err
 		}
+		uploader.get = func(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+			result, err := client.GetObject(ctx, &oss.GetObjectRequest{Bucket: oss.Ptr(cfg.Bucket), Key: oss.Ptr(key)})
+			if err != nil {
+				return nil, 0, err
+			}
+			if result.ContentLength <= 0 {
+				_ = result.Body.Close()
+				return nil, 0, errors.New("result object has no length")
+			}
+			return result.Body, result.ContentLength, nil
+		}
 	case "s3":
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -69,6 +104,17 @@ func newResultUploader(cfg config.NativeResults) (*resultUploader, error) {
 				ContentType: aws.String(contentType), ContentLength: aws.Int64(size),
 			})
 			return err
+		}
+		uploader.get = func(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+			result, err := client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(cfg.Bucket), Key: aws.String(key)})
+			if err != nil {
+				return nil, 0, err
+			}
+			if result.ContentLength == nil || *result.ContentLength <= 0 {
+				_ = result.Body.Close()
+				return nil, 0, errors.New("result object has no length")
+			}
+			return result.Body, *result.ContentLength, nil
 		}
 	default:
 		return nil, errors.New("native_results provider must be oss or s3")
