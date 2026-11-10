@@ -11,7 +11,8 @@ RUN GOPROXY="$GOPROXY" go mod download
 COPY cmd/ cmd/
 COPY internal/ internal/
 COPY ent/ ent/
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -o /model-gateway ./cmd/model-gateway
+# 编译临时文件留在内存挂载，避免把大体积 Go 缓存写入容量有限的本地 Docker 磁盘。
+RUN --mount=type=tmpfs,target=/tmp CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOCACHE=/tmp/go-cache go build -p 2 -trimpath -o /model-gateway ./cmd/model-gateway
 
 FROM ${GO_RUNTIME_IMAGE}
 ARG SOURCE_REVISION=""
