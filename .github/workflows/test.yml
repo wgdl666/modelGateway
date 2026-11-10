@@ -39,3 +39,50 @@ jobs:
       - run: go test -race ./... -count=1
       - run: go vet ./...
       - run: docker build -t model-gateway:test .
+
+  deploy-cn-dev:
+    name: Deploy CN Dev (ACK)
+    needs: test
+    if: github.repository == 'wgdl666/modelGateway' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    # 公开仓的发布任务需要专用 runner group，避免 PR 任务接触 ACK 发布身份。
+    runs-on:
+      group: modelgateway-cn-dev-release
+      labels: [self-hosted, Linux, X64]
+    timeout-minutes: 30
+    concurrency:
+      group: modelgateway-cn-dev-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Deploy and verify ACK
+        run: bash scripts/ci/deploy-ack-dev.sh
+
+  deploy-aws-exhibition:
+    name: Deploy US East Exhibition (ECS)
+    needs: test
+    if: github.repository == 'wgdl666/modelGateway' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: modelgateway-aws-exhibition-release
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::054043816891:role/tomirro-model-gateway-github-release
+          role-session-name: model-gateway-${{ github.run_id }}-${{ github.run_attempt }}
+          aws-region: us-east-2
+      - name: Verify AWS account
+        run: test "$(aws sts get-caller-identity --query Account --output text)" = 054043816891
+      - name: Deploy and verify ECS
+        run: bash scripts/ci/deploy-aws-exhibition.sh

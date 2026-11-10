@@ -166,3 +166,12 @@ bin/model-gateway -config /etc/model-gateway/bootstrap.json
 TEST_DATABASE_URL=<test-dsn> TEST_RABBITMQ_URL=<test-amqp-uri> go test -race ./...
 python -m unittest discover -s worker_adapter
 ```
+
+## dev 自动发布
+
+`wgdl666/modelGateway` 的 `dev` 收到 push 后，GitHub Actions 先跑 Go 测试和镜像构建检查。检查通过后，CN dev 和美东路演独立发布同一提交。每个环境按完整提交 SHA 发布镜像，部署后核对运行副本的 digest 和健康状态。
+
+- **CN dev** 使用深圳 VPC 的 ACR 和 ACK `wgdl-dev/default`。创建 `modelgateway-cn-dev-release` runner group，允许 ModelGateway 公开仓使用，将工作流访问限制为 `wgdl666/modelGateway/.github/workflows/test.yml@refs/heads/dev`。组内使用专用 Linux x64 runner。runner 需要 Docker、`jq`、`aliyun` 和 `kubectl`，以及镜像仓库读写、获取短期 kubeconfig、更新 Deployment 和读取健康状态的权限。
+- **美东路演** 使用俄亥俄 ECR 和 CloudFormation 栈 `tomirro-model-gateway`，更新 `ppe_exhibition` 的 ECS 服务。由 AWS 管理员在 `us-east-2` 用 [发布角色模板](deploy/aws-exhibition-release-role.yaml) 创建独立的 IAM 角色栈。GitHub Actions 通过 OIDC 获取短期权限，信任范围绑定本仓 `dev` 分支。
+
+作业只更新 Go 网关镜像。需要迁移数据库或变更配置的版本，先在目标环境完成相应准备。网关退出时，正在发出的原生调用可能中断。需要保护这些请求时，在发布窗口暂停相关实例接单并等首次调用结束。

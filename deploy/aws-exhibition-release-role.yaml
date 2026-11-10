@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: GitHub Actions image release access for the ModelGateway exhibition stack
+
+Resources:
+  ReleaseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: tomirro-model-gateway-github-release
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: arn:aws:iam::054043816891:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # 固定组织和仓库 ID，避免仓库名称被重新注册后继承发布权限。
+                token.actions.githubusercontent.com:sub: repo:wgdl666@245333630/modelGateway@1446496292:ref:refs/heads/dev
+      Policies:
+        - PolicyName: release-exhibition-gateway
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: us-east-2
+              - Effect: Allow
+                Action:
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                Resource: arn:aws:ecr:us-east-2:054043816891:repository/wg/model-gateway
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackResource
+                Resource: arn:aws:cloudformation:us-east-2:054043816891:stack/tomirro-model-gateway/*
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                Resource: arn:aws:cloudformation:us-east-2:054043816891:stack/tomirro-model-gateway/*
+                Condition:
+                  StringLike:
+                    cloudformation:ChangeSetName: gha-model-gateway-*
+              - Effect: Allow
+                Action: ecs:DescribeServices
+                Resource: arn:aws:ecs:us-east-2:054043816891:service/tomirro/model-gateway-service
+              - Effect: Allow
+                Action: ecs:DescribeTasks
+                Resource: arn:aws:ecs:us-east-2:054043816891:task/tomirro/*
+              - Effect: Allow
+                Action: ecs:ListTasks
+                Resource: '*'
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: arn:aws:ecs:us-east-2:054043816891:cluster/tomirro
+              # 现有栈使用调用者身份更新 ECS。ECS 写操作仅允许经 CloudFormation 执行。
+              - Effect: Allow
+                Action:
+                  - ecs:RegisterTaskDefinition
+                  - ecs:TagResource
+                Resource: arn:aws:ecs:us-east-2:054043816891:task-definition/tomirro-model-gateway:*
+                Condition:
+                  ForAnyValue:StringEquals:
+                    aws:CalledVia: cloudformation.amazonaws.com
+              - Effect: Allow
+                Action:
+                  - ecs:DescribeTaskDefinition
+                  - ecs:DeregisterTaskDefinition
+                Resource: '*'
+                Condition:
+                  ForAnyValue:StringEquals:
+                    aws:CalledVia: cloudformation.amazonaws.com
+                  StringEquals:
+                    aws:RequestedRegion: us-east-2
+              - Effect: Allow
+                Action: ecs:UpdateService
+                Resource: arn:aws:ecs:us-east-2:054043816891:service/tomirro/model-gateway-service
+                Condition:
+                  ForAnyValue:StringEquals:
+                    aws:CalledVia: cloudformation.amazonaws.com
+                  ArnLike:
+                    ecs:task-definition: arn:aws:ecs:us-east-2:054043816891:task-definition/tomirro-model-gateway:*
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - arn:aws:iam::054043816891:role/tomirro-model-gateway-ExecutionRole-RfashN2rE2Pq
+                  - arn:aws:iam::054043816891:role/tomirro-model-gateway-TaskRole-ih6oMCSz6ow1
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
