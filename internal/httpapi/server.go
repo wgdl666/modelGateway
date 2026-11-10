@@ -76,6 +76,7 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.GET("/v1/resource-groups", s.auth("admin", s.listResourceGroups))
 	h.POST("/v1/resource-groups", s.auth("admin", s.createResourceGroup))
 	h.PATCH("/v1/resource-groups", s.auth("admin", s.updateResourceGroup))
+	h.PATCH("/v1/resource-groups/machine", s.auth("admin", s.renameResourceGroupMachine))
 	h.GET("/v1/admin/requests", s.auth("admin", s.listRequests))
 	h.GET("/v1/admin/requests/:id", s.auth("admin", s.requestDetail))
 	h.POST("/v1/gateway/requests/cancel", s.auth("api", s.cancelRequest))
@@ -138,6 +139,8 @@ func storeError(c *app.RequestContext, err error, id string) {
 	switch {
 	case errors.Is(err, store.ErrResourceGroupNotFound):
 		writeError(c, 404, "resource_group_not_found", err.Error(), id)
+	case errors.Is(err, store.ErrResourceMachineNotFound):
+		writeError(c, 404, "resource_machine_not_found", err.Error(), id)
 	case errors.Is(err, store.ErrResourceGroupExists):
 		writeError(c, 409, "resource_group_exists", err.Error(), id)
 	case errors.Is(err, store.ErrResourceGroupDeviceMismatch):

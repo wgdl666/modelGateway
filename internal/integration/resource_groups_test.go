@@ -51,6 +51,7 @@ func TestResourceGroupOwnsCapacityAcrossModels(t *testing.T) {
 		return response
 	}
 	const groupsPath = "/v1/resource-groups"
+	const machinePath = groupsPath + "/machine"
 	const registerPath = "/v1/instances/register"
 	image := testInstance(protocol.OutfitModel, "http://127.0.0.1:8001", 2)
 	product := testInstance(protocol.ClothGenModel, "http://127.0.0.1:8002", 2)
@@ -66,7 +67,8 @@ func TestResourceGroupOwnsCapacityAcrossModels(t *testing.T) {
 		var groups []store.ResourceGroupView
 		raw := call("GET", groupsPath, nil, adminToken, 200)
 		if err := json.Unmarshal(raw, &groups); err != nil || len(groups) != 1 ||
-			groups[0].ID != image.ResourceGroup || groups[0].GpuDevice == nil || *groups[0].GpuDevice != 0 ||
+			groups[0].ID != image.ResourceGroup || groups[0].MachineID != image.MachineID ||
+			groups[0].GpuDevice == nil || *groups[0].GpuDevice != 0 ||
 			groups[0].CapacityUnits != capacity || groups[0].ReservedUnits != reserved || groups[0].InstanceCount != members {
 			t.Fatalf("unexpected group list: %s (%v)", raw, err)
 		}
@@ -136,9 +138,47 @@ func TestResourceGroupOwnsCapacityAcrossModels(t *testing.T) {
 	claim(b, waiting, true)
 	finish(waiting)
 
-	// 编辑走管理 API，地址与资源组同时变更；旧请求的派发账本必须保留。
 	active := admit(image)
 	claim(a, active, true)
+	// 一次更正多张卡和关联实例，允许合并到卡号互不冲突的现有机器标识。
+	sibling := testInstance(protocol.BodyModel, "http://127.0.0.1:8001", 1)
+	sibling.ResourceGroup, sibling.GPUDevices = "host/gpu2", []int{2}
+	registerReady(t, a, sibling)
+	const canonical = "i-0123456789abcdef0"
+	call("POST", groupsPath, map[string]any{"id": "canonical/gpu1", "machine_id": canonical, "gpu_device": 1, "capacity_units": 1}, adminToken, 201)
+	rename := map[string]string{"machine_id": image.MachineID, "new_machine_id": canonical}
+	call("PATCH", machinePath, rename, apiToken, 401)
+	call("PATCH", machinePath, rename, adminToken, 200)
+	call("POST", registerPath, image, adminToken, 409)
+	image.MachineID, product.MachineID, sibling.MachineID = canonical, canonical, canonical
+
+	// 另一台登记了相同卡号时，整台机器的更名必须回滚。
+	call("POST", groupsPath, map[string]any{"id": "other/gpu2", "machine_id": "other", "gpu_device": 2, "capacity_units": 1}, adminToken, 201)
+	call("PATCH", machinePath, map[string]string{"machine_id": canonical, "new_machine_id": "other"}, adminToken, 409)
+	for _, spec := range []protocol.Instance{image, sibling} {
+		group, err := db.ResourceGroup.Get(ctx, spec.ResourceGroup)
+		if err != nil || group.MachineID != canonical || group.GpuDevice == nil ||
+			*group.GpuDevice != spec.GPUDevices[0] || group.CapacityUnits != 1 {
+			t.Fatalf("unexpected resource group after rename and conflict: %v (%v)", group, err)
+		}
+	}
+	for _, spec := range []protocol.Instance{image, product, sibling} {
+		call("POST", registerPath, spec, adminToken, 200)
+	}
+	held, err := db.Request.Get(ctx, active)
+	if err != nil || !held.SlotReserved || held.ResourceGroup != image.ResourceGroup {
+		t.Fatalf("machine rename changed in-flight allocation: %v (%v)", held, err)
+	}
+
+	// 历史组保留容量入口，空标识不能把无机器归属的组误选成一台机器。
+	legacy, err := db.ResourceGroup.Create().SetID("cn-dev/vmind").SetCapacityUnits(1).Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call("PATCH", machinePath, map[string]string{"machine_id": "", "new_machine_id": canonical}, adminToken, 400)
+	call("PATCH", groupsPath, map[string]any{"id": legacy.ID, "capacity_units": 2}, adminToken, 200)
+
+	// 实例编辑可同时调整地址和资源组，历史请求仍按派发时的账本回查。
 	path := "/v1/instances/" + image.ID
 	lookup := func() store.InstanceView {
 		t.Helper()

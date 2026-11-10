@@ -27,6 +27,20 @@ func (_u *ResourceGroupUpdate) Where(ps ...predicate.ResourceGroup) *ResourceGro
 	return _u
 }
 
+// SetMachineID sets the "machine_id" field.
+func (_u *ResourceGroupUpdate) SetMachineID(v string) *ResourceGroupUpdate {
+	_u.mutation.SetMachineID(v)
+	return _u
+}
+
+// SetNillableMachineID sets the "machine_id" field if the given value is not nil.
+func (_u *ResourceGroupUpdate) SetNillableMachineID(v *string) *ResourceGroupUpdate {
+	if v != nil {
+		_u.SetMachineID(*v)
+	}
+	return _u
+}
+
 // SetCapacityUnits sets the "capacity_units" field.
 func (_u *ResourceGroupUpdate) SetCapacityUnits(v int) *ResourceGroupUpdate {
 	_u.mutation.ResetCapacityUnits()
@@ -102,6 +116,9 @@ func (_u *ResourceGroupUpdate) sqlSave(ctx context.Context) (_node int, err erro
 			}
 		}
 	}
+	if value, ok := _u.mutation.MachineID(); ok {
+		_spec.SetField(resourcegroup.FieldMachineID, field.TypeString, value)
+	}
 	if _u.mutation.GpuDeviceCleared() {
 		_spec.ClearField(resourcegroup.FieldGpuDevice, field.TypeInt)
 	}
@@ -129,6 +146,20 @@ type ResourceGroupUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *ResourceGroupMutation
+}
+
+// SetMachineID sets the "machine_id" field.
+func (_u *ResourceGroupUpdateOne) SetMachineID(v string) *ResourceGroupUpdateOne {
+	_u.mutation.SetMachineID(v)
+	return _u
+}
+
+// SetNillableMachineID sets the "machine_id" field if the given value is not nil.
+func (_u *ResourceGroupUpdateOne) SetNillableMachineID(v *string) *ResourceGroupUpdateOne {
+	if v != nil {
+		_u.SetMachineID(*v)
+	}
+	return _u
 }
 
 // SetCapacityUnits sets the "capacity_units" field.
@@ -235,6 +266,9 @@ func (_u *ResourceGroupUpdateOne) sqlSave(ctx context.Context) (_node *ResourceG
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.MachineID(); ok {
+		_spec.SetField(resourcegroup.FieldMachineID, field.TypeString, value)
 	}
 	if _u.mutation.GpuDeviceCleared() {
 		_spec.ClearField(resourcegroup.FieldGpuDevice, field.TypeInt)
