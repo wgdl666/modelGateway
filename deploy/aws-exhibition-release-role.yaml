@@ -60,6 +60,15 @@ Resources:
               - Effect: Allow
                 Action: ecs:DescribeTasks
                 Resource: arn:aws:ecs:us-east-2:054043816891:task/tomirro/*
+              # CloudFormation 解析现有任务角色和服务发现 ARN 后才能更新镜像。
+              - Effect: Allow
+                Action: iam:GetRole
+                Resource:
+                  - arn:aws:iam::054043816891:role/tomirro-model-gateway-ExecutionRole-RfashN2rE2Pq
+                  - arn:aws:iam::054043816891:role/tomirro-model-gateway-TaskRole-ih6oMCSz6ow1
+              - Effect: Allow
+                Action: servicediscovery:GetService
+                Resource: arn:aws:servicediscovery:us-east-2:054043816891:service/srv-yv6fzt6fzchi6qpk
               - Effect: Allow
                 Action: ecs:ListTasks
                 Resource: '*'
