@@ -129,6 +129,12 @@ func (_c *RequestCreate) SetNillableResourceGroup(v *string) *RequestCreate {
 	return _c
 }
 
+// SetResourceGroups sets the "resource_groups" field.
+func (_c *RequestCreate) SetResourceGroups(v []string) *RequestCreate {
+	_c.mutation.SetResourceGroups(v)
+	return _c
+}
+
 // SetEndpoint sets the "endpoint" field.
 func (_c *RequestCreate) SetEndpoint(v string) *RequestCreate {
 	_c.mutation.SetEndpoint(v)
@@ -370,6 +376,10 @@ func (_c *RequestCreate) defaults() {
 		v := request.DefaultResourceGroup
 		_c.mutation.SetResourceGroup(v)
 	}
+	if _, ok := _c.mutation.ResourceGroups(); !ok {
+		v := request.DefaultResourceGroups
+		_c.mutation.SetResourceGroups(v)
+	}
 	if _, ok := _c.mutation.Endpoint(); !ok {
 		v := request.DefaultEndpoint
 		_c.mutation.SetEndpoint(v)
@@ -451,6 +461,9 @@ func (_c *RequestCreate) check() error {
 	}
 	if _, ok := _c.mutation.ResourceGroup(); !ok {
 		return &ValidationError{Name: "resource_group", err: errors.New(`ent: missing required field "Request.resource_group"`)}
+	}
+	if _, ok := _c.mutation.ResourceGroups(); !ok {
+		return &ValidationError{Name: "resource_groups", err: errors.New(`ent: missing required field "Request.resource_groups"`)}
 	}
 	if _, ok := _c.mutation.Endpoint(); !ok {
 		return &ValidationError{Name: "endpoint", err: errors.New(`ent: missing required field "Request.endpoint"`)}
@@ -556,6 +569,10 @@ func (_c *RequestCreate) createSpec() (*Request, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ResourceGroup(); ok {
 		_spec.SetField(request.FieldResourceGroup, field.TypeString, value)
 		_node.ResourceGroup = value
+	}
+	if value, ok := _c.mutation.ResourceGroups(); ok {
+		_spec.SetField(request.FieldResourceGroups, field.TypeJSON, value)
+		_node.ResourceGroups = value
 	}
 	if value, ok := _c.mutation.Endpoint(); ok {
 		_spec.SetField(request.FieldEndpoint, field.TypeString, value)

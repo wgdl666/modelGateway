@@ -1266,6 +1266,8 @@ type RequestMutation struct {
 	slot_reserved         *bool
 	instance_id           *string
 	resource_group        *string
+	resource_groups       *[]string
+	appendresource_groups []string
 	endpoint              *string
 	artifact_digest       *string
 	backend_task_id       *string
@@ -1818,6 +1820,57 @@ func (m *RequestMutation) OldResourceGroup(ctx context.Context) (v string, err e
 // ResetResourceGroup resets all changes to the "resource_group" field.
 func (m *RequestMutation) ResetResourceGroup() {
 	m.resource_group = nil
+}
+
+// SetResourceGroups sets the "resource_groups" field.
+func (m *RequestMutation) SetResourceGroups(s []string) {
+	m.resource_groups = &s
+	m.appendresource_groups = nil
+}
+
+// ResourceGroups returns the value of the "resource_groups" field in the mutation.
+func (m *RequestMutation) ResourceGroups() (r []string, exists bool) {
+	v := m.resource_groups
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResourceGroups returns the old "resource_groups" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldResourceGroups(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResourceGroups is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResourceGroups requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResourceGroups: %w", err)
+	}
+	return oldValue.ResourceGroups, nil
+}
+
+// AppendResourceGroups adds s to the "resource_groups" field.
+func (m *RequestMutation) AppendResourceGroups(s []string) {
+	m.appendresource_groups = append(m.appendresource_groups, s...)
+}
+
+// AppendedResourceGroups returns the list of values that were appended to the "resource_groups" field in this mutation.
+func (m *RequestMutation) AppendedResourceGroups() ([]string, bool) {
+	if len(m.appendresource_groups) == 0 {
+		return nil, false
+	}
+	return m.appendresource_groups, true
+}
+
+// ResetResourceGroups resets all changes to the "resource_groups" field.
+func (m *RequestMutation) ResetResourceGroups() {
+	m.resource_groups = nil
+	m.appendresource_groups = nil
 }
 
 // SetEndpoint sets the "endpoint" field.
@@ -2446,7 +2499,7 @@ func (m *RequestMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RequestMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+	fields := make([]string, 0, 25)
 	if m.model_key != nil {
 		fields = append(fields, request.FieldModelKey)
 	}
@@ -2476,6 +2529,9 @@ func (m *RequestMutation) Fields() []string {
 	}
 	if m.resource_group != nil {
 		fields = append(fields, request.FieldResourceGroup)
+	}
+	if m.resource_groups != nil {
+		fields = append(fields, request.FieldResourceGroups)
 	}
 	if m.endpoint != nil {
 		fields = append(fields, request.FieldEndpoint)
@@ -2547,6 +2603,8 @@ func (m *RequestMutation) Field(name string) (ent.Value, bool) {
 		return m.InstanceID()
 	case request.FieldResourceGroup:
 		return m.ResourceGroup()
+	case request.FieldResourceGroups:
+		return m.ResourceGroups()
 	case request.FieldEndpoint:
 		return m.Endpoint()
 	case request.FieldArtifactDigest:
@@ -2604,6 +2662,8 @@ func (m *RequestMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldInstanceID(ctx)
 	case request.FieldResourceGroup:
 		return m.OldResourceGroup(ctx)
+	case request.FieldResourceGroups:
+		return m.OldResourceGroups(ctx)
 	case request.FieldEndpoint:
 		return m.OldEndpoint(ctx)
 	case request.FieldArtifactDigest:
@@ -2710,6 +2770,13 @@ func (m *RequestMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetResourceGroup(v)
+		return nil
+	case request.FieldResourceGroups:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResourceGroups(v)
 		return nil
 	case request.FieldEndpoint:
 		v, ok := value.(string)
@@ -2959,6 +3026,9 @@ func (m *RequestMutation) ResetField(name string) error {
 		return nil
 	case request.FieldResourceGroup:
 		m.ResetResourceGroup()
+		return nil
+	case request.FieldResourceGroups:
+		m.ResetResourceGroups()
 		return nil
 	case request.FieldEndpoint:
 		m.ResetEndpoint()

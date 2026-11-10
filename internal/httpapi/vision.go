@@ -32,7 +32,7 @@ var visionRoutes = []visionRoute{
 		mediaType: "multipart/form-data", fields: []string{"file", "image", "conf", "iou"},
 	},
 	{
-		path:      "/facesim/compare",
+		path: "/facesim/compare", modelKey: protocol.FaceSimModel,
 		mediaType: "multipart/form-data", fields: []string{"file_a", "file_b", "image_a", "image_b", "face_index_a", "face_index_b"},
 	},
 	{
@@ -93,7 +93,7 @@ func (s *Server) visionPredict(route visionRoute) app.HandlerFunc {
 			segment.Timeout = 180 * time.Second
 			client = &segment
 		}
-		forwardDirect(ctx, c, client, "G6 vision", "http://"+cfg.VisionAddr+route.path, contentType, body)
+		s.forwardSynchronous(ctx, c, client, route.modelKey, route.path, contentType, body)
 	}
 }
 

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -15,6 +16,35 @@ import (
 // ExecutionWriteTimeout 给执行终态写入预留时间，避免结果回查提前接管。
 const ExecutionWriteTimeout = 3 * time.Second
 
+// CompleteSynchronous 以读完上游响应为释放依据；连接中断只能证明结果未知，不能虚构 GPU 已空闲。
+func (s *Store) CompleteSynchronous(ctx context.Context, id, claim string, result protocol.HTTPResult, known bool) error {
+	return s.updateExecution(ctx, id, claim, func(task *ent.Request, update *ent.RequestUpdateOne) error {
+		update.ClearNextPollAt()
+		if !known {
+			if task.State == request.StateProcessing {
+				update.SetState(request.StateFailed).SetFinishedAt(time.Now().UTC()).SetErrorStatus(504).
+					SetErrorCode("backend_outcome_unknown").SetErrorMessage("synchronous model execution outcome is unknown")
+			}
+			return nil
+		}
+		update.SetSlotReserved(false)
+		if task.State == request.StateFailed {
+			return nil
+		}
+		update.SetFinishedAt(time.Now().UTC())
+		if result.StatusCode < 200 || result.StatusCode >= 300 {
+			update.SetState(request.StateFailed).SetErrorStatus(result.StatusCode).
+				SetErrorCode("upstream_error").SetErrorMessage(fmt.Sprintf("model returned HTTP %d", result.StatusCode))
+			return nil
+		}
+		raw, err := json.Marshal(protocol.Result{HTTP: &result})
+		if err == nil {
+			update.SetState(request.StateSucceeded).SetResult(raw)
+		}
+		return err
+	})
+}
+
 // ClaimPoll 领取结果回查，派发与容量归还仍由请求账本里的状态决定。
 func (s *Store) ClaimPoll(ctx context.Context) (*ent.Request, error) {
 	tx, err := s.db.Tx(ctx)
@@ -24,7 +54,8 @@ func (s *Store) ClaimPoll(ctx context.Context) (*ent.Request, error) {
 	defer tx.Rollback()
 	now := time.Now().UTC()
 	// 回查沿用派发账本里的原地址和任务 ID，模型键只决定回查协议。
-	task, err := tx.Request.Query().Where(request.SlotReservedEQ(true), request.NextPollAtLTE(now)).
+	task, err := tx.Request.Query().Where(request.SlotReservedEQ(true), request.NextPollAtLTE(now),
+		request.ModelKeyNotIn(protocol.SynchronousModels()...)).
 		Order(ent.Asc(request.FieldNextPollAt, request.FieldID)).ForUpdate(sql.WithLockAction(sql.SkipLocked)).
 		Select(request.FieldID, request.FieldEndpoint, request.FieldModelKey, request.FieldBackendTaskID, request.FieldStartedAt, request.FieldState).First(ctx)
 	if ent.IsNotFound(err) {

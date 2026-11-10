@@ -97,7 +97,15 @@ type Object struct {
 }
 
 type Result struct {
-	Files []Object `json:"files"`
+	Files []Object    `json:"files,omitempty"`
+	HTTP  *HTTPResult `json:"http,omitempty"`
+}
+
+// HTTPResult 只记录同步响应的执行证据，原始文本、图片和流仍按现有协议交给调用方。
+type HTTPResult struct {
+	StatusCode    int    `json:"status_code"`
+	ContentType   string `json:"content_type"`
+	ResponseBytes int64  `json:"response_bytes"`
 }
 
 type RequestError struct {

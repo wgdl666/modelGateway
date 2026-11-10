@@ -1,6 +1,9 @@
 ARG GO_BUILDER_IMAGE=golang:1.26.4-alpine
 ARG GO_RUNTIME_IMAGE=alpine:3.23
-FROM ${GO_BUILDER_IMAGE} AS build
+# 在构建机原生架构运行 Go，避免 ARM 开发机模拟 amd64 时编译器崩溃；产物仍锁定发布平台。
+FROM --platform=$BUILDPLATFORM ${GO_BUILDER_IMAGE} AS build
+ARG TARGETOS
+ARG TARGETARCH
 ARG GOPROXY=https://proxy.golang.org,direct
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -8,7 +11,7 @@ RUN GOPROXY="$GOPROXY" go mod download
 COPY cmd/ cmd/
 COPY internal/ internal/
 COPY ent/ ent/
-RUN CGO_ENABLED=0 go build -trimpath -o /model-gateway ./cmd/model-gateway
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -o /model-gateway ./cmd/model-gateway
 
 FROM ${GO_RUNTIME_IMAGE}
 ARG SOURCE_REVISION=""

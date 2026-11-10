@@ -1,0 +1,10 @@
+{
+  "instance_id": "g6-facesim-cpu",
+  "model_key": "facesim",
+  "endpoint": "http://127.0.0.1:6103",
+  "health_url": "http://172.31.43.7:18280/health",
+  "resource_group": "g6/cpu/facesim",
+  "capacity_units": 1,
+  "machine_id": "i-08c522ce0f197f583",
+  "gpu_devices": []
+}

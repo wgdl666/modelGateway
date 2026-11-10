@@ -55,10 +55,11 @@ var (
 		{Name: "payload_bytes", Type: field.TypeInt64},
 		{Name: "units", Type: field.TypeInt},
 		{Name: "state", Type: field.TypeEnum, Enums: []string{"queued", "processing", "succeeded", "failed"}, Default: "queued"},
-		{Name: "queue_publish_at", Type: field.TypeTime, Nullable: true, Default: schema.Expr("CURRENT_TIMESTAMP")},
+		{Name: "queue_publish_at", Type: field.TypeTime, Nullable: true},
 		{Name: "slot_reserved", Type: field.TypeBool, Default: false},
 		{Name: "instance_id", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "resource_group", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "resource_groups", Type: field.TypeJSON},
 		{Name: "endpoint", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "artifact_digest", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "backend_task_id", Type: field.TypeString, Size: 2147483647, Default: ""},
@@ -83,7 +84,7 @@ var (
 			{
 				Name:    "request_model_key_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[23], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[24], RequestsColumns[0]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -99,7 +100,7 @@ var (
 			{
 				Name:    "request_deadline_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[14]},
+				Columns: []*schema.Column{RequestsColumns[15]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -115,7 +116,7 @@ var (
 			{
 				Name:    "request_next_poll_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[17]},
+				Columns: []*schema.Column{RequestsColumns[18]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "slot_reserved",
 				},
@@ -123,7 +124,7 @@ var (
 			{
 				Name:    "request_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[23], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[24], RequestsColumns[0]},
 			},
 			{
 				Name:    "request_trace_id",

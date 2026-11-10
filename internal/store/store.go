@@ -16,6 +16,7 @@ import (
 var (
 	ErrFull                 = errors.New("waiting queue is full")
 	ErrConflict             = errors.New("request or instance conflict")
+	ErrModelUnregistered    = errors.New("model has no registered instance")
 	ErrInstanceNotClearable = errors.New("instance must be paused, not ready and have no in-flight requests")
 )
 
@@ -35,8 +36,8 @@ func (s *Store) CheckReady(ctx context.Context) error {
 	if _, err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).Exist(ctx); err != nil {
 		return err
 	}
-	// 核对待投递字段已经迁移，避免就绪检查放过旧表结构。
-	_, err := s.db.Request.Query().Select(request.FieldQueuePublishAt).Limit(1).All(ctx)
+	// 同步、多卡请求都依赖这份占用快照，迁移缺失时不能接流量。
+	_, err := s.db.Request.Query().Select(request.FieldQueuePublishAt, request.FieldResourceGroups).Limit(1).All(ctx)
 	return err
 }
 

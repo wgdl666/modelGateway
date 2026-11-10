@@ -26,11 +26,13 @@ func (Request) Fields() []ent.Field {
 		field.Int64("payload_bytes").Positive().Immutable(),
 		field.Int("units").Positive().Immutable(),
 		field.Enum("state").Values("queued", "processing", "succeeded", "failed").Default("queued"),
-		// 待投递时间与请求一起提交，RabbitMQ 故障时已受理任务仍能补发。
-		field.Time("queue_publish_at").Optional().Nillable().Annotations(entsql.DefaultExpr("CURRENT_TIMESTAMP")),
+		// 仅异步任务显式写投递时间；同步请求不得因数据库默认值再次进入 MQ。
+		field.Time("queue_publish_at").Optional().Nillable(),
 		field.Bool("slot_reserved").Default(false),
 		field.Text("instance_id").Default(""),
 		field.Text("resource_group").Default(""),
+		// 派发时冻结全部物理资源组，多卡占用不能随着实例登记后续变化而漂移。
+		field.JSON("resource_groups", []string{}).Default([]string{}),
 		field.Text("endpoint").Default(""),
 		field.Text("artifact_digest").Default(""),
 		field.Text("backend_task_id").Default(""),

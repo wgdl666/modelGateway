@@ -44,7 +44,12 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 		}
 		// 单卡队列实例保持原绑定。多卡 Dream 以首张卡为主组，其他物理卡也必须已登记。
 		synchronous := protocol.SynchronousKind(spec.ModelKey) != ""
-		if synchronous && group.GpuDevice == nil {
+		// 当前 FaceSim 使用 OpenCV CPU 推理，独立逻辑组限制并发，不能伪造 GPU 0 归属。
+		cpuOnly := spec.ModelKey == protocol.FaceSimModel
+		if cpuOnly && (group.GpuDevice != nil || len(spec.GPUDevices) != 0) {
+			return ErrResourceGroupDeviceMismatch
+		}
+		if synchronous && !cpuOnly && group.GpuDevice == nil {
 			return ErrResourceGroupDeviceMismatch
 		}
 		if group.GpuDevice != nil && (group.MachineID != spec.MachineID || len(spec.GPUDevices) == 0 ||
@@ -102,7 +107,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 			}
 		}
 		// 历史组可以重登原服务地址，新增部署必须使用已绑定物理卡的组。
-		if group.GpuDevice == nil && !knownDeployment {
+		if group.GpuDevice == nil && !knownDeployment && !cpuOnly {
 			return ErrLegacyResourceGroup
 		}
 		artifact := spec.Artifact

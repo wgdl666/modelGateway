@@ -19,9 +19,9 @@ import (
 )
 
 type synchronousHealth struct {
-	vision          map[string]upstreamhealth.VisionService
-	dreamReady      bool
-	decisionWorkers int
+	vision           map[string]upstreamhealth.VisionService
+	dreamReady       bool
+	decisionReplicas map[string]bool
 }
 
 func (w *Reconciler) readSynchronousHealth(ctx context.Context, kind, healthURL string) synchronousHealth {
@@ -47,24 +47,35 @@ func (w *Reconciler) readSynchronousHealth(ctx context.Context, kind, healthURL 
 		return synchronousHealth{dreamReady: true}
 	}
 	var status struct {
-		Workers    int `json:"workers"`
-		ReadyCount int `json:"ready_count"`
+		TargetedDispatch bool `json:"targeted_dispatch"`
+		Replicas         []struct {
+			Endpoint string `json:"endpoint"`
+			Ready    bool   `json:"ready"`
+		} `json:"replicas"`
 	}
-	// Decision 只报告就绪总数。全部就绪时才能确认每个已登记的 worker。
-	if json.NewDecoder(io.LimitReader(resp.Body, 8<<10)).Decode(&status) == nil && status.ReadyCount == status.Workers {
-		return synchronousHealth{decisionWorkers: status.Workers}
+	// 必须由支持定向派发的前置服务报告每个 worker，聚合计数无法证明所选副本就绪。
+	if json.NewDecoder(io.LimitReader(resp.Body, 8<<10)).Decode(&status) == nil && status.TargetedDispatch {
+		replicas := make(map[string]bool, len(status.Replicas))
+		for _, replica := range status.Replicas {
+			replicas[replica.Endpoint] = replica.Ready
+		}
+		return synchronousHealth{decisionReplicas: replicas}
 	}
 	return synchronousHealth{}
 }
 
-func (h synchronousHealth) ready(model, endpoint string, instances int) bool {
+func (h synchronousHealth) ready(model, endpoint string, _ int) bool {
 	switch model {
 	case protocol.DreamModel:
 		return h.dreamReady
 	case protocol.DecisionModel:
-		return h.decisionWorkers >= instances
+		return h.decisionReplicas[endpoint]
 	}
 	service := h.vision[protocol.VisionService(model)]
+	// 旧前置服务会自行改派副本，未支持定向协议时不能进入统一调度。
+	if !service.TargetedDispatch {
+		return false
+	}
 	switch model {
 	case protocol.SegmentPersonModel, protocol.SegmentSubjectModel, protocol.LensCorrectionModel:
 		// 聚合服务可能还有可用副本，按本机端口判断这条登记对应的副本。
@@ -85,7 +96,7 @@ func (h synchronousHealth) ready(model, endpoint string, instances int) bool {
 		}
 		return false
 	default:
-		return service.Ready != nil && *service.Ready
+		return service.Endpoint == endpoint && service.Ready != nil && *service.Ready
 	}
 }
 

@@ -1,0 +1,55 @@
+--- a/main.py
++++ b/main.py
+@@ -112,6 +112,10 @@
+     result['segment-person']={'ready':data['status']=='ok','health':data}
+     lens = await lens_pool_health(request.app.state.lens_pool)
+     result['lens_distortion_correction']={'ready':lens['ok'],'health':lens}
++    # 明确宣告按端口派发能力；旧聚合就绪不能冒充某个副本的可调度证据。
++    for name, item in result.items():
++        item['targeted_dispatch'] = True
++        item['endpoint'] = f'http://127.0.0.1:{PORTS[name]}'
+     ready = all(x['ready'] for x in result.values())
+     return JSONResponse({'status':'ok' if ready else 'degraded','services':result},status_code=200 if ready else 503)
+ 
+@@ -120,6 +124,7 @@
+     return {'host':'AWS-G6','services':{name:{'base_url':f'http://172.31.43.7:18280/{name}','health':f'/{name}/health'} for name in PORTS},'openapi_note':'Service OpenAPI is available below each service prefix.'}
+ 
+ @app.api_route('/{service}/{path:path}',methods=['GET','POST','PUT','PATCH','DELETE','OPTIONS','HEAD'])
++@app.api_route('/_dispatch/{target_port}/{service}/{path:path}',methods=['POST'])
+ async def proxy(service:str,path:str,request:Request):
+     if service not in PORTS: return JSONResponse({'detail':'Unknown service'},status_code=404)
+     if service=='segment-person' and path=='health' and request.method=='GET':
+@@ -128,8 +133,22 @@
+     if service=='lens_distortion_correction' and path=='health' and request.method=='GET':
+         data = await lens_pool_health(request.app.state.lens_pool)
+         return JSONResponse(data,status_code=200 if data['ok'] else 503)
+-    worker = choose_worker(request.app.state) if service=='segment-person' else (choose_worker(request.app.state.lens_pool) if service=='lens_distortion_correction' else None)
+-    if service in {'segment-person','lens_distortion_correction'} and worker is None: return JSONResponse({'detail':f'No healthy {service} worker'},status_code=503)
++    target = request.path_params.get('target_port')
++    pool = request.app.state if service=='segment-person' else (request.app.state.lens_pool if service=='lens_distortion_correction' else None)
++    if target is not None:
++        # 统一网关已经占用所选卡；禁止再负载均衡或把任意端口变成私网代理。
++        paths = {'human-yolo': {'predict'}, 'facesim': {'compare'}, 'human-parser': {'human_parser/predict'},
++                 'segment-person': {'api/segment', 'api/segment_subject'}, 'lens_distortion_correction': {'correct'}}
++        ports = [w['port'] for w in pool.workers] if pool else [PORTS[service]]
++        if target not in [str(p) for p in ports] or path not in paths[service]:
++            return JSONResponse({'detail':'Unknown execution target'},status_code=404)
++        worker = next((w for w in pool.workers if w['port']==int(target) and w['ready']),None) if pool else None
++        if pool and worker is None:
++            return JSONResponse({'detail':'Selected worker is not ready'},status_code=503)
++        if worker: worker['inflight'] += 1
++    else:
++        worker = choose_worker(pool) if pool else None
++        if pool and worker is None: return JSONResponse({'detail':f'No healthy {service} worker'},status_code=503)
+     port = worker['port'] if worker else PORTS[service]
+     url = httpx.URL(f'http://127.0.0.1:{port}/{path}').copy_with(query=request.url.query.encode())
+     headers = [(k,v) for k,v in request.headers.items() if k.lower() not in HOP]
+@@ -147,7 +166,7 @@
+     except httpx.HTTPError as error:
+         if worker: worker.update(ready=False,error=str(error))
+         await cleanup()
+-        return JSONResponse({'detail':'Upstream unavailable','error':str(error)},status_code=502)
++        return JSONResponse({'detail':'Upstream unavailable','error':str(error)},status_code=502,headers={'x-model-outcome':'unknown'})
+     except BaseException:
+         await cleanup()
+         raise

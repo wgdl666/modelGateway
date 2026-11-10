@@ -14,8 +14,8 @@ func TestSynchronousHealthUsesExecutionReplica(t *testing.T) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = io.WriteString(w, `{"services":{
 			"facesim":{"ready":true,"health":"legacy readiness"},
-			"human-parser":{"ready":true,"health":{"model_loaded":true}},
-			"segment-person":{"ready":true,"health":{"replicas":[{"port":6106,"ready":true},{"port":6111,"ready":false}]}}
+			"human-parser":{"targeted_dispatch":true,"endpoint":"http://127.0.0.1:6105","ready":true,"health":{"model_loaded":true}},
+			"segment-person":{"targeted_dispatch":true,"ready":true,"health":{"replicas":[{"port":6106,"ready":true},{"port":6111,"ready":false}]}}
 		}}`)
 	}))
 	defer vision.Close()

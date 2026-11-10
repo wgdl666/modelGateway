@@ -165,6 +165,8 @@ func storeError(c *app.RequestContext, err error, id string) {
 		writeError(c, 409, "instance_not_clearable", err.Error(), id)
 	case errors.Is(err, store.ErrFull):
 		writeError(c, 429, "queue_full", "waiting queue is full", id)
+	case errors.Is(err, store.ErrModelUnregistered):
+		writeError(c, 503, "model_unregistered", "model has no registered instance", id)
 	default:
 		slog.Error("database operation failed", "error_type", fmt.Sprintf("%T", err))
 		writeError(c, 503, "database_unavailable", "task storage is temporarily unavailable", id)
@@ -197,28 +199,6 @@ func readPayload(c *app.RequestContext, limit int64) ([]byte, error) {
 		reader = bytes.NewReader(c.Request.Body())
 	}
 	return io.ReadAll(io.LimitReader(reader, limit+1))
-}
-
-func forwardDirect(ctx context.Context, c *app.RequestContext, client *http.Client, model, endpoint, contentType string, body []byte) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		writeError(c, 502, "upstream_unavailable", model+" request could not be sent", "")
-		return
-	}
-	// 业务凭据只在网关校验，模型服务只接收推理请求体及其类型。
-	req.Header.Set("Content-Type", contentType)
-	resp, err := client.Do(req)
-	if errors.Is(err, context.DeadlineExceeded) {
-		writeError(c, 504, "upstream_timeout", model+" response timed out", "")
-		return
-	}
-	if err != nil {
-		writeError(c, 502, "upstream_unavailable", model+" request could not be sent", "")
-		return
-	}
-	c.SetStatusCode(resp.StatusCode)
-	c.Header("Content-Type", resp.Header.Get("Content-Type"))
-	c.Response.SetBodyStream(resp.Body, int(resp.ContentLength))
 }
 
 func (s *Server) ready(ctx context.Context, c *app.RequestContext) {
