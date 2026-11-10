@@ -49,7 +49,7 @@ func sendSynchronous(t *testing.T, base, path, kind, body, id string) *http.Resp
 	req.Header.Set("Authorization", "Bearer "+apiToken)
 	req.Header.Set("Content-Type", kind)
 	req.Header.Set("Idempotency-Key", id)
-	req.Header.Set("X-Trace-ID", "sync-trace")
+	req.Header.Set("traceparent", "00-1234567890abcdef1234567890abcdef-1234567890abcdef-01")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +90,7 @@ func TestSynchronousRoutesUseRegisteredTargets(t *testing.T) {
 	}
 	var expected string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != expected || r.URL.RawQuery != "" || r.Header.Get("Authorization") != "" {
+		if r.URL.Path != expected || r.URL.RawQuery != "" || r.Header.Get("Authorization") != "" || r.Header.Get("X-Trace-ID") != "1234567890abcdef1234567890abcdef" {
 			t.Errorf("wrong execution request: %s", r.URL)
 		}
 		body, err := io.ReadAll(r.Body)
@@ -139,7 +139,7 @@ func TestSynchronousRoutesUseRegisteredTargets(t *testing.T) {
 				t.Fatalf("response: %d %s %v", resp.StatusCode, raw, err)
 			}
 			row := waitSynchronousState(t, db, id, request.StateSucceeded, false)
-			if row.InstanceID != spec.ID || row.Endpoint != spec.Endpoint || row.TraceID != "sync-trace" || row.QueuePublishAt != nil || strings.Contains(string(row.RequestPayload), "aW1hZ2U=") {
+			if row.InstanceID != spec.ID || row.Endpoint != spec.Endpoint || row.TraceID != "1234567890abcdef1234567890abcdef" || row.QueuePublishAt != nil || strings.Contains(string(row.RequestPayload), "aW1hZ2U=") {
 				t.Fatalf("wrong dispatch evidence: %+v", row)
 			}
 			replay := sendSynchronous(t, base, tc.path, tc.kind, tc.body, id)

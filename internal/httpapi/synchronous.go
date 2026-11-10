@@ -42,7 +42,7 @@ func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, 
 	if units == 0 {
 		units = 1
 	}
-	task, err := s.store.Admit(ctx, store.Admission{ID: id, ModelKey: model, TraceID: string(c.GetHeader("X-Trace-ID")),
+	task, err := s.store.Admit(ctx, store.Admission{ID: id, ModelKey: model, TraceID: synchronousTraceID(c),
 		Payload: payload, Input: input, Units: units, MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout})
 	if err != nil {
 		storeError(c, err, id)
@@ -88,6 +88,28 @@ func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, 
 	s.executeSynchronous(ctx, c, client, task, path, contentType, body)
 }
 
+// ModelHub 的 HTTP 客户端发送 W3C traceparent；沿用显式 X-Trace-ID，缺省时从标准头提取，
+// 否则同步请求虽已完成，Ops 仍无法从模型调用的 Trace 关联到实例和占用记录。
+func synchronousTraceID(c *app.RequestContext) string {
+	if explicit := string(c.GetHeader("X-Trace-ID")); explicit != "" {
+		return explicit
+	}
+	parts := strings.Split(string(c.GetHeader("traceparent")), "-")
+	if len(parts) != 4 || parts[0] != "00" || len(parts[1]) != 32 || len(parts[2]) != 16 || len(parts[3]) != 2 {
+		return ""
+	}
+	// 不把截断、全零或非法的上下文记成有效关联；当前调用链使用 W3C 00 版。
+	for _, value := range parts[1:] {
+		if _, err := hex.DecodeString(value); err != nil || value != strings.ToLower(value) {
+			return ""
+		}
+	}
+	if strings.Trim(parts[1], "0") == "" || strings.Trim(parts[2], "0") == "" {
+		return ""
+	}
+	return parts[1]
+}
+
 func (s *Server) executeSynchronous(ctx context.Context, c *app.RequestContext, client *http.Client, task *ent.Request, path, contentType string, body []byte) {
 	cfg := requestConfig(ctx)
 	endpoint := task.Endpoint + path
@@ -118,6 +140,9 @@ func (s *Server) executeSynchronous(ctx context.Context, c *app.RequestContext, 
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("X-Request-ID", task.ID)
+	if task.TraceID != "" {
+		req.Header.Set("X-Trace-ID", task.TraceID)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		status := 502
