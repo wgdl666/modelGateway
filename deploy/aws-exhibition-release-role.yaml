@@ -42,11 +42,12 @@ Resources:
                 Action:
                   - cloudformation:DescribeStacks
                   - cloudformation:DescribeStackResource
+                  # CloudFormation 等待器按栈读取变更集，名称约束只用于写操作。
+                  - cloudformation:DescribeChangeSet
                 Resource: arn:aws:cloudformation:us-east-2:054043816891:stack/tomirro-model-gateway/*
               - Effect: Allow
                 Action:
                   - cloudformation:CreateChangeSet
-                  - cloudformation:DescribeChangeSet
                   - cloudformation:ExecuteChangeSet
                   - cloudformation:DeleteChangeSet
                 Resource: arn:aws:cloudformation:us-east-2:054043816891:stack/tomirro-model-gateway/*
