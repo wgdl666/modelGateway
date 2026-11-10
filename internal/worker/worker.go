@@ -85,6 +85,8 @@ type modelStatusError int
 
 func (status modelStatusError) Error() string { return fmt.Sprintf("model HTTP %d", status) }
 
+var errWorkerBusyBeforeExecution = errors.New("model worker busy before execution")
+
 func (w *Reconciler) modelCall(ctx context.Context, cfg *config.Snapshot, method, origin, path string, body []byte) ([]byte, error) {
 	if err := cfg.ValidateEndpoint(origin, path == ""); err != nil {
 		return nil, err
@@ -122,9 +124,26 @@ func (w *Reconciler) modelHTTP(req *http.Request, nativeSubmission bool) (*http.
 		if nativeSubmission && resp.StatusCode == http.StatusNotFound && nativeRouteNotFound(resp) {
 			return nil, errNativeRouteUnavailable
 		}
+		// 只相信首次派发响应里的明确未执行声明，避免用探活、回查或代理的 429 重派生成。
+		if req.Method == http.MethodPost && resp.StatusCode == http.StatusTooManyRequests && workerBusyBeforeExecution(resp.Body) {
+			return nil, errWorkerBusyBeforeExecution
+		}
 		return nil, modelStatusError(resp.StatusCode)
 	}
 	return resp, nil
+}
+
+func workerBusyBeforeExecution(body io.Reader) bool {
+	var rejection struct {
+		Error struct {
+			Code             string `json:"code"`
+			ExecutionStarted *bool  `json:"execution_started"`
+		} `json:"error"`
+	}
+	raw, err := readModelBody(body, 4<<10)
+	return err == nil && json.Unmarshal(raw, &rejection) == nil &&
+		rejection.Error.Code == "worker_busy" &&
+		rejection.Error.ExecutionStarted != nil && !*rejection.Error.ExecutionStarted
 }
 
 func readModelBody(body io.Reader, limit int64) ([]byte, error) {
@@ -170,12 +189,19 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 	}
 	response, err := w.modelCall(ctx, cfg, http.MethodPost, task.Endpoint, "/requests", raw)
 	if err != nil {
-		return w.dispatchError(task.ID, err)
+		return w.dispatchError(task, err)
 	}
 	return w.recordModelResponse(cfg, task, response, false)
 }
 
-func (w *Reconciler) dispatchError(id string, err error) error {
+func (w *Reconciler) dispatchError(task *ent.Request, err error) error {
+	if errors.Is(err, errWorkerBusyBeforeExecution) {
+		ctx, cancel := context.WithTimeout(context.Background(), store.ExecutionWriteTimeout)
+		defer cancel()
+		// 先持久化下一次投递，成功返回后消费者才确认当前 MQ 消息。
+		return w.store.RequeueUnstarted(ctx, task.ID, *task.StartedAt)
+	}
+	id := task.ID
 	var status modelStatusError
 	if errors.As(err, &status) {
 		// 执行端约定这些错误在受理前返回，可以确认 GPU 尚未接单。

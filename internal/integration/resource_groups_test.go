@@ -95,6 +95,7 @@ func TestResourceGroupOwnsCapacityAcrossModels(t *testing.T) {
 	}
 	claim := func(replica *store.Store, id string, want bool) {
 		t.Helper()
+		waitForPublicationTime(t, db, id)
 		if task, err := replica.Claim(ctx, cfg, id); err != nil || (task != nil) != want {
 			t.Fatalf("claim %s: task=%v err=%v, want dispatch=%t", id, task, err, want)
 		}

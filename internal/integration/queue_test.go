@@ -134,6 +134,18 @@ func succeeded(id string) protocol.ModelResponse {
 	}}}
 }
 
+func waitForPublicationTime(t *testing.T, db *ent.Client, id string) {
+	t.Helper()
+	task, err := db.Request.Get(t.Context(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 直接调用 Claim 的测试也按生产发布器的投递时间模拟下一条消息。
+	if task.QueuePublishAt != nil {
+		time.Sleep(time.Until(*task.QueuePublishAt))
+	}
+}
+
 func TestTwoReplicasQueueLimitAndIdempotency(t *testing.T) {
 	a, b, db := stores(t)
 	i := testInstance(protocol.VideoModel, "http://127.0.0.1:8001", 1)
@@ -222,6 +234,7 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	if err := a.DispatchFailure(t.Context(), first, 504, "backend_timeout", "unknown", true); err != nil {
 		t.Fatal(err)
 	}
+	waitForPublicationTime(t, db, waiting)
 	if next, err := b.Claim(t.Context(), testConfig(), waiting); next != nil || err != nil {
 		t.Fatalf("unknown task released capacity: %v %v", next, err)
 	}
@@ -239,6 +252,7 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	if err != nil || task.State != request.StateFailed || task.SlotReserved {
 		t.Fatalf("late completion rewrote failed state or leaked capacity: %v %v", task, err)
 	}
+	waitForPublicationTime(t, db, waiting)
 	next, err := b.Claim(t.Context(), testConfig(), waiting)
 	if err != nil || next == nil || next.ID != waiting || next.Units != 2 {
 		t.Fatalf("queued task was not dispatched after slot release: %v %v", next, err)
@@ -279,6 +293,7 @@ func TestQueuedUntilMatchingInstanceHasFreshProbe(t *testing.T) {
 	if err := a.RecordProbe(t.Context(), matching.ID, time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
+	waitForPublicationTime(t, db, in.ID)
 	if task, err := b.Claim(t.Context(), testConfig(), in.ID); err != nil || task == nil || task.ID != in.ID || task.InstanceID != matching.ID || task.State != request.StateProcessing {
 		t.Fatalf("claim after fresh probe: task=%v err=%v", task, err)
 	}

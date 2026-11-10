@@ -2,6 +2,7 @@ package integration
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,12 +12,132 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rabbitmq/amqp091-go"
+	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 	"github.com/wgdl666/modelGateway/internal/testsupport"
 	"github.com/wgdl666/modelGateway/internal/worker"
 )
+
+func TestRabbitMQRequeuesOnlyConfirmedWorkerBusy(t *testing.T) {
+	ledger, _, db := stores(t)
+	cfg := testConfig()
+	uri, name, ch := testsupport.RabbitQueue(t)
+	cfg.RabbitMQURL, cfg.RabbitMQQueue = uri, name
+
+	const busyBody = `{"error":{"code":"worker_busy","execution_started":false}}`
+	busyID := uuid.NewString()
+	var busyCalls atomic.Int32
+	terminal := map[string]*struct {
+		status int
+		body   string
+		calls  atomic.Int32
+	}{
+		uuid.NewString(): {status: http.StatusUnprocessableEntity, body: busyBody},
+		uuid.NewString(): {status: http.StatusTooManyRequests, body: `{"error":{"code":"worker_busy"}}`},
+		uuid.NewString(): {status: http.StatusTooManyRequests, body: `{"error":{"code":"worker_busy","execution_started":true}}`},
+		uuid.NewString(): {status: http.StatusTooManyRequests, body: `{"error":{"code":"invalid_input","execution_started":false}}`},
+	}
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method + " " + r.URL.Path {
+		case "GET /health":
+			_, _ = io.WriteString(w, `{"ready":true}`)
+		case "POST /requests":
+			var input protocol.ModelRequest
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil || input.ModelKey != protocol.OutfitModel {
+				t.Errorf("invalid Worker dispatch: model=%q err=%v", input.ModelKey, err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if failure := terminal[input.RequestID]; failure != nil {
+				failure.calls.Add(1)
+				w.WriteHeader(failure.status)
+				_, _ = io.WriteString(w, failure.body)
+				return
+			}
+			if input.RequestID != busyID {
+				t.Errorf("retry changed the request ID to %s", input.RequestID)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if busyCalls.Add(1) == 1 {
+				w.WriteHeader(http.StatusTooManyRequests)
+				_, _ = io.WriteString(w, busyBody)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(succeeded(input.RequestID))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer model.Close()
+	endpoint, _ := url.Parse(model.URL)
+	cfg.AllowedPorts = append(cfg.AllowedPorts, endpoint.Port())
+	spec := testInstance(protocol.OutfitModel, model.URL, len(terminal)+1)
+	registerReady(t, ledger, spec)
+	admitted, err := ledger.Admit(t.Context(), testAdmission(spec, busyID, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := config.NewRuntime(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciler, err := worker.New(ledger, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reconciler.Close()
+	reconciler.Start()
+
+	waitForTask := func(id string, ready func(*ent.Request) bool) *ent.Request {
+		t.Helper()
+		for until := time.Now().Add(5 * time.Second); time.Now().Before(until); time.Sleep(20 * time.Millisecond) {
+			task, err := db.Request.Get(t.Context(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ready(task) {
+				return task
+			}
+		}
+		t.Fatalf("request %s did not reach the expected state", id)
+		return nil
+	}
+	queued := waitForTask(busyID, func(task *ent.Request) bool {
+		return busyCalls.Load() == 1 && task.State == request.StateQueued && task.QueuePublishAt != nil
+	})
+	if queued.SlotReserved || queued.InstanceID != "" || queued.StartedAt != nil || queued.NextPollAt != nil ||
+		!queued.DeadlineAt.Equal(admitted.DeadlineAt) {
+		t.Fatalf("requeued request kept its dispatch reservation or changed its deadline: %+v", queued)
+	}
+	// 模拟旧投递重现及迟到的发布确认，两者都不能提前执行或丢掉下一次投递。
+	if err := ch.PublishWithContext(t.Context(), "", name, true, false, amqp091.Publishing{Body: []byte(busyID)}); err != nil {
+		t.Fatal(err)
+	}
+	waitForTask(busyID, func(task *ent.Request) bool {
+		return task.State == request.StateQueued && task.QueuePublishAt != nil && task.QueuePublishAt.After(*queued.QueuePublishAt)
+	})
+	if err := ledger.MarkPublished(t.Context(), busyID, *queued.QueuePublishAt); err != nil {
+		t.Fatal(err)
+	}
+	finished := waitForTask(busyID, func(task *ent.Request) bool { return task.State == request.StateSucceeded })
+	if busyCalls.Load() != 2 || finished.SlotReserved || finished.StartedAt == nil ||
+		finished.StartedAt.Before(*queued.QueuePublishAt) || !finished.DeadlineAt.Equal(admitted.DeadlineAt) {
+		t.Fatalf("busy request did not finish through a single delayed redispatch: %+v, calls=%d", finished, busyCalls.Load())
+	}
+
+	for id, failure := range terminal {
+		if _, err := ledger.Admit(t.Context(), testAdmission(spec, id, 1)); err != nil {
+			t.Fatal(err)
+		}
+		failed := waitForTask(id, func(task *ent.Request) bool { return task.State == request.StateFailed })
+		if failure.calls.Load() != 1 || failed.FinishedAt == nil || failed.QueuePublishAt != nil {
+			t.Fatalf("HTTP %d without a safe retry should fail after one dispatch: %+v", failure.status, failed)
+		}
+	}
+}
 
 func TestRabbitMQDispatchRetriesUnavailableModelAndDeduplicates(t *testing.T) {
 	ledger, _, db := stores(t)

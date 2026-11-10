@@ -50,6 +50,7 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			jobIDs := [2]string{"ltx-job-0", "ltx-job-1"}
 			var imageCalls atomic.Int32
 			var videoAccepted [2]atomic.Bool
+			var video1Calls atomic.Int32
 			imageModel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				user, password, ok := r.BasicAuth()
 				if !ok || user != "image-user" || password != "image-password" {
@@ -128,6 +129,12 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 					checkNativeTestFile(t, r, "image", "first frame")
 					if _, sent := r.MultipartForm.Value["target_instance"]; sent {
 						t.Error("GPU selection must come from the address")
+					}
+					if provider == "s3" && gpu == 1 && video1Calls.Add(1) == 1 {
+						// 复现双卡并发时接单锁短暂争用，视频尚未创建后端任务。
+						w.WriteHeader(http.StatusTooManyRequests)
+						_, _ = io.WriteString(w, `{"error":{"code":"worker_busy","execution_started":false}}`)
+						return
 					}
 					videoAccepted[gpu].Store(true)
 					w.WriteHeader(http.StatusAccepted)
@@ -309,6 +316,9 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			}
 			if len(uploads) != 3 {
 				t.Fatalf("expected one image and two video uploads, got %d", len(uploads))
+			}
+			if provider == "s3" && video1Calls.Load() != 2 {
+				t.Fatalf("busy GPU1 was dispatched %d times, want 2", video1Calls.Load())
 			}
 
 			if provider == "oss" {

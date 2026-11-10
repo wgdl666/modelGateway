@@ -258,12 +258,12 @@ func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, ta
 		if errors.Is(err, errNativeRouteUnavailable) {
 			return w.failDispatch(task.ID, 502, "native_route_unavailable", err.Error(), false)
 		}
-		// 原生接口用 422 拒绝无效表单，429 拒绝无空闲槽位的请求。
+		// 带明确未执行声明的忙响应交给通用派发逻辑，普通拒绝沿用原生接口的失败路径。
 		var status modelStatusError
 		if errors.As(err, &status) && (status == 422 || status == 429) {
 			return w.failDispatch(task.ID, 502, "model_rejected", "native model rejected the request before execution", false)
 		}
-		return w.dispatchError(task.ID, err)
+		return w.dispatchError(task, err)
 	}
 	limit := int64(nativeImageLimit)
 	if task.ModelKey == protocol.VideoModel {
@@ -272,7 +272,7 @@ func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, ta
 	raw, err := readModelBody(resp.Body, limit)
 	_ = resp.Body.Close()
 	if err != nil {
-		return w.dispatchError(task.ID, err)
+		return w.dispatchError(task, err)
 	}
 	if task.ModelKey == protocol.VideoModel {
 		var job nativeJob

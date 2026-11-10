@@ -111,6 +111,10 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		if err != nil {
 			return err
 		}
+		// 旧消息可能在回队后重投。沿用延期写入新的时间标记，防止迟到的发布确认清掉下次投递。
+		if next.QueuePublishAt != nil && next.QueuePublishAt.After(now) {
+			return deferPublication(ctx, tx, next)
+		}
 		// 同键不同业务的旧登记在迁移时已归档，派发直接按请求的模型键选实例。
 		instances, err := tx.ModelInstance.Query().Where(
 			modelinstance.DeletedAtIsNil(), modelinstance.ModelKeyEQ(next.ModelKey),
@@ -177,6 +181,17 @@ func deferPublication(ctx context.Context, tx *ent.Tx, task *ent.Request) error 
 		due = task.QueuePublishAt.Add(time.Microsecond)
 	}
 	_, err := tx.Request.Update().Where(request.IDEQ(task.ID)).SetQueuePublishAt(due).Save(ctx)
+	return err
+}
+
+func (s *Store) RequeueUnstarted(ctx context.Context, id string, startedAt time.Time) error {
+	// worker_busy 发生在接单前。只撤销本次领取，避免旧响应释放后续派发或已有后端任务的槽位。
+	due := time.Now().UTC().Add(time.Second).Truncate(time.Microsecond)
+	_, err := s.db.Request.Update().Where(request.IDEQ(id), request.StateEQ(request.StateProcessing),
+		request.SlotReservedEQ(true), request.StartedAtEQ(startedAt), request.BackendTaskIDEQ("")).
+		SetState(request.StateQueued).SetSlotReserved(false).SetQueuePublishAt(due).
+		SetInstanceID("").SetResourceGroup("").SetEndpoint("").SetArtifactDigest("").
+		ClearStartedAt().ClearNextPollAt().SetPollClaim("").Save(ctx)
 	return err
 }
 
