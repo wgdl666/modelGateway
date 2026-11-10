@@ -17,16 +17,35 @@ import (
 type visionRoute struct {
 	path, mediaType string
 	fields          []string
+	modelKey        string
 }
 
 // 只开放固定推理路径和内联入图字段，避免调用方借用 G6 的网络和存储权限拉取图片。
 var visionRoutes = []visionRoute{
-	{"/human-parser/human_parser/predict", "application/json", []string{"image"}},
-	{"/human-yolo/predict", "multipart/form-data", []string{"file", "image", "conf", "iou"}},
-	{"/facesim/compare", "multipart/form-data", []string{"file_a", "file_b", "image_a", "image_b", "face_index_a", "face_index_b"}},
-	{"/segment-person/api/segment", "multipart/form-data", []string{"file", "image", "method", "preprocess", "output", "trace_id"}},
-	{"/segment-person/api/segment_subject", "multipart/form-data", []string{"file", "image", "method", "output", "trace_id"}},
-	{"/lens_distortion_correction/correct", "application/json", []string{"base64", "mirror_lens", "crop", "sampler", "preset"}},
+	{
+		path: "/human-parser/human_parser/predict", modelKey: "Vmind_human_parse_v1.0",
+		mediaType: "application/json", fields: []string{"image"},
+	},
+	{
+		path: "/human-yolo/predict", modelKey: "human-yolo",
+		mediaType: "multipart/form-data", fields: []string{"file", "image", "conf", "iou"},
+	},
+	{
+		path:      "/facesim/compare",
+		mediaType: "multipart/form-data", fields: []string{"file_a", "file_b", "image_a", "image_b", "face_index_a", "face_index_b"},
+	},
+	{
+		path: "/segment-person/api/segment", modelKey: "Vmind_segment_person_bria_v1.0",
+		mediaType: "multipart/form-data", fields: []string{"file", "image", "method", "preprocess", "output", "trace_id"},
+	},
+	{
+		path: "/segment-person/api/segment_subject", modelKey: "Vmind_segment_subject_bria_v1.0",
+		mediaType: "multipart/form-data", fields: []string{"file", "image", "method", "output", "trace_id"},
+	},
+	{
+		path: "/lens_distortion_correction/correct", modelKey: "lens-distortion-correction",
+		mediaType: "application/json", fields: []string{"base64", "mirror_lens", "crop", "sampler", "preset"},
+	},
 }
 
 func (s *Server) visionPredict(route visionRoute) app.HandlerFunc {
