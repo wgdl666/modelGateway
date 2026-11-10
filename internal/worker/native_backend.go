@@ -191,16 +191,16 @@ func (w *Reconciler) nativeJSON(ctx context.Context, auth nativeAuth, url string
 	return json.Unmarshal(raw, out)
 }
 
-func (w *Reconciler) nativeReady(ctx context.Context, cfg *config.Snapshot, row *ent.ModelInstance, backend config.NativeBackend) bool {
-	if cfg.ValidateEndpoint(row.HealthURL, true) != nil {
-		return false
+func (w *Reconciler) nativeHealth(ctx context.Context, cfg *config.Snapshot, target protocol.InstanceTarget, backend config.NativeBackend) (protocol.InstanceHealth, error) {
+	if err := cfg.ValidateEndpoint(target.HealthURL, true); err != nil {
+		return protocol.InstanceHealth{}, err
 	}
 	type workerHealth struct {
 		Ready   *bool `json:"ready"`
 		Healthy bool  `json:"healthy"`
 	}
 	var health struct {
-		Ready     *bool  `json:"ready"`
+		healthReport
 		Status    string `json:"status"`
 		Instances []struct {
 			Name string `json:"name"`
@@ -208,32 +208,33 @@ func (w *Reconciler) nativeReady(ctx context.Context, cfg *config.Snapshot, row 
 		} `json:"instances"`
 		Workers []workerHealth `json:"workers"`
 	}
-	if w.nativeJSON(ctx, w.nativeAuth(backend), row.HealthURL, &health) != nil {
-		return false
+	if err := w.nativeJSON(ctx, w.nativeAuth(backend), target.HealthURL, &health); err != nil {
+		return protocol.InstanceHealth{}, err
 	}
 	ready := health.Status == "ok"
 	if health.Ready != nil {
 		ready = *health.Ready
 	}
-	if !ready {
-		return false
-	}
 	if backend.Video {
-		// 代理误把单卡探针转到整个实例池或其他 GPU 时，该登记不能接单。
+		// 单卡探针只有命中目标 GPU 才能提供该登记的健康和制品身份。
 		if len(health.Instances) != 1 {
-			return false
+			return protocol.InstanceHealth{}, nil
 		}
 		instance := health.Instances[0]
-		return instance.Name != "" && len(instance.GPUs) == 1 &&
-			strings.HasSuffix(row.Endpoint, fmt.Sprintf("/gpu%d", instance.GPUs[0]))
+		if instance.Name == "" || len(instance.GPUs) != 1 ||
+			!strings.HasSuffix(target.Endpoint, fmt.Sprintf("/gpu%d", instance.GPUs[0])) {
+			return protocol.InstanceHealth{}, nil
+		}
+		return health.result(ready), nil
 	}
 	// 国内 FLUX 用 ready 表示可接单，旧实例的同一信号由 healthy 提供。
-	return health.Workers == nil || slices.ContainsFunc(health.Workers, func(w workerHealth) bool {
+	ready = ready && (health.Workers == nil || slices.ContainsFunc(health.Workers, func(w workerHealth) bool {
 		if w.Ready != nil {
 			return *w.Ready
 		}
 		return w.Healthy
-	})
+	}))
+	return health.result(ready), nil
 }
 
 var nativeJobID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)

@@ -253,19 +253,11 @@ func (w *Reconciler) probe(cfg *config.Snapshot) error {
 	var probes sync.WaitGroup
 	for _, row := range rows {
 		probes.Go(func() {
-			ctx, cancel := context.WithTimeout(w.ctx, 3*time.Second)
-			defer cancel()
 			var ready bool
 			if cfg.AcceptsInstanceAddress(row.ModelKey, row.Endpoint, row.HealthURL) {
-				if backend, direct := cfg.NativeBackends[row.Endpoint]; direct {
-					ready = w.nativeReady(ctx, cfg, row, backend)
-				} else {
-					raw, callErr := w.modelCall(ctx, cfg, http.MethodGet, row.HealthURL, "", nil)
-					var health struct {
-						Ready bool `json:"ready"`
-					}
-					ready = callErr == nil && json.Unmarshal(raw, &health) == nil && health.Ready
-				}
+				target := protocol.InstanceTarget{ModelKey: row.ModelKey, Endpoint: row.Endpoint, HealthURL: row.HealthURL}
+				result, err := w.ProbeInstance(w.ctx, cfg, target)
+				ready = err == nil && result.Ready
 			}
 			if err := w.store.RecordProbe(w.ctx, row.ID, checked, ready); err != nil && w.ctx.Err() == nil {
 				slog.Error("model health update failed", "error_type", fmt.Sprintf("%T", err))

@@ -209,7 +209,7 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			base := startHTTPServer(t, httpapi.New(ledger, runtime))
+			base := startHTTPServer(t, httpapi.New(ledger, runtime, nil))
 			defer reconciler.Close()
 			client := &http.Client{Timeout: 7 * time.Second}
 			defer client.CloseIdleConnections()
@@ -514,10 +514,10 @@ func TestNativeImageWaitTimeoutReleasesSlotAfterExecution(t *testing.T) {
 	defer reconciler.Close()
 	spec := testInstance(protocol.OutfitModel, model.URL, 1)
 	ensureTestGroup(t, ledger, spec)
-	if err := ledger.Register(t.Context(), spec); err != nil {
+	if err := ledger.Register(t.Context(), spec, ""); err != nil {
 		t.Fatal(err)
 	}
-	base := startHTTPServer(t, httpapi.New(ledger, runtime))
+	base := startHTTPServer(t, httpapi.New(ledger, runtime, nil))
 	reconciler.Start()
 	// FLUX 实例依赖真实探针变为可派发，避免预置 Ready 掩盖协议差异。
 	waitForNativeTest(t, "FLUX readiness", func() bool {

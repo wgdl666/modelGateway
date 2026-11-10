@@ -75,7 +75,7 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := startHTTPServer(t, httpapi.New(b, runtime))
+	base := startHTTPServer(t, httpapi.New(b, runtime, nil))
 	// 从生成入口受理，确认按模型键配置的两单位确实进入账本并用于预留。
 	submit := `{"input":{"images":[{"mime_type":"image/png","data":"eA=="}]},"metadata":{"trace_id":"trace-for-ops"}}`
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, base+"/v1/gateway/requests/"+spec.ModelKey, strings.NewReader(submit))
@@ -151,7 +151,7 @@ func TestHertzRoutingAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := startHTTPServer(t, httpapi.New(&store.Store{}, runtime))
+	base := startHTTPServer(t, httpapi.New(&store.Store{}, runtime, nil))
 	for _, test := range []struct {
 		method, path, token string
 		code                int
@@ -187,14 +187,14 @@ func TestClearInstanceKeepsRequestHistory(t *testing.T) {
 	ctx := t.Context()
 	spec := testInstance(protocol.VideoModel, "http://127.0.0.1:8001", 1)
 	ensureTestGroup(t, a, spec)
-	if err := a.Register(ctx, spec); err != nil {
+	if err := a.Register(ctx, spec, ""); err != nil {
 		t.Fatal(err)
 	}
 	runtime, err := config.NewRuntime(testConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := startHTTPServer(t, httpapi.New(b, runtime))
+	base := startHTTPServer(t, httpapi.New(b, runtime, nil))
 	call := func(method, path, token string, want int) []byte {
 		t.Helper()
 		req, err := http.NewRequestWithContext(ctx, method, base+path, nil)
@@ -272,7 +272,7 @@ func TestClearInstanceKeepsRequestHistory(t *testing.T) {
 	if err := a.Drain(ctx, spec.ID, false); !ent.IsNotFound(err) {
 		t.Fatalf("clear did not prevent reopening: %v", err)
 	}
-	if err := a.Register(ctx, spec); !errors.Is(err, store.ErrConflict) {
+	if err := a.Register(ctx, spec, ""); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("cleared ID accepted for registration: %v", err)
 	}
 	// 组容量在管理接口修改，已清除的旧登记不会约束新部署。
@@ -281,7 +281,7 @@ func TestClearInstanceKeepsRequestHistory(t *testing.T) {
 	}
 	replacement := spec
 	replacement.ID = uuid.NewString()
-	if err := a.Register(ctx, replacement); err != nil {
+	if err := a.Register(ctx, replacement, ""); err != nil {
 		t.Fatalf("tombstone blocked a new deployment: %v", err)
 	}
 	history := call(http.MethodGet, "/v1/admin/requests?instance_id="+spec.ID, adminToken, 200)

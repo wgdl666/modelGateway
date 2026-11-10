@@ -23,7 +23,7 @@ func TestResourceGroupOwnsCapacityAcrossModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := startHTTPServer(t, httpapi.New(a, runtime))
+	base := startHTTPServer(t, httpapi.New(a, runtime, nil))
 	call := func(method, path string, body any, token string, want int) []byte {
 		t.Helper()
 		var raw []byte

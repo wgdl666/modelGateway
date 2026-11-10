@@ -110,7 +110,7 @@ func ensureTestGroup(t *testing.T, replica *store.Store, spec protocol.Instance)
 func registerReady(t *testing.T, replica *store.Store, spec protocol.Instance) {
 	t.Helper()
 	ensureTestGroup(t, replica, spec)
-	if err := replica.Register(t.Context(), spec); err != nil {
+	if err := replica.Register(t.Context(), spec, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := replica.RecordProbe(t.Context(), spec.ID, time.Now().UTC(), true); err != nil {
@@ -254,7 +254,7 @@ func TestQueuedUntilMatchingInstanceHasFreshProbe(t *testing.T) {
 	}
 	product := testInstance(protocol.ClothGenModel, "http://127.0.0.1:8002", 1)
 	registerReady(t, a, product)
-	if err := a.Register(t.Context(), matching); err != nil {
+	if err := a.Register(t.Context(), matching, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.RecordProbe(t.Context(), matching.ID, time.Now().Add(-time.Minute), true); err != nil {

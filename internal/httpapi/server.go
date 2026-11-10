@@ -31,14 +31,15 @@ type Server struct {
 	runtime *config.Runtime
 	uploads chan struct{}
 	direct  *http.Client
+	probe   func(context.Context, *config.Snapshot, protocol.InstanceTarget) (protocol.InstanceHealth, error)
 }
 
-func New(tasks *store.Store, runtime *config.Runtime) *Server {
+func New(tasks *store.Store, runtime *config.Runtime, probe func(context.Context, *config.Snapshot, protocol.InstanceTarget) (protocol.InstanceHealth, error)) *Server {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	// 同步推理可包含原图，只允许直连配置中的私网模型地址。
 	transport.Proxy = nil
 	return &Server{
-		store: tasks, runtime: runtime, uploads: make(chan struct{}, 2),
+		store: tasks, runtime: runtime, uploads: make(chan struct{}, 2), probe: probe,
 		direct: &http.Client{
 			Transport:     transport,
 			Timeout:       120 * time.Second,
@@ -66,6 +67,7 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.GET("/_gateway/ready", s.ready)
 	// 实例登记决定网关可以向哪些执行地址派单，因此使用管理凭据。
 	h.POST("/v1/instances/register", s.auth("admin", s.register))
+	h.POST("/v1/instances/probe", s.auth("admin", s.probeInstance))
 	h.POST("/v1/instances/:id/drain", s.auth("admin", s.drain))
 	h.POST("/v1/instances/:id/edit", s.auth("admin", s.editInstance))
 	h.GET("/v1/instances", s.auth("admin", s.instances))
@@ -223,13 +225,13 @@ func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	spec.Endpoint = strings.TrimRight(spec.Endpoint, "/")
-	if !spec.Valid() || cfg.ValidateEndpoint(spec.Endpoint, false) != nil || cfg.ValidateEndpoint(spec.HealthURL, true) != nil {
+	if !spec.Valid() {
 		writeError(c, 400, "invalid_instance", "invalid model instance specification", "")
 		return
 	}
-	// 单卡探针跟派发地址一起登记，不能用另一张卡的探针替代。
-	if !cfg.AcceptsInstanceAddress(spec.ModelKey, spec.Endpoint, spec.HealthURL) {
-		writeError(c, 400, "invalid_instance", "endpoint, health URL or model_key does not match the backend configuration", "")
+	target := protocol.InstanceTarget{ModelKey: spec.ModelKey, Endpoint: spec.Endpoint, HealthURL: spec.HealthURL}
+	if err := cfg.ValidateInstanceTarget(target); err != nil {
+		writeError(c, 400, "invalid_instance", err.Error(), "")
 		return
 	}
 	// 原生视频地址选择实际 worker，登记卡号必须与地址中的卡号一致。
@@ -238,11 +240,43 @@ func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_instance", "physical GPU does not match the video endpoint", "")
 		return
 	}
-	if err := s.store.Register(ctx, spec); err != nil {
+	var artifact string
+	if spec.Artifact == "" {
+		// 登记时重新读取服务上报，表单预览可能来自更早的一次部署。
+		health, err := s.probe(ctx, cfg, target)
+		if err == nil {
+			artifact = health.ArtifactDigest
+		}
+	}
+	if err := s.store.Register(ctx, spec, artifact); err != nil {
 		storeError(c, err, "")
 		return
 	}
 	writeJSON(c, 200, map[string]string{"instance_id": spec.ID})
+}
+
+func (s *Server) probeInstance(ctx context.Context, c *app.RequestContext) {
+	cfg := requestConfig(ctx)
+	var target protocol.InstanceTarget
+	if _, ok := readBody(c, 4096, &target, ""); !ok {
+		return
+	}
+	target.Endpoint = strings.TrimRight(target.Endpoint, "/")
+	if !protocol.ValidModelKey(target.ModelKey) {
+		writeError(c, 400, "invalid_instance", "unknown model_key", "")
+		return
+	}
+	if err := cfg.ValidateInstanceTarget(target); err != nil {
+		writeError(c, 400, "invalid_instance", err.Error(), "")
+		return
+	}
+	// 手动探活只返回即时结果，持续健康仍由后台探针写入。
+	health, err := s.probe(ctx, cfg, target)
+	if err != nil {
+		writeError(c, 502, "health_probe_failed", "health endpoint unavailable or returned an invalid response", "")
+		return
+	}
+	writeJSON(c, 200, health)
 }
 
 func (s *Server) drain(ctx context.Context, c *app.RequestContext) {

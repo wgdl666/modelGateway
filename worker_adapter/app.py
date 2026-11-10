@@ -445,7 +445,8 @@ async def ready(request: Request):
             ready = ready and any(item.get("ready", item.get("healthy")) is True for item in data["workers"])
     except (httpx.HTTPError, ValueError, AttributeError):
         ready = False
-    return {"ready": ready}
+    # 发布入口把当前 Worker 镜像的真实摘要注入环境，网关登记时可从健康响应读取。
+    return {"ready": ready, "artifact_digest": worker.artifact}
 
 
 @app.post("/requests")
