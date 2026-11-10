@@ -27,7 +27,7 @@ func (s *Store) ProbeInstances(ctx context.Context) ([]*ent.ModelInstance, error
 	return s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil(), modelinstance.DrainingEQ(false)).All(ctx)
 }
 
-func (s *Store) Register(ctx context.Context, spec protocol.Instance) error {
+func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedArtifact string) error {
 	return s.serialize(ctx, func(tx *ent.Tx) error {
 		group, err := tx.ResourceGroup.Get(ctx, spec.ResourceGroup)
 		if ent.IsNotFound(err) {
@@ -47,9 +47,10 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance) error {
 			if old.DeletedAt != nil {
 				return ErrConflict
 			}
-			// 相同部署重复注册是幂等操作，不改排空状态、健康快照或任务账本。
+			// 自动获取摘要的登记重试沿用首次写入的身份，探针变化不能改写历史。
 			if old.ModelKey == spec.ModelKey && old.Endpoint == spec.Endpoint &&
-				old.HealthURL == spec.HealthURL && old.ArtifactDigest == spec.Artifact && old.ResourceGroup == spec.ResourceGroup &&
+				old.HealthURL == spec.HealthURL && (spec.Artifact == "" || old.ArtifactDigest == spec.Artifact) &&
+				old.ResourceGroup == spec.ResourceGroup &&
 				old.CapacityUnits == spec.Capacity &&
 				old.MachineID == spec.MachineID && slices.Equal(old.GpuDevices, spec.GPUDevices) {
 				return nil
@@ -84,9 +85,13 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance) error {
 		if group.GpuDevice == nil && !knownDeployment {
 			return ErrLegacyResourceGroup
 		}
+		artifact := spec.Artifact
+		if artifact == "" {
+			artifact = reportedArtifact
+		}
 		return tx.ModelInstance.Create().
 			SetID(spec.ID).SetModelKey(spec.ModelKey).
-			SetEndpoint(spec.Endpoint).SetHealthURL(spec.HealthURL).SetArtifactDigest(spec.Artifact).
+			SetEndpoint(spec.Endpoint).SetHealthURL(spec.HealthURL).SetArtifactDigest(artifact).
 			SetResourceGroup(spec.ResourceGroup).SetGroupCapacityUnits(group.CapacityUnits).
 			SetCapacityUnits(spec.Capacity).SetMachineID(spec.MachineID).SetGpuDevices(spec.GPUDevices).Exec(ctx)
 	})

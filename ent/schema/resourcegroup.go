@@ -15,7 +15,8 @@ type ResourceGroup struct{ ent.Schema }
 func (ResourceGroup) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("id").StorageKey("resource_group").SchemaType(map[string]string{dialect.Postgres: "text"}).Immutable(),
-		field.Text("machine_id").Default("").Immutable(),
+		// 机器层更正标识时，服务层会同步这台机器下的卡和关联实例。
+		field.Text("machine_id").Default(""),
 		field.Int("gpu_device").Optional().Nillable().NonNegative().Immutable(),
 		field.Int("capacity_units").Positive(),
 	}

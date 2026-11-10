@@ -12,6 +12,7 @@ import (
 var (
 	ErrResourceGroupNotFound       = errors.New("resource group must be created before registering instances")
 	ErrResourceGroupExists         = errors.New("resource group name or physical GPU already exists")
+	ErrResourceMachineNotFound     = errors.New("machine has no registered GPU resource groups")
 	ErrResourceGroupDeviceMismatch = errors.New("deployment machine and GPU must match the resource group")
 	ErrLegacyResourceGroup         = errors.New("a legacy group without a GPU binding can only keep its existing deployments")
 )
@@ -39,6 +40,33 @@ func (s *Store) UpdateResourceGroupCapacity(ctx context.Context, id string, capa
 		return nil, ErrResourceGroupNotFound
 	}
 	return group, err
+}
+
+func (s *Store) RenameResourceGroupMachine(ctx context.Context, machineID, newMachineID string) error {
+	return s.serialize(ctx, func(tx *ent.Tx) error {
+		// 与派发按相同顺序锁定该机器的组，原组标识仍用于占槽和历史请求。
+		ids, err := tx.ResourceGroup.Query().Where(resourcegroup.MachineIDEQ(machineID)).
+			Order(resourcegroup.ByID()).ForUpdate().IDs(ctx)
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return ErrResourceMachineNotFound
+		}
+		if machineID == newMachineID {
+			return nil
+		}
+		if err := tx.ResourceGroup.Update().Where(resourcegroup.IDIn(ids...)).SetMachineID(newMachineID).Exec(ctx); err != nil {
+			if ent.IsConstraintError(err) {
+				return ErrResourceGroupExists
+			}
+			return err
+		}
+		// 登记校验要求机器标识一致，多张卡及其现有实例一起提交。
+		return tx.ModelInstance.Update().
+			Where(modelinstance.ResourceGroupIn(ids...), modelinstance.DeletedAtIsNil()).
+			SetMachineID(newMachineID).Exec(ctx)
+	})
 }
 
 func (s *Store) ListResourceGroups(ctx context.Context) ([]ResourceGroupView, error) {

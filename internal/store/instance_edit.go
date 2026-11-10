@@ -79,7 +79,8 @@ func (s *Store) EditInstance(ctx context.Context, cfg config.Config, id string, 
 				return err
 			}
 			for _, peer := range peers {
-				if peer.ResourceGroup != group.ID || peer.ArtifactDigest != row.ArtifactDigest {
+				// 两个未上报的摘要不能证明目标地址和旧登记使用同一制品。
+				if peer.ResourceGroup != group.ID || row.ArtifactDigest == "" || peer.ArtifactDigest != row.ArtifactDigest {
 					return ErrInstanceDestination
 				}
 			}

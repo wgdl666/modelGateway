@@ -30,7 +30,7 @@ func TestVisionInference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := New(nil, runtime)
+	s := New(nil, runtime, nil)
 	calls := 0
 	s.direct.Transport = directRoundTrip(func(r *http.Request) (*http.Response, error) {
 		calls++

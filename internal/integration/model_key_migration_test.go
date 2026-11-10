@@ -163,7 +163,7 @@ func TestModelKeyMigrationKeepsExecutionOwnership(t *testing.T) {
 	}
 	// 新记录在迁移后的表里可写，旧列不能继续是受理或登记的必填项。
 	newModel := testInstance(protocol.ClothGenModel, old.Endpoint, 2)
-	if err := b.Register(ctx, newModel); err != nil {
+	if err := b.Register(ctx, newModel, ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.Admit(ctx, testAdmission(newModel, uuid.NewString(), 1)); err != nil {

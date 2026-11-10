@@ -29,8 +29,8 @@ func (s *Server) createResourceGroup(ctx context.Context, c *app.RequestContext)
 		return
 	}
 	// GPU 0 是有效卡号，缺少卡号不能当作 GPU 0。
-	if !protocol.ValidResourceGroupID(in.ID) || in.ID != strings.TrimSpace(in.ID) || in.MachineID == "" || len(in.MachineID) > 256 ||
-		in.MachineID != strings.TrimSpace(in.MachineID) || in.GPUDevice == nil || *in.GPUDevice < 0 ||
+	if !protocol.ValidResourceGroupID(in.ID) || in.ID != strings.TrimSpace(in.ID) || !validResourceGroupMachineID(in.MachineID) ||
+		in.GPUDevice == nil || *in.GPUDevice < 0 ||
 		in.Capacity < 1 || in.Capacity > protocol.MaxCapacityUnits {
 		writeError(c, http.StatusBadRequest, "invalid_resource_group", "provide a group ID, machine, physical GPU and positive capacity", "")
 		return
@@ -43,6 +43,10 @@ func (s *Server) createResourceGroup(ctx context.Context, c *app.RequestContext)
 	writeJSON(c, http.StatusCreated, group)
 }
 
+func validResourceGroupMachineID(machineID string) bool {
+	return machineID != "" && len(machineID) <= 256 && machineID == strings.TrimSpace(machineID)
+}
+
 func (s *Server) updateResourceGroup(ctx context.Context, c *app.RequestContext) {
 	var in struct {
 		ID       string `json:"id"`
@@ -51,7 +55,7 @@ func (s *Server) updateResourceGroup(ctx context.Context, c *app.RequestContext)
 	if _, ok := readBody(c, 4096, &in, ""); !ok {
 		return
 	}
-	// 组标识和卡的归属固定，历史占槽记录才能继续归到原组。
+	// 单卡编辑只调整容量，机器标识由机器层统一更正。
 	if !protocol.ValidResourceGroupID(in.ID) || in.Capacity < 1 || in.Capacity > protocol.MaxCapacityUnits {
 		writeError(c, http.StatusBadRequest, "invalid_resource_group", "provide a group ID and positive capacity", "")
 		return
@@ -62,4 +66,24 @@ func (s *Server) updateResourceGroup(ctx context.Context, c *app.RequestContext)
 		return
 	}
 	writeJSON(c, http.StatusOK, group)
+}
+
+func (s *Server) renameResourceGroupMachine(ctx context.Context, c *app.RequestContext) {
+	var in struct {
+		MachineID    string `json:"machine_id"`
+		NewMachineID string `json:"new_machine_id"`
+	}
+	if _, ok := readBody(c, 4096, &in, ""); !ok {
+		return
+	}
+	// 旧标识定位整台机器，历史组缺少机器归属，不能通过空标识匹配。
+	if !validResourceGroupMachineID(in.MachineID) || !validResourceGroupMachineID(in.NewMachineID) {
+		writeError(c, http.StatusBadRequest, "invalid_resource_machine", "provide the current and new machine identifiers", "")
+		return
+	}
+	if err := s.store.RenameResourceGroupMachine(ctx, in.MachineID, in.NewMachineID); err != nil {
+		storeError(c, err, "")
+		return
+	}
+	writeJSON(c, http.StatusOK, map[string]string{"machine_id": in.NewMachineID})
 }

@@ -26,6 +26,20 @@ func isGPUEndpoint(endpoint string) bool {
 	return err == nil && gpuEndpointPath.MatchString(u.Path)
 }
 
+// 手动探活与实例登记使用同一出站规则，表单地址必须符合所选网关的配置。
+func (s *Snapshot) ValidateInstanceTarget(target protocol.InstanceTarget) error {
+	if err := s.ValidateEndpoint(target.Endpoint, false); err != nil {
+		return err
+	}
+	if err := s.ValidateEndpoint(target.HealthURL, true); err != nil {
+		return err
+	}
+	if !s.AcceptsInstanceAddress(target.ModelKey, target.Endpoint, target.HealthURL) {
+		return errors.New("endpoint, health URL or model_key does not match the backend configuration")
+	}
+	return nil
+}
+
 // 单卡地址使用原生视频协议，探活也须命中同一张卡，避免用其他 worker 的就绪状态派单。
 func (c Config) AcceptsInstanceAddress(model, endpoint, healthURL string) bool {
 	backend, direct := c.NativeBackends[endpoint]

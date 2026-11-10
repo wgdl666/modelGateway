@@ -19,6 +19,8 @@ class ModelKeyWorkerTests(unittest.IsolatedAsyncioTestCase):
 
         async def native(request):
             self.calls.append((request.method, request.url.path))
+            if request.url.path == "/health":
+                return httpx.Response(200, json={"status": "ok", "instances": [{"name": "ltx-gpu0"}]})
             if request.method == "GET":
                 return httpx.Response(200, json={"job_id": "old-job", "status": "error"})
             return self.native_response
@@ -29,6 +31,8 @@ class ModelKeyWorkerTests(unittest.IsolatedAsyncioTestCase):
         worker.bearer = "Bearer worker-test"
         worker.model_keys = {OUTFIT_MODEL, WARDROBE_MODEL, "Vmind_cloth_gen_v1.0", VIDEO_MODEL}
         worker.native = "http://native"
+        worker.health_url = "http://native/health"
+        worker.artifact = "sha256-" + "a" * 64
         worker.native_headers = {}
         worker.video_protocol = "jobs"
         worker.video_target = "ltx-gpu0"
@@ -44,6 +48,11 @@ class ModelKeyWorkerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.addAsyncCleanup(self.client.aclose)
         self.input = {"images": [{"data": "eA==", "mime_type": "image/png"}]}
+
+    async def test_ready_reports_the_running_worker_artifact(self):
+        result = await self.client.get("/health/ready")
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json(), {"ready": True, "artifact_digest": self.worker.artifact})
 
     async def test_new_requests_route_by_model_key(self):
         for model, path in (

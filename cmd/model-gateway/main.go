@@ -49,11 +49,11 @@ func run(ctx context.Context, path string) error {
 	}
 	defer db.Close()
 	ledger := store.New(db)
-	app := httpapi.New(ledger, runtime)
 	reconciler, err := worker.New(ledger, runtime)
 	if err != nil {
 		return err
 	}
+	app := httpapi.New(ledger, runtime, reconciler.ProbeInstance)
 	// 先排空 HTTP，再等后台写入完成，最后关闭两者共享的 PG 连接。
 	defer reconciler.Close()
 	listener, err := net.Listen("tcp", cfg.Listen)

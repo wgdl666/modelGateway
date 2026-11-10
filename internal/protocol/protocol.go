@@ -44,10 +44,22 @@ type Instance struct {
 	GPUDevices    []int  `json:"gpu_devices,omitempty"`
 }
 
+type InstanceTarget struct {
+	ModelKey  string `json:"model_key"`
+	Endpoint  string `json:"endpoint"`
+	HealthURL string `json:"health_url"`
+}
+
+type InstanceHealth struct {
+	Ready          bool   `json:"ready"`
+	ArtifactDigest string `json:"artifact_digest,omitempty"`
+}
+
 // Valid 检查部署身份和容量。地址还需按当前配置的出站白名单验证。
 func (i Instance) Valid() bool {
+	// 服务未上报摘要时留空，避免把未知部署记成某个真实版本。
 	return ValidInstanceID(i.ID) && ValidModelKey(i.ModelKey) &&
-		ValidResourceGroupID(i.ResourceGroup) && validArtifact(i.Artifact) &&
+		ValidResourceGroupID(i.ResourceGroup) && (i.Artifact == "" || ValidArtifact(i.Artifact)) &&
 		i.Capacity >= 1 && i.Capacity <= MaxCapacityUnits
 }
 
@@ -148,7 +160,7 @@ func ValidID(id string) bool {
 	return err == nil && parsed.String() == id
 }
 
-func validArtifact(value string) bool {
+func ValidArtifact(value string) bool {
 	const prefix = "sha256-"
 	if !strings.HasPrefix(value, prefix) || len(value) != len(prefix)+64 {
 		return false
