@@ -247,21 +247,21 @@ type nativeJob struct {
 func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, task *ent.Request, input protocol.Submission, backend config.NativeBackend) error {
 	path, body, headers, err := nativeMultipart(task, input, backend)
 	if err != nil {
-		return w.failDispatch(task.ID, 500, "invalid_saved_request", "saved request cannot be dispatched to the native model", false)
+		return w.failDispatch(task, 500, "invalid_saved_request", "saved request cannot be dispatched to the native model", false)
 	}
 	// 表单准备也可能消耗排队预算，真正发出前再检查上游截止时间。
 	if !time.Now().Before(task.DeadlineAt) || ctx.Err() != nil {
-		return w.failDispatch(task.ID, 504, "queue_timeout", "request expired before dispatch", false)
+		return w.failDispatch(task, 504, "queue_timeout", "request expired before dispatch", false)
 	}
 	resp, err := w.nativeHTTP(ctx, w.nativeAuth(backend), http.MethodPost, task.Endpoint+path, body, headers)
 	if err != nil {
 		if errors.Is(err, errNativeRouteUnavailable) {
-			return w.failDispatch(task.ID, 502, "native_route_unavailable", err.Error(), false)
+			return w.failDispatch(task, 502, "native_route_unavailable", err.Error(), false)
 		}
 		// 带明确未执行声明的忙响应交给通用派发逻辑，普通拒绝沿用原生接口的失败路径。
 		var status modelStatusError
 		if errors.As(err, &status) && (status == 422 || status == 429) {
-			return w.failDispatch(task.ID, 502, "model_rejected", "native model rejected the request before execution", false)
+			return w.failDispatch(task, 502, "model_rejected", "native model rejected the request before execution", false)
 		}
 		return w.dispatchError(task, err)
 	}
@@ -277,7 +277,7 @@ func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, ta
 	if task.ModelKey == protocol.VideoModel {
 		var job nativeJob
 		if json.Unmarshal(raw, &job) != nil || !nativeJobID.MatchString(job.ID) {
-			return w.failDispatch(task.ID, 502, "invalid_model_response", "video admission outcome is unknown", true)
+			return w.requeueDispatch(task)
 		}
 		// 记录后端分配的 ID，再交给已有轮询；同一请求始终查原 LTX 任务。
 		response := protocol.ModelResponse{Response: protocol.Response{RequestID: task.ID, State: "processing"}, BackendTaskID: job.ID}
@@ -323,8 +323,17 @@ func (u *resultUploader) publishImages(ctx context.Context, id string, raw []byt
 }
 
 func (w *Reconciler) pollNative(cfg *config.Snapshot, task *ent.Request, backend config.NativeBackend) error {
-	// 图片同步返回成品。连接中断或 LTX 受理响应丢失时，继续保留槽位等待核对。
-	if task.ModelKey != protocol.VideoModel || !backend.Matches(task.ModelKey) || !nativeJobID.MatchString(task.BackendTaskID) {
+	if !backend.Matches(task.ModelKey) {
+		return w.pollUnavailable(cfg, task)
+	}
+	if !backend.Video || task.BackendTaskID == "" {
+		// 领取窗口已过且没有可回查的任务，按同一请求回队；历史失败记录只归还占用。
+		if task.State == "failed" {
+			return w.saveModelResponse(cfg, task, nativeFailure(task.ID, "backend_outcome_unknown", "model call ended without a saved result"), true)
+		}
+		return w.requeueDispatch(task)
+	}
+	if !nativeJobID.MatchString(task.BackendTaskID) {
 		return w.pollUnavailable(cfg, task)
 	}
 	auth := w.nativeAuth(backend)

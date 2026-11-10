@@ -78,7 +78,9 @@ Ops 使用管理凭据访问 `GET /v1/admin/requests` 和 `GET /v1/admin/request
 
 使用 Worker 协议的实例通过 `POST {endpoint}/requests` 接收派发。模型端接收 `request_id`、`model_key`、`input` 和可选的 `metadata`。返回同一 `request_id`，状态为 `processing`、`succeeded` 或 `failed`。未受理的输入校验和鉴权错误使用 HTTP 400、413、415、401 或 403。已经受理的任务通过 `GET {endpoint}/requests/{request_id}` 查询，完成状态必须提供对象结果或结构化错误。
 
-网关的状态为 `queued`、`processing`、`succeeded`、`failed`。副本退出后其他副本接管队列和状态查询。派发结果未知时保留槽位，查询原实例，禁止重发生成。确认终态后原子释放，迟到的确认不会改写已经对外失败的状态。
+网关的状态为 `queued`、`processing`、`succeeded`、`failed`。首次模型调用遇到 Worker 忙、断线、执行超时、5xx 或无法读取的响应时，归还本次网关槽位并记录下一次 MQ 投递，约一秒后重试。重试沿用原请求 ID、输入和总截止时间，到期后进入失败状态。参数、鉴权和其他明确的 4xx 拒绝直接失败。每轮派发使用独立的领取标识，迟到的旧结果不能覆盖新一轮。已经保存后端任务 ID 的异步任务继续查询原任务。
+
+回队重试允许后端重复执行。断线不能证明 Worker 尚未开始，同一请求 ID 也不代表 Worker 已实现去重，实际 GPU 并发由 Worker 控制。
 
 ## 模型侧适配器
 
@@ -115,9 +117,9 @@ python -m uvicorn app:app --app-dir worker_adapter --host 127.0.0.1 --port 8001
 
 VMind-Image 和 LTX 的原生鉴权分别使用 `MODEL_GATEWAY_NATIVE_IMAGE_*` 和 `MODEL_GATEWAY_NATIVE_VIDEO_*`。Basic Auth 注入 `USERNAME`、`PASSWORD`，`X-Token` 注入 `TOKEN`。OSS 从 `OSS_ACCESS_KEY_ID` 和 `OSS_ACCESS_KEY_SECRET` 取凭据。S3 使用 AWS 凭据链，`endpoint` 可省略。
 
-直连视频在登记的单卡地址下调用 `/vton`、`/jobs/{job_id}` 和 `/jobs/{job_id}/video`。网关把图片或视频写到 `outputs/<request_id>/`，通过 `result.files` 返回对象引用。图片响应体上限为 64 MiB，视频成品上限为 200 MiB。图片调用断线且终态未知时保留 GPU 槽位，等待核对原执行。
+直连视频在登记的单卡地址下调用 `/vton`、`/jobs/{job_id}` 和 `/jobs/{job_id}/video`。网关把图片或视频写到 `outputs/<request_id>/`，通过 `result.files` 返回对象引用。图片响应体上限为 64 MiB，视频成品上限为 200 MiB。图片调用断线后归还网关槽位并回 MQ 重试。原生图片或尚未保存后端任务 ID 的视频若因网关退出而遗留占用，既有回收循环在领取期限到达后将请求回队；历史已失败的记录只释放占用。
 
-`native_execution_timeout` 默认 180 秒，从领取任务时起算，用于原生模型的首次调用和图片成品发布。上游等待超时后，已派发的任务继续等原生响应。网关记录终态时释放 GPU 槽位，调用方可以用原 `request_id` 查询结果。
+`native_execution_timeout` 默认 180 秒，从每轮领取任务时起算，用于原生模型的首次调用和图片成品发布。上游等待超时后，已经派发的调用继续等原生响应；调用本身失败后回队，原总截止时间不延长。网关记录终态或回队时释放网关槽位，调用方可以用原 `request_id` 查询结果。
 
 ## 已有环境切换到模型键
 

@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
@@ -163,9 +164,10 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 				// 原生调用可晚于上游返回，给原派发者留足执行和写终态的时间。
 				nextPoll = now.Add(cfg.NativeExecutionTimeout).Add(ExecutionWriteTimeout)
 			}
+			// 回队后会生成新的领取标识，旧一轮的响应不能写入后续重试。
 			task, err = tx.Request.UpdateOneID(id).SetState(request.StateProcessing).SetSlotReserved(true).ClearQueuePublishAt().
 				SetInstanceID(i.ID).SetResourceGroup(i.ResourceGroup).SetEndpoint(i.Endpoint).SetArtifactDigest(i.ArtifactDigest).
-				SetStartedAt(now).SetNextPollAt(nextPoll).Save(ctx)
+				SetStartedAt(now).SetNextPollAt(nextPoll).SetPollClaim(uuid.NewString()).Save(ctx)
 			return err
 		}
 		return deferPublication(ctx, tx, next)
@@ -184,11 +186,11 @@ func deferPublication(ctx context.Context, tx *ent.Tx, task *ent.Request) error 
 	return err
 }
 
-func (s *Store) RequeueUnstarted(ctx context.Context, id string, startedAt time.Time) error {
-	// worker_busy 发生在接单前。只撤销本次领取，避免旧响应释放后续派发或已有后端任务的槽位。
+func (s *Store) RequeueDispatch(ctx context.Context, id string, startedAt time.Time, claim string) error {
+	// 忙、断线和调用超时统一延期回队。只撤销本轮领取，不重置总截止时间或重派已登记的异步任务。
 	due := time.Now().UTC().Add(time.Second).Truncate(time.Microsecond)
 	_, err := s.db.Request.Update().Where(request.IDEQ(id), request.StateEQ(request.StateProcessing),
-		request.SlotReservedEQ(true), request.StartedAtEQ(startedAt), request.BackendTaskIDEQ("")).
+		request.SlotReservedEQ(true), request.StartedAtEQ(startedAt), request.PollClaimEQ(claim), request.BackendTaskIDEQ("")).
 		SetState(request.StateQueued).SetSlotReserved(false).SetQueuePublishAt(due).
 		SetInstanceID("").SetResourceGroup("").SetEndpoint("").SetArtifactDigest("").
 		ClearStartedAt().ClearNextPollAt().SetPollClaim("").Save(ctx)

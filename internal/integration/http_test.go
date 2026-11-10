@@ -248,7 +248,7 @@ func TestClearInstanceKeepsRequestHistory(t *testing.T) {
 	if err := db.ModelInstance.UpdateOneID(spec.ID).SetHealthCheckedAt(time.Now().Add(-time.Minute)).Exec(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.DispatchFailure(ctx, id, 504, "upstream_timeout", "test pending confirmation", true); err != nil {
+	if err := a.DispatchFailure(ctx, id, "", 504, "upstream_timeout", "test pending confirmation", true); err != nil {
 		t.Fatal(err)
 	}
 	call(http.MethodDelete, path, adminToken, 409)

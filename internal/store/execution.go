@@ -26,14 +26,14 @@ func (s *Store) ClaimPoll(ctx context.Context) (*ent.Request, error) {
 	// 回查沿用派发账本里的原地址和任务 ID，模型键只决定回查协议。
 	task, err := tx.Request.Query().Where(request.SlotReservedEQ(true), request.NextPollAtLTE(now)).
 		Order(ent.Asc(request.FieldNextPollAt, request.FieldID)).ForUpdate(sql.WithLockAction(sql.SkipLocked)).
-		Select(request.FieldID, request.FieldEndpoint, request.FieldModelKey, request.FieldBackendTaskID).First(ctx)
+		Select(request.FieldID, request.FieldEndpoint, request.FieldModelKey, request.FieldBackendTaskID, request.FieldStartedAt, request.FieldState).First(ctx)
 	if ent.IsNotFound(err) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	// 只认领一次短查询。副本退出后时间到即可接管，迟到的查询不能覆盖新的领取结果。
+	// 首次派发和回查共用领取标识，旧一轮调用或查询的迟到结果不能覆盖重试中的请求。
 	task.PollClaim = uuid.NewString()
 	if err := tx.Request.UpdateOneID(task.ID).SetPollClaim(task.PollClaim).SetNextPollAt(now.Add(8 * time.Second)).Exec(ctx); err != nil {
 		return nil, err
@@ -105,8 +105,8 @@ func (s *Store) RecordResponse(ctx context.Context, id, claim string, response p
 	})
 }
 
-func (s *Store) DispatchFailure(ctx context.Context, id string, status int, code, message string, hold bool) error {
-	return s.updateExecution(ctx, id, "", func(task *ent.Request, update *ent.RequestUpdateOne) error {
+func (s *Store) DispatchFailure(ctx context.Context, id, claim string, status int, code, message string, hold bool) error {
+	return s.updateExecution(ctx, id, claim, func(task *ent.Request, update *ent.RequestUpdateOne) error {
 		now := time.Now().UTC()
 		if task.State == request.StateProcessing {
 			update.SetState(request.StateFailed).SetErrorStatus(status).SetErrorCode(code).SetErrorMessage(message).SetFinishedAt(now)

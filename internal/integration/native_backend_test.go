@@ -130,10 +130,19 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 					if _, sent := r.MultipartForm.Value["target_instance"]; sent {
 						t.Error("GPU selection must come from the address")
 					}
-					if provider == "s3" && gpu == 1 && video1Calls.Add(1) == 1 {
-						// 复现双卡并发时接单锁短暂争用，视频尚未创建后端任务。
-						w.WriteHeader(http.StatusTooManyRequests)
-						_, _ = io.WriteString(w, `{"error":{"code":"worker_busy","execution_started":false}}`)
+					if gpu == 1 && video1Calls.Add(1) == 1 {
+						// 忙响应和受理连接断开都回到 MQ，下一次仍使用原请求 ID。
+						if provider == "s3" {
+							w.WriteHeader(http.StatusTooManyRequests)
+							_, _ = io.WriteString(w, `{"error":{"code":"worker_busy","execution_started":false}}`)
+						} else {
+							conn, _, err := w.(http.Hijacker).Hijack()
+							if err != nil {
+								t.Error(err)
+								return
+							}
+							_ = conn.Close()
+						}
 						return
 					}
 					videoAccepted[gpu].Store(true)
@@ -317,7 +326,7 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			if len(uploads) != 3 {
 				t.Fatalf("expected one image and two video uploads, got %d", len(uploads))
 			}
-			if provider == "s3" && video1Calls.Load() != 2 {
+			if video1Calls.Load() != 2 {
 				t.Fatalf("busy GPU1 was dispatched %d times, want 2", video1Calls.Load())
 			}
 
@@ -334,19 +343,16 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 					}
 				}
 			}
-			// 断线和无法判定的 404 都要保留原占用，重试同一请求不能再发一次。
-			unknownPrompt := "disconnect"
-			if provider == "s3" {
-				unknownPrompt = "unknown-404"
-			}
+			// 明确的 4xx 拒绝结束请求并归还名额，重提同一请求只返回原错误。
+			unknownPrompt := "unknown-404"
 			unknownID := uuid.NewString()
 			unknownBody := strings.Replace(imageBody, "try on", unknownPrompt, 1)
 			callsBefore := imageCalls.Load()
 			call(http.MethodPost, imagePath, apiToken, unknownID, unknownBody, 502)
 			call(http.MethodPost, imagePath, apiToken, unknownID, unknownBody, 502)
 			unknownRow, err := db.Request.Get(t.Context(), unknownID)
-			if err != nil || !unknownRow.SlotReserved || unknownRow.ErrorCode != "backend_outcome_unknown" || imageCalls.Load() != callsBefore+1 {
-				t.Fatalf("unknown image outcome lost its slot or was sent again: %v (%v)", unknownRow, err)
+			if err != nil || unknownRow.SlotReserved || unknownRow.ErrorCode != "model_rejected" || imageCalls.Load() != callsBefore+1 {
+				t.Fatalf("rejected image leaked its slot or was sent again: %v (%v)", unknownRow, err)
 			}
 		})
 	}

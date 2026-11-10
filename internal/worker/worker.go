@@ -160,7 +160,7 @@ func readModelBody(body io.Reader, limit int64) ([]byte, error) {
 func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 	var payload protocol.Submission
 	if err := json.Unmarshal(task.RequestPayload, &payload); err != nil {
-		return w.failDispatch(task.ID, 500, "invalid_saved_request", "saved request is invalid", false)
+		return w.failDispatch(task, 500, "invalid_saved_request", "saved request is invalid", false)
 	}
 	backend, direct := cfg.NativeBackends[task.Endpoint]
 	var raw []byte
@@ -168,14 +168,14 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 		var err error
 		raw, err = json.Marshal(protocol.ModelRequest{RequestID: task.ID, ModelKey: task.ModelKey, Submission: payload})
 		if err != nil {
-			return w.failDispatch(task.ID, 500, "invalid_saved_request", "saved request is invalid", false)
+			return w.failDispatch(task, 500, "invalid_saved_request", "saved request is invalid", false)
 		}
 	}
 	if !time.Now().Before(task.DeadlineAt) {
-		return w.failDispatch(task.ID, 504, "queue_timeout", "request expired before dispatch", false)
+		return w.failDispatch(task, 504, "queue_timeout", "request expired before dispatch", false)
 	}
 	if cfg.ValidateEndpoint(task.Endpoint, false) != nil {
-		return w.failDispatch(task.ID, 503, "backend_unavailable", "selected model address is unavailable", false)
+		return w.failDispatch(task, 503, "backend_unavailable", "selected model address is unavailable", false)
 	}
 	deadline := task.DeadlineAt
 	if direct {
@@ -196,37 +196,36 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 
 func (w *Reconciler) dispatchError(task *ent.Request, err error) error {
 	if errors.Is(err, errWorkerBusyBeforeExecution) {
-		ctx, cancel := context.WithTimeout(context.Background(), store.ExecutionWriteTimeout)
-		defer cancel()
-		// 先持久化下一次投递，成功返回后消费者才确认当前 MQ 消息。
-		return w.store.RequeueUnstarted(ctx, task.ID, *task.StartedAt)
+		return w.requeueDispatch(task)
 	}
-	id := task.ID
 	var status modelStatusError
 	if errors.As(err, &status) {
-		// 执行端约定这些错误在受理前返回，可以确认 GPU 尚未接单。
+		// 参数、鉴权和其他明确的 4xx 拒绝不靠重复派发恢复。
 		switch status {
 		case 400, 413, 415:
-			return w.failDispatch(id, 400, "model_rejected", "model rejected the request before admission", false)
+			return w.failDispatch(task, 400, "model_rejected", "model rejected the request before admission", false)
 		case 401, 403:
-			return w.failDispatch(id, 502, "model_authentication_failed", "model rejected the gateway credential", false)
+			return w.failDispatch(task, 502, "model_authentication_failed", "model rejected the gateway credential", false)
+		}
+		if status >= 400 && status < 500 {
+			return w.failDispatch(task, 502, "model_rejected", "model rejected the request", false)
 		}
 	}
-	var op *net.OpError
-	if errors.As(err, &op) && op.Op == "dial" {
-		return w.failDispatch(id, 503, "backend_unreachable", "model connection was not established", false)
-	}
-	// 发出之后的超时与断线无法证明模型已释放 GPU，保留槽位等待终态。
-	if errors.Is(err, context.DeadlineExceeded) {
-		return w.failDispatch(id, 504, "backend_timeout", "model execution outcome is unknown", true)
-	}
-	return w.failDispatch(id, 502, "backend_outcome_unknown", "model execution outcome is unknown", true)
+	// 网络错误、执行超时和 5xx 都归还网关名额后回 MQ；Worker 负责实际 GPU 并发。
+	return w.requeueDispatch(task)
 }
 
-func (w *Reconciler) failDispatch(id string, status int, code, message string, hold bool) error {
+func (w *Reconciler) requeueDispatch(task *ent.Request) error {
 	ctx, cancel := context.WithTimeout(context.Background(), store.ExecutionWriteTimeout)
 	defer cancel()
-	return w.store.DispatchFailure(ctx, id, status, code, message, hold)
+	// 待投递记录与释放同次写入，成功后消费者才 ACK；MQ 短暂不可用也不会丢掉重试。
+	return w.store.RequeueDispatch(ctx, task.ID, *task.StartedAt, task.PollClaim)
+}
+
+func (w *Reconciler) failDispatch(task *ent.Request, status int, code, message string, hold bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), store.ExecutionWriteTimeout)
+	defer cancel()
+	return w.store.DispatchFailure(ctx, task.ID, task.PollClaim, status, code, message, hold)
 }
 
 func (w *Reconciler) recordModelResponse(cfg *config.Snapshot, task *ent.Request, raw []byte, polling bool) error {
@@ -244,7 +243,7 @@ func (w *Reconciler) saveModelResponse(cfg *config.Snapshot, task *ent.Request, 
 		if polling {
 			return w.store.PollUnavailable(ctx, task.ID, task.PollClaim, cfg.PollInterval)
 		}
-		return w.store.DispatchFailure(ctx, task.ID, 502, "invalid_model_response", "model execution outcome is unknown", true)
+		return w.requeueDispatch(task)
 	}
 	return w.store.RecordResponse(ctx, task.ID, task.PollClaim, response, cfg.PollInterval)
 }

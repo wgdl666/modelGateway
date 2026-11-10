@@ -83,7 +83,7 @@ func TestModelKeyMigrationKeepsExecutionOwnership(t *testing.T) {
 	}
 	pin(legacyHeld.ID, old, "")
 	// 对外已失败的历史请求仍可能占用 GPU，迁移同样必须拦住。
-	if err := a.DispatchFailure(ctx, legacyHeld.ID, 504, "backend_timeout", "unknown", true); err != nil {
+	if err := a.DispatchFailure(ctx, legacyHeld.ID, "", 504, "backend_timeout", "unknown", true); err != nil {
 		t.Fatal(err)
 	}
 	pin(running.ID, video, "existing-native-job")

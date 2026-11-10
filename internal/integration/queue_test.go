@@ -231,7 +231,7 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 	if waiting == first {
 		waiting = ids[1]
 	}
-	if err := a.DispatchFailure(t.Context(), first, 504, "backend_timeout", "unknown", true); err != nil {
+	if err := a.DispatchFailure(t.Context(), first, "", 504, "backend_timeout", "unknown", true); err != nil {
 		t.Fatal(err)
 	}
 	waitForPublicationTime(t, db, waiting)
