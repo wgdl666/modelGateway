@@ -27,6 +27,7 @@ type Config struct {
 	BackendToken    string         `json:"backend_token"`
 	AllowedNetworks []string       `json:"backend_cidrs"`
 	AllowedPorts    []string       `json:"backend_ports"`
+	PublicHosts     []string       `json:"backend_public_hosts,omitempty"`
 	VLMAddr         string         `json:"vlm_addr"`
 	DecisionAddr    string         `json:"decision_addr"`
 	VisionAddr      string         `json:"vision_addr"`
@@ -40,6 +41,7 @@ type Config struct {
 	VisionMaxBodyBytes int64 `json:"vision_max_body_bytes"`
 
 	NativeBackends         map[string]NativeBackend `json:"native_backends"`
+	NativeModels           map[string]NativeBackend `json:"native_models,omitempty"`
 	NativeResults          NativeResults            `json:"native_results"`
 	NativeExecutionTimeout time.Duration            `json:"-"`
 }
@@ -149,8 +151,13 @@ func prepareConfig(c Config) (*Snapshot, error) {
 	for _, port := range c.AllowedPorts {
 		state.ports[port] = true
 	}
-	if len(state.networks) == 0 || len(state.ports) == 0 {
+	if (len(state.networks) == 0 && len(c.PublicHosts) == 0) || len(state.ports) == 0 {
 		return nil, errors.New("explicit backend network and port allowlists required")
+	}
+	for _, host := range c.PublicHosts {
+		if !validPublicHost(host) {
+			return nil, errors.New("invalid backend public host")
+		}
 	}
 	// 同步推理走各自固定的私网地址，避免扩大媒体执行实例的地址白名单。
 	for _, upstream := range []struct{ key, address string }{
@@ -208,7 +215,8 @@ func (r *Runtime) Reload(c Config) error {
 		return errors.New("changing RabbitMQ requires draining and restarting the gateway")
 	}
 	// 已派发的请求按原地址回查，切换协议或结果桶前须等原任务结束。
-	if !maps.Equal(next.NativeBackends, r.current.NativeBackends) || next.NativeResults != r.current.NativeResults {
+	if !maps.Equal(next.NativeBackends, r.current.NativeBackends) ||
+		!maps.Equal(next.NativeModels, r.current.NativeModels) || next.NativeResults != r.current.NativeResults {
 		return errors.New("changing native backends or result storage requires draining and restarting the gateway")
 	}
 	r.current = next
@@ -226,7 +234,8 @@ func (s *Snapshot) ValidateEndpoint(endpoint string, health bool) error {
 		return errors.New("invalid endpoint path")
 	}
 	if u.Path != "" && u.Path != "/" {
-		if path.Clean(u.Path) != strings.TrimSuffix(u.Path, "/") || (!health && !gpuEndpointPath.MatchString(u.Path)) {
+		if path.Clean(u.Path) != strings.TrimSuffix(u.Path, "/") ||
+			(!health && len(s.NativeModels) == 0 && !gpuEndpointPath.MatchString(u.Path)) {
 			return errors.New("invalid endpoint path")
 		}
 	}
@@ -237,7 +246,16 @@ func (s *Snapshot) ValidateEndpoint(endpoint string, health bool) error {
 	} else if port == "" {
 		port = "80"
 	}
-	if ip == nil || !s.ports[port] {
+	if !s.ports[port] {
+		return errors.New("endpoint is outside the backend allowlist")
+	}
+	if s.publicHostAllowed(u.Hostname()) {
+		if u.Scheme != "https" || (ip != nil && !publicIP(ip)) {
+			return errors.New("public backends require HTTPS and public addresses")
+		}
+		return nil
+	}
+	if ip == nil {
 		return errors.New("endpoint is outside the backend allowlist")
 	}
 	for _, network := range s.networks {

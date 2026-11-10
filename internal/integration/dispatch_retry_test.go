@@ -142,6 +142,11 @@ func TestRequeuedDispatchRejectsLateAttemptWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Both sides must use database precision when checking deadline stability.
+	admitted, err = db.Request.Get(t.Context(), admitted.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	first, err := a.Claim(t.Context(), testConfig(), id)
 	if err != nil || first == nil {
 		t.Fatalf("first claim: %v %v", first, err)

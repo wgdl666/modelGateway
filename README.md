@@ -95,14 +95,19 @@ python -m uvicorn app:app --app-dir worker_adapter --host 127.0.0.1 --port 8001
 
 ## Go 网关直连
 
-将原生地址加入 `native_backends`，再以相同的 `endpoint` 登记实例。将端口加入 `backend_ports`。常规 VMind-Image 使用空对象。国内 FLUX 换装使用 `vton_edits` 选择 `/v1/images/edits`。LTX 地址带 `/gpuN` 前缀，设置 `video: true` 以使用视频协议和凭据。切换地址、协议或结果桶前先排空受影响的实例，再更新配置并重启网关。
+在 Ops 登记实例的 `endpoint` 和 `health_url`，Go 网关直接调用该地址。协议通过 `native_models` 按模型类型配置一次；新增 GPU 不需要增加 ACK 适配器、服务端口或地址映射。
+
+私网 IP 必须位于 `backend_cidrs`；公网地址必须使用 HTTPS，域名或公网 IP 必须匹配 `backend_public_hosts`，端口必须位于 `backend_ports`。公网 DNS 每次建连都校验全部解析结果，拒绝回环、私网、链路本地及其他特殊用途地址；连接使用已校验的 IP，TLS 仍验证登记域名。关闭代理和重定向。可以登记固定端口或带路径前缀的地址。
 
 ```json
 {
-  "native_backends": {
-    "http://10.0.1.10:9001": {"vton_edits": true},
-    "http://10.0.1.11:9002/gpu0": {"video": true},
-    "http://10.0.1.11:9002/gpu1": {"video": true}
+  "backend_cidrs": ["10.96.0.0/16"],
+  "backend_ports": ["8001", "8002", "443", "8443"],
+  "backend_public_hosts": ["*.seetacloud.com"],
+  "native_models": {
+    "Vmind_outfit_v1.0": {},
+    "Vmind_bodymodel_v1.0": {},
+    "Vmind_outfit_video_v1.0": {"video": true}
   },
   "native_results": {
     "provider": "oss",
@@ -113,7 +118,13 @@ python -m uvicorn app:app --app-dir worker_adapter --host 127.0.0.1 --port 8001
 }
 ```
 
-每张卡登记一个原生视频实例。例如 GPU 0 的 `endpoint` 为 `http://10.0.1.11:9002/gpu0`，`health_url` 为同一地址加 `/healthz`。选 GPU 0 对应的已有组，登记 `gpu_devices: [0]` 和实例容量。LTX 按路径选择 worker，网关核对探活返回的 GPU 编号。
+例如图片实例登记 `https://node.westd.seetacloud.com:8443/vworld/gpu3`，健康地址为该地址加 `/health`。视频实例可以登记 `https://node.bjb2.seetacloud.com:8443/gpu0`，健康地址为该地址加 `/healthz`。专用单卡端口也可直接登记根地址，无需强制 `/gpuN` 路径。视频探针必须报告一个 worker，卡号与登记的 `gpu_devices` 一致；路径带 `/gpuN` 时也校验路径中的编号。
+
+Outfit 与 BodyModel 若使用同一张物理卡，必须选择同一个资源组。组容量为 1 时，两种模型合计只能占用一个执行槽位。增加 GPU 时先在 Ops 创建对应物理卡的资源组，再登记该卡提供的模型实例；组和实例的增加不改变 ACK 部署。
+
+`native_backends` 的旧地址绑定仍兼容，且优先于 `native_models`，用于渐进迁移。新部署使用 `native_models`。修改协议或结果桶需排空并重启网关；新增允许范围内的 endpoint 只需 Ops 登记。公网域名允许规则只配置可信模型提供方；Basic Auth 和 Token 仍由网关 Secret 注入，不写入 endpoint。国内旧 FLUX 换装可在对应模型配置中设置 `vton_edits: true`；Qwen-Image 使用空对象。
+
+CN 的配置、迁移验收和回滚步骤见 [CN endpoint 部署](deploy/CN-ENDPOINTS.md)。
 
 VMind-Image 和 LTX 的原生鉴权分别使用 `MODEL_GATEWAY_NATIVE_IMAGE_*` 和 `MODEL_GATEWAY_NATIVE_VIDEO_*`。Basic Auth 注入 `USERNAME`、`PASSWORD`，`X-Token` 注入 `TOKEN`。OSS 从 `OSS_ACCESS_KEY_ID` 和 `OSS_ACCESS_KEY_SECRET` 取凭据。S3 使用 AWS 凭据链，`endpoint` 可省略。
 

@@ -4,7 +4,9 @@ metadata:
   name: model-gateway-worker
   namespace: default
 spec:
-  replicas: 1
+  # 旧适配器只用于迁移回滚。直连切换并验收后保持 0；不得先应用此文件。
+  # 当前在线配置需在切换前单独导出，回滚以该快照为准。
+  replicas: 0
   strategy:
     type: Recreate
   selector:

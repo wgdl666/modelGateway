@@ -221,8 +221,15 @@ func (w *Reconciler) nativeHealth(ctx context.Context, cfg *config.Snapshot, tar
 			return protocol.InstanceHealth{}, nil
 		}
 		instance := health.Instances[0]
-		if instance.Name == "" || len(instance.GPUs) != 1 ||
-			!strings.HasSuffix(target.Endpoint, fmt.Sprintf("/gpu%d", instance.GPUs[0])) {
+		if instance.Name == "" || len(instance.GPUs) != 1 {
+			return protocol.InstanceHealth{}, nil
+		}
+		if len(target.GPUDevices) != 0 {
+			if !slices.Equal(instance.GPUs, target.GPUDevices) {
+				return protocol.InstanceHealth{}, nil
+			}
+		}
+		if !cfg.AcceptsInstanceGPU(target.ModelKey, target.Endpoint, instance.GPUs) {
 			return protocol.InstanceHealth{}, nil
 		}
 		return health.result(ready), nil

@@ -80,6 +80,12 @@ func TestRabbitMQRequeuesOnlyConfirmedWorkerBusy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// PostgreSQL persists microseconds; compare the persisted deadline, not
+	// the nanosecond timestamp returned by an in-memory insert result.
+	admitted, err = db.Request.Get(t.Context(), admitted.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	runtime, err := config.NewRuntime(cfg)
 	if err != nil {
 		t.Fatal(err)

@@ -30,6 +30,10 @@ spec:
           envFrom:
             - secretRef:
                 name: model-gateway-runtime
+            # 原生协议使用同一份凭据，不随 GPU 数量增加容器或 Secret。
+            - secretRef:
+                name: model-gateway-native
+                optional: true
           ports:
             - name: http
               containerPort: 18580

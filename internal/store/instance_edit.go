@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/wgdl666/modelGateway/ent"
@@ -70,8 +68,7 @@ func (s *Store) EditInstance(ctx context.Context, cfg config.Config, id string, 
 			}
 			machine, devices = group.MachineID, []int{*group.GpuDevice}
 		}
-		if cfg.NativeBackends[settings.Endpoint].Video && (len(devices) != 1 ||
-			!strings.HasSuffix(settings.Endpoint, "/gpu"+strconv.Itoa(devices[0]))) {
+		if !cfg.AcceptsInstanceGPU(row.ModelKey, settings.Endpoint, devices) {
 			return ErrResourceGroupDeviceMismatch
 		}
 		if row.Endpoint != settings.Endpoint || row.ResourceGroup != settings.ResourceGroup {

@@ -26,6 +26,16 @@ import (
 
 // 从登记和 HTTP 受理开始验证真实派发、轮询和状态写入，模型与对象存储只模拟外部协议。
 func TestNativeBackendsThroughGateway(t *testing.T) {
+	for _, byModel := range []bool{false, true} {
+		name := "legacy_address_binding"
+		if byModel {
+			name = "registered_endpoint"
+		}
+		t.Run(name, func(t *testing.T) { testNativeBackendsThroughGateway(t, byModel) })
+	}
+}
+
+func testNativeBackendsThroughGateway(t *testing.T, byModel bool) {
 	for _, provider := range []string{"oss", "s3"} {
 		t.Run(provider, func(t *testing.T) {
 			ledger, _, db := stores(t)
@@ -48,6 +58,10 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			imageID := uuid.NewString()
 			videoIDs := [2]string{uuid.NewString(), uuid.NewString()}
 			jobIDs := [2]string{"ltx-job-0", "ltx-job-1"}
+			imagePrefix := ""
+			if byModel {
+				imagePrefix = "/vworld/gpu3"
+			}
 			var imageCalls atomic.Int32
 			var videoAccepted [2]atomic.Bool
 			var video1Calls atomic.Int32
@@ -58,7 +72,12 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 					w.WriteHeader(http.StatusUnauthorized)
 					return
 				}
-				switch r.Method + " " + r.URL.Path {
+				if !strings.HasPrefix(r.URL.Path, imagePrefix+"/") {
+					t.Errorf("image request lost registered prefix: %s", r.URL.Path)
+					http.NotFound(w, r)
+					return
+				}
+				switch r.Method + " " + strings.TrimPrefix(r.URL.Path, imagePrefix) {
 				case "GET /health":
 					_, _ = io.WriteString(w, `{"status":"ok","workers":[{"healthy":true}]}`)
 				case "POST /v2/images/vton":
@@ -200,7 +219,7 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			cfg.RabbitMQURL, cfg.RabbitMQQueue, _ = testsupport.RabbitQueue(t)
 			cfg.BackendToken = "legacy-token"
 			cfg.PollInterval = 25 * time.Millisecond
-			imageSpec := testInstance(protocol.OutfitModel, imageModel.URL, 1)
+			imageSpec := testInstance(protocol.OutfitModel, imageModel.URL+imagePrefix, 1)
 			videoSpecs := [2]protocol.Instance{}
 			cfg.NativeBackends = map[string]config.NativeBackend{imageSpec.Endpoint: {}}
 			for gpu := range videoSpecs {
@@ -216,6 +235,12 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 			for endpoint := range cfg.NativeBackends {
 				u, _ := url.Parse(endpoint)
 				cfg.AllowedPorts = append(cfg.AllowedPorts, u.Port())
+			}
+			if byModel {
+				cfg.NativeModels = map[string]config.NativeBackend{
+					protocol.OutfitModel: {}, protocol.VideoModel: {Video: true},
+				}
+				cfg.NativeBackends = nil
 			}
 			runtime, err := config.NewRuntime(cfg)
 			if err != nil {
