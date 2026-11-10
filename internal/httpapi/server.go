@@ -199,7 +199,7 @@ func readPayload(c *app.RequestContext, limit int64) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(reader, limit+1))
 }
 
-func (s *Server) forwardDirect(ctx context.Context, c *app.RequestContext, model, endpoint, contentType string, body []byte) {
+func forwardDirect(ctx context.Context, c *app.RequestContext, client *http.Client, model, endpoint, contentType string, body []byte) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		writeError(c, 502, "upstream_unavailable", model+" request could not be sent", "")
@@ -207,7 +207,7 @@ func (s *Server) forwardDirect(ctx context.Context, c *app.RequestContext, model
 	}
 	// 业务凭据只在网关校验，模型服务只接收推理请求体及其类型。
 	req.Header.Set("Content-Type", contentType)
-	resp, err := s.direct.Do(req)
+	resp, err := client.Do(req)
 	if errors.Is(err, context.DeadlineExceeded) {
 		writeError(c, 504, "upstream_timeout", model+" response timed out", "")
 		return

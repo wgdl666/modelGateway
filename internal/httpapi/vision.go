@@ -8,6 +8,8 @@ import (
 	"mime"
 	"mime/multipart"
 	"slices"
+	"strings"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 )
@@ -46,8 +48,8 @@ func (s *Server) visionPredict(route visionRoute) app.HandlerFunc {
 		case <-ctx.Done():
 			return
 		}
-		raw, err := readPayload(c, cfg.MaxBodyBytes)
-		tooLarge := int64(len(raw)) > cfg.MaxBodyBytes
+		raw, err := readPayload(c, cfg.VisionMaxBodyBytes)
+		tooLarge := int64(len(raw)) > cfg.VisionMaxBodyBytes
 		var body []byte
 		var contentType string
 		if err == nil && !tooLarge {
@@ -64,8 +66,14 @@ func (s *Server) visionPredict(route visionRoute) app.HandlerFunc {
 			writeError(c, 400, "invalid_vision_input", "use inline images and supported fields for this route", "")
 			return
 		}
-		// G6 自己负责分卡和模型参数校验，网关同步转发 JSON 或图片结果。
-		s.forwardDirect(ctx, c, "G6 vision", "http://"+cfg.VisionAddr+route.path, contentType, body)
+		client := s.direct
+		if strings.HasPrefix(route.path, "/segment-person/") {
+			// 人像与主体抠图沿用 ModelHub 直连时的 180 秒上游等待预算。
+			segment := *s.direct
+			segment.Timeout = 180 * time.Second
+			client = &segment
+		}
+		forwardDirect(ctx, c, client, "G6 vision", "http://"+cfg.VisionAddr+route.path, contentType, body)
 	}
 }
 

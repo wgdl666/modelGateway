@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/wgdl666/modelGateway/internal/config"
@@ -21,6 +22,7 @@ func TestVisionInference(t *testing.T) {
 		image    = `{"image":"dGVzdA=="}`
 		jsonType = "application/json"
 	)
+	largeImage := `{"image":"` + strings.Repeat("A", 9<<10) + `"}`
 	cfg := config.Config{
 		APIToken: strings.Repeat("a", 24), AdminToken: strings.Repeat("b", 24),
 		AllowedNetworks: []string{"10.0.0.0/8"}, AllowedPorts: []string{"8001"},
@@ -42,11 +44,14 @@ func TestVisionInference(t *testing.T) {
 		switch r.URL.Path {
 		case "/human-parser/human_parser/predict":
 			raw, err := io.ReadAll(r.Body)
-			if err != nil || string(raw) != image || r.Header.Get("Content-Type") != jsonType {
+			if err != nil || (string(raw) != image && string(raw) != largeImage) || r.Header.Get("Content-Type") != jsonType {
 				t.Fatal("parser must receive the inline JSON image")
 			}
 			kind, response = jsonType, `{"success":true}`
 		case "/segment-person/api/segment":
+			if deadline, ok := r.Context().Deadline(); !ok || time.Until(deadline) < 175*time.Second {
+				t.Fatal("segment upload must receive its upstream waiting budget")
+			}
 			_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 			if err != nil {
 				t.Fatal(err)
@@ -130,6 +135,16 @@ func TestVisionInference(t *testing.T) {
 	if got := call(segment, cfg.APIToken, out.FormDataContentType(), form.String()); got.Code != 200 ||
 		string(got.Header().ContentType()) != "image/png" || got.Body.String() != "png-data" || calls != 2 {
 		t.Fatalf("segment response was not forwarded: %d, calls %d", got.Code, calls)
+	}
+	cfg.VisionMaxBodyBytes = 10 << 10
+	if err := runtime.Reload(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if got := call(parser, cfg.APIToken, jsonType, largeImage); got.Code != 200 || calls != 3 {
+		t.Fatalf("vision upload override returned %d, calls %d", got.Code, calls)
+	}
+	if runtime.Current().MaxBodyBytes != cfg.MaxBodyBytes {
+		t.Fatal("vision upload override changed the general request limit")
 	}
 	cfg.VisionAddr = "8.8.8.8:18280"
 	if runtime.Reload(cfg) == nil {
