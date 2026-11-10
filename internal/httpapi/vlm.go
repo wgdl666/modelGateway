@@ -34,5 +34,5 @@ func (s *Server) chatCompletions(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	s.forwardDirect(ctx, c, "VLM", "http://"+cfg.VLMAddr+chatCompletionsPath, "application/json", body)
+	forwardDirect(ctx, c, s.direct, "VLM", "http://"+cfg.VLMAddr+chatCompletionsPath, "application/json", body)
 }

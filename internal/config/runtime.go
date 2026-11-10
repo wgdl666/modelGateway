@@ -36,6 +36,9 @@ type Config struct {
 	MaxWaiting      int            `json:"max_waiting"`
 	UnitsByModelKey map[string]int `json:"units_by_model_key"`
 
+	// 视觉请求的 Base64 会扩张原图，允许独立于生成任务的上传上限。
+	VisionMaxBodyBytes int64 `json:"vision_max_body_bytes"`
+
 	NativeBackends         map[string]NativeBackend `json:"native_backends"`
 	NativeResults          NativeResults            `json:"native_results"`
 	NativeExecutionTimeout time.Duration            `json:"-"`
@@ -117,6 +120,12 @@ func prepareConfig(c Config) (*Snapshot, error) {
 	}
 	if c.MaxBodyBytes == 0 {
 		c.MaxBodyBytes = 64 << 20
+	}
+	if c.VisionMaxBodyBytes == 0 {
+		c.VisionMaxBodyBytes = c.MaxBodyBytes
+	}
+	if c.VisionMaxBodyBytes < 0 {
+		return nil, errors.New("vision_max_body_bytes must be positive")
 	}
 	if c.MaxWaiting == 0 {
 		c.MaxWaiting = 128

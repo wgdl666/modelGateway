@@ -40,5 +40,5 @@ func (s *Server) decisionPredict(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_multipart", "could not read multipart request", "")
 		return
 	}
-	s.forwardDirect(ctx, c, "Decision", "http://"+cfg.DecisionAddr+"/v1/predict", contentType, body)
+	forwardDirect(ctx, c, s.direct, "Decision", "http://"+cfg.DecisionAddr+"/v1/predict", contentType, body)
 }
