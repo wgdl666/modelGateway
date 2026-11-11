@@ -160,6 +160,41 @@ func (_u *RequestUpdate) SetNillableBackendTaskID(v *string) *RequestUpdate {
 	return _u
 }
 
+// SetDispatchAttempts sets the "dispatch_attempts" field.
+func (_u *RequestUpdate) SetDispatchAttempts(v int) *RequestUpdate {
+	_u.mutation.ResetDispatchAttempts()
+	_u.mutation.SetDispatchAttempts(v)
+	return _u
+}
+
+// SetNillableDispatchAttempts sets the "dispatch_attempts" field if the given value is not nil.
+func (_u *RequestUpdate) SetNillableDispatchAttempts(v *int) *RequestUpdate {
+	if v != nil {
+		_u.SetDispatchAttempts(*v)
+	}
+	return _u
+}
+
+// AddDispatchAttempts adds value to the "dispatch_attempts" field.
+func (_u *RequestUpdate) AddDispatchAttempts(v int) *RequestUpdate {
+	_u.mutation.AddDispatchAttempts(v)
+	return _u
+}
+
+// SetDispatchRetryReason sets the "dispatch_retry_reason" field.
+func (_u *RequestUpdate) SetDispatchRetryReason(v string) *RequestUpdate {
+	_u.mutation.SetDispatchRetryReason(v)
+	return _u
+}
+
+// SetNillableDispatchRetryReason sets the "dispatch_retry_reason" field if the given value is not nil.
+func (_u *RequestUpdate) SetNillableDispatchRetryReason(v *string) *RequestUpdate {
+	if v != nil {
+		_u.SetDispatchRetryReason(*v)
+	}
+	return _u
+}
+
 // SetStartedAt sets the "started_at" field.
 func (_u *RequestUpdate) SetStartedAt(v time.Time) *RequestUpdate {
 	_u.mutation.SetStartedAt(v)
@@ -355,6 +390,11 @@ func (_u *RequestUpdate) check() error {
 			return &ValidationError{Name: "state", err: fmt.Errorf(`ent: validator failed for field "Request.state": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.DispatchAttempts(); ok {
+		if err := request.DispatchAttemptsValidator(v); err != nil {
+			return &ValidationError{Name: "dispatch_attempts", err: fmt.Errorf(`ent: validator failed for field "Request.dispatch_attempts": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -404,6 +444,15 @@ func (_u *RequestUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.BackendTaskID(); ok {
 		_spec.SetField(request.FieldBackendTaskID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DispatchAttempts(); ok {
+		_spec.SetField(request.FieldDispatchAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDispatchAttempts(); ok {
+		_spec.AddField(request.FieldDispatchAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.DispatchRetryReason(); ok {
+		_spec.SetField(request.FieldDispatchRetryReason, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.StartedAt(); ok {
 		_spec.SetField(request.FieldStartedAt, field.TypeTime, value)
@@ -598,6 +647,41 @@ func (_u *RequestUpdateOne) SetBackendTaskID(v string) *RequestUpdateOne {
 func (_u *RequestUpdateOne) SetNillableBackendTaskID(v *string) *RequestUpdateOne {
 	if v != nil {
 		_u.SetBackendTaskID(*v)
+	}
+	return _u
+}
+
+// SetDispatchAttempts sets the "dispatch_attempts" field.
+func (_u *RequestUpdateOne) SetDispatchAttempts(v int) *RequestUpdateOne {
+	_u.mutation.ResetDispatchAttempts()
+	_u.mutation.SetDispatchAttempts(v)
+	return _u
+}
+
+// SetNillableDispatchAttempts sets the "dispatch_attempts" field if the given value is not nil.
+func (_u *RequestUpdateOne) SetNillableDispatchAttempts(v *int) *RequestUpdateOne {
+	if v != nil {
+		_u.SetDispatchAttempts(*v)
+	}
+	return _u
+}
+
+// AddDispatchAttempts adds value to the "dispatch_attempts" field.
+func (_u *RequestUpdateOne) AddDispatchAttempts(v int) *RequestUpdateOne {
+	_u.mutation.AddDispatchAttempts(v)
+	return _u
+}
+
+// SetDispatchRetryReason sets the "dispatch_retry_reason" field.
+func (_u *RequestUpdateOne) SetDispatchRetryReason(v string) *RequestUpdateOne {
+	_u.mutation.SetDispatchRetryReason(v)
+	return _u
+}
+
+// SetNillableDispatchRetryReason sets the "dispatch_retry_reason" field if the given value is not nil.
+func (_u *RequestUpdateOne) SetNillableDispatchRetryReason(v *string) *RequestUpdateOne {
+	if v != nil {
+		_u.SetDispatchRetryReason(*v)
 	}
 	return _u
 }
@@ -810,6 +894,11 @@ func (_u *RequestUpdateOne) check() error {
 			return &ValidationError{Name: "state", err: fmt.Errorf(`ent: validator failed for field "Request.state": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.DispatchAttempts(); ok {
+		if err := request.DispatchAttemptsValidator(v); err != nil {
+			return &ValidationError{Name: "dispatch_attempts", err: fmt.Errorf(`ent: validator failed for field "Request.dispatch_attempts": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -876,6 +965,15 @@ func (_u *RequestUpdateOne) sqlSave(ctx context.Context) (_node *Request, err er
 	}
 	if value, ok := _u.mutation.BackendTaskID(); ok {
 		_spec.SetField(request.FieldBackendTaskID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DispatchAttempts(); ok {
+		_spec.SetField(request.FieldDispatchAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDispatchAttempts(); ok {
+		_spec.AddField(request.FieldDispatchAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.DispatchRetryReason(); ok {
+		_spec.SetField(request.FieldDispatchRetryReason, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.StartedAt(); ok {
 		_spec.SetField(request.FieldStartedAt, field.TypeTime, value)

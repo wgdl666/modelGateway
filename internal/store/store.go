@@ -37,7 +37,7 @@ func (s *Store) CheckReady(ctx context.Context) error {
 		return err
 	}
 	// 同步、多卡请求都依赖这份占用快照，迁移缺失时不能接流量。
-	_, err := s.db.Request.Query().Select(request.FieldProtocol, request.FieldQueuePublishAt, request.FieldResourceGroups).Limit(1).All(ctx)
+	_, err := s.db.Request.Query().Select(request.FieldProtocol, request.FieldQueuePublishAt, request.FieldResourceGroups, request.FieldDispatchAttempts, request.FieldDispatchRetryReason).Limit(1).All(ctx)
 	return err
 }
 

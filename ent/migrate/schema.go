@@ -65,6 +65,8 @@ var (
 		{Name: "endpoint", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "artifact_digest", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "backend_task_id", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "dispatch_attempts", Type: field.TypeInt, Default: 0},
+		{Name: "dispatch_retry_reason", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "deadline_at", Type: field.TypeTime},
 		{Name: "started_at", Type: field.TypeTime, Nullable: true},
 		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
@@ -86,7 +88,7 @@ var (
 			{
 				Name:    "request_model_key_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[25], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[27], RequestsColumns[0]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -102,7 +104,7 @@ var (
 			{
 				Name:    "request_deadline_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[16]},
+				Columns: []*schema.Column{RequestsColumns[18]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -118,7 +120,7 @@ var (
 			{
 				Name:    "request_next_poll_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[19]},
+				Columns: []*schema.Column{RequestsColumns[21]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "slot_reserved",
 				},
@@ -126,7 +128,7 @@ var (
 			{
 				Name:    "request_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[25], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[27], RequestsColumns[0]},
 			},
 			{
 				Name:    "request_trace_id",

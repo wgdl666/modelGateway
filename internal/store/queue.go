@@ -215,7 +215,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 			// 回队后会生成新的领取标识，旧一轮的响应不能写入后续重试。
 			task, err = tx.Request.UpdateOneID(id).SetState(request.StateProcessing).SetSlotReserved(true).ClearQueuePublishAt().
 				SetInstanceID(i.ID).SetResourceGroup(i.ResourceGroup).SetResourceGroups(memberships).SetEndpoint(i.Endpoint).SetArtifactDigest(i.ArtifactDigest).
-				SetStartedAt(now).SetNextPollAt(nextPoll).SetPollClaim(uuid.NewString()).Save(ctx)
+				AddDispatchAttempts(1).SetStartedAt(now).SetNextPollAt(nextPoll).SetPollClaim(uuid.NewString()).Save(ctx)
 			return err
 		}
 		if protocol.SynchronousKind(next.Protocol) != "" {
@@ -237,12 +237,16 @@ func deferPublication(ctx context.Context, tx *ent.Tx, task *ent.Request) error 
 	return err
 }
 
-func (s *Store) RequeueDispatch(ctx context.Context, id string, startedAt time.Time, claim string) error {
+func (s *Store) RequeueDispatch(ctx context.Context, id string, startedAt time.Time, claim string, reasons ...string) error {
+	reason := "dispatch_outcome_unknown"
+	if len(reasons) > 0 {
+		reason = reasons[0]
+	}
 	// 忙、断线和调用超时统一延期回队。只撤销本轮领取，不重置总截止时间或重派已登记的异步任务。
 	due := time.Now().UTC().Add(time.Second).Truncate(time.Microsecond)
 	_, err := s.db.Request.Update().Where(request.IDEQ(id), request.StateEQ(request.StateProcessing),
 		request.SlotReservedEQ(true), request.StartedAtEQ(startedAt), request.PollClaimEQ(claim), request.BackendTaskIDEQ("")).
-		SetState(request.StateQueued).SetSlotReserved(false).SetQueuePublishAt(due).
+		SetState(request.StateQueued).SetSlotReserved(false).SetQueuePublishAt(due).SetDispatchRetryReason(reason).
 		SetInstanceID("").SetResourceGroup("").SetResourceGroups([]string{}).SetEndpoint("").SetArtifactDigest("").
 		ClearStartedAt().ClearNextPollAt().SetPollClaim("").Save(ctx)
 	return err

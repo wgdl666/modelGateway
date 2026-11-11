@@ -1,3 +1,6 @@
+import base64
+import io
+from types import SimpleNamespace
 import hashlib
 import json
 import tempfile
@@ -29,7 +32,7 @@ class ModelKeyWorkerTests(unittest.IsolatedAsyncioTestCase):
         worker = Adapter.__new__(Adapter)
         worker.state_dir = Path(directory.name)
         worker.bearer = "Bearer worker-test"
-        worker.model_keys = {OUTFIT_MODEL, WARDROBE_MODEL, "Vmind_cloth_gen_v1.0", VIDEO_MODEL}
+        worker.model_keys = {"Vmind_bodymodel_v1.0", OUTFIT_MODEL, WARDROBE_MODEL, "Vmind_cloth_gen_v1.0", VIDEO_MODEL}
         worker.native = "http://native"
         worker.health_url = "http://native/health"
         worker.artifact = "sha256-" + "a" * 64
@@ -48,6 +51,52 @@ class ModelKeyWorkerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.addAsyncCleanup(self.client.aclose)
         self.input = {"images": [{"data": "eA==", "mime_type": "image/png"}]}
+
+    async def test_compact_metadata_saved_replayed_and_unknowns_excluded(self):
+        generation = {"effective_prompt":"最终生成指令", "pe_status":"fallback",
+            "model_version":{"checkpoint":"WGDL/test", "revision":"commit"},
+            "parameters":{"seed":0,"guidance":None,"steps":8,"width":768,"height":1024,"output_format":"png"},
+            "timings":{"pe_ms":0,"inference_ms":12.5,"total_ms":None},
+            "retries":{"pe":{"count":1,"last_reason":"ValueError"},"generation":{"count":0}},
+            "raw_response":"must not persist"}
+        def upload(key, mime, stream):
+            self.assertTrue(stream.read())
+            return {"provider":"s3","region":"us-east-2","bucket":"test","key":key}
+        self.worker.objects = SimpleNamespace(put=upload)
+        self.native_response = httpx.Response(200, json={"generation":generation,
+            "data":[{"b64_json":base64.b64encode(b"\x89PNG\r\n\x1a\nimage").decode()}]})
+        for model in (WARDROBE_MODEL, OUTFIT_MODEL, "Vmind_bodymodel_v1.0"):
+            request_id = str(uuid4())
+            count = 2 if model == OUTFIT_MODEL else 1
+            body = {"request_id":request_id,"model_key":model,
+                    "input":{"images":self.input["images"] * count}}
+            first = (await self.client.post("/requests",json=body)).json()
+            self.assertEqual(first["state"],"succeeded",first)
+            actual = first["result"]["generation"]
+            self.assertEqual(actual["parameters"]["seed"],0)
+            self.assertEqual(actual["timings"]["pe_ms"],0)
+            self.assertIsNone(actual["parameters"]["guidance"])
+            self.assertEqual(actual["retries"]["pe"]["count"],1)
+            self.assertNotIn("raw_response",actual)
+            calls = len(self.calls)
+            replay = (await self.client.post("/requests",json=body)).json()
+            queried = (await self.client.get("/requests/"+request_id)).json()
+            self.assertEqual(first,replay)
+            self.assertEqual(first,queried)
+            self.assertEqual(len(self.calls),calls)
+            self.assertEqual(self.worker.load_file(request_id)["result"],first["result"])
+
+    async def test_video_publication_retains_generation_metadata(self):
+        self.worker.objects = SimpleNamespace(put=lambda key,mime,stream:
+            {"provider":"s3","region":"us-east-2","bucket":"test","key":key})
+        request_id = str(uuid4())
+        row = {"request_id":request_id,"state":"processing","sent":True}
+        generation = {"effective_prompt":"video prompt", "pe_status":"disabled",
+                      "parameters":{"seed":0,"stage_steps":[8,3],"steps":11}}
+        await self.worker.publish_video(row,"old-job",generation)
+        saved = self.worker.load_file(request_id)
+        self.assertEqual(saved["state"],"succeeded")
+        self.assertEqual(saved["result"]["generation"]["parameters"]["stage_steps"],[8,3])
 
     async def test_ready_reports_the_running_worker_artifact(self):
         result = await self.client.get("/health/ready")

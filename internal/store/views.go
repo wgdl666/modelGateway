@@ -14,8 +14,8 @@ import (
 // 等待响应时只取响应字段和截止时间，避免反复读取入队保存的大图。
 func (s *Store) Get(ctx context.Context, id string) (*ent.Request, error) {
 	return s.db.Request.Query().Where(request.IDEQ(id)).Select(
-		request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldState, request.FieldInstanceID,
-		request.FieldDeadlineAt, request.FieldResult, request.FieldErrorCode, request.FieldErrorMessage, request.FieldErrorStatus,
+		request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldState, request.FieldInstanceID, request.FieldTraceID,
+		request.FieldDispatchAttempts, request.FieldDispatchRetryReason, request.FieldDeadlineAt, request.FieldResult, request.FieldErrorCode, request.FieldErrorMessage, request.FieldErrorStatus,
 	).Only(ctx)
 }
 
@@ -133,6 +133,6 @@ func (s *Store) ListRequests(ctx context.Context, filter RequestFilter) ([]*ent.
 func (s *Store) RequestDetail(ctx context.Context, id string) (*ent.Request, error) {
 	// 详情读取受理正文，以便返回去掉图片字节的业务参数。列表仍然不读取这列。
 	fields := append(append([]string(nil), requestSummaryFields...),
-		request.FieldRequestPayload, request.FieldResult, request.FieldErrorMessage)
+		request.FieldRequestPayload, request.FieldResult, request.FieldErrorMessage, request.FieldDispatchAttempts, request.FieldDispatchRetryReason)
 	return s.db.Request.Query().Where(request.IDEQ(id)).Select(fields...).Only(ctx)
 }

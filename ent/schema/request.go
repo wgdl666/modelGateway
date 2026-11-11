@@ -38,6 +38,9 @@ func (Request) Fields() []ent.Field {
 		field.Text("endpoint").Default(""),
 		field.Text("artifact_digest").Default(""),
 		field.Text("backend_task_id").Default(""),
+		// Counts committed dispatch reservations; legacy zero means unrecorded.
+		field.Int("dispatch_attempts").Default(0).NonNegative(),
+		field.Text("dispatch_retry_reason").Default(""),
 		field.Time("deadline_at").Immutable(),
 		field.Time("started_at").Optional().Nillable(),
 		field.Time("finished_at").Optional().Nillable(),

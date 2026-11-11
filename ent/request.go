@@ -48,6 +48,10 @@ type Request struct {
 	ArtifactDigest string `json:"artifact_digest,omitempty"`
 	// BackendTaskID holds the value of the "backend_task_id" field.
 	BackendTaskID string `json:"backend_task_id,omitempty"`
+	// DispatchAttempts holds the value of the "dispatch_attempts" field.
+	DispatchAttempts int `json:"dispatch_attempts,omitempty"`
+	// DispatchRetryReason holds the value of the "dispatch_retry_reason" field.
+	DispatchRetryReason string `json:"dispatch_retry_reason,omitempty"`
 	// DeadlineAt holds the value of the "deadline_at" field.
 	DeadlineAt time.Time `json:"deadline_at,omitempty"`
 	// StartedAt holds the value of the "started_at" field.
@@ -82,9 +86,9 @@ func (*Request) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case request.FieldSlotReserved:
 			values[i] = new(sql.NullBool)
-		case request.FieldPayloadBytes, request.FieldUnits, request.FieldErrorStatus:
+		case request.FieldPayloadBytes, request.FieldUnits, request.FieldDispatchAttempts, request.FieldErrorStatus:
 			values[i] = new(sql.NullInt64)
-		case request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldTraceID, request.FieldState, request.FieldInstanceID, request.FieldResourceGroup, request.FieldEndpoint, request.FieldArtifactDigest, request.FieldBackendTaskID, request.FieldPollClaim, request.FieldErrorCode, request.FieldErrorMessage:
+		case request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldTraceID, request.FieldState, request.FieldInstanceID, request.FieldResourceGroup, request.FieldEndpoint, request.FieldArtifactDigest, request.FieldBackendTaskID, request.FieldDispatchRetryReason, request.FieldPollClaim, request.FieldErrorCode, request.FieldErrorMessage:
 			values[i] = new(sql.NullString)
 		case request.FieldQueuePublishAt, request.FieldDeadlineAt, request.FieldStartedAt, request.FieldFinishedAt, request.FieldNextPollAt, request.FieldCreatedAt, request.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -203,6 +207,18 @@ func (_m *Request) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field backend_task_id", values[i])
 			} else if value.Valid {
 				_m.BackendTaskID = value.String
+			}
+		case request.FieldDispatchAttempts:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field dispatch_attempts", values[i])
+			} else if value.Valid {
+				_m.DispatchAttempts = int(value.Int64)
+			}
+		case request.FieldDispatchRetryReason:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field dispatch_retry_reason", values[i])
+			} else if value.Valid {
+				_m.DispatchRetryReason = value.String
 			}
 		case request.FieldDeadlineAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -357,6 +373,12 @@ func (_m *Request) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("backend_task_id=")
 	builder.WriteString(_m.BackendTaskID)
+	builder.WriteString(", ")
+	builder.WriteString("dispatch_attempts=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DispatchAttempts))
+	builder.WriteString(", ")
+	builder.WriteString("dispatch_retry_reason=")
+	builder.WriteString(_m.DispatchRetryReason)
 	builder.WriteString(", ")
 	builder.WriteString("deadline_at=")
 	builder.WriteString(_m.DeadlineAt.Format(time.ANSIC))

@@ -373,7 +373,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 	}
 	// 视频调用方通过查询接口取终态，提交请求无需保持连接。
 	if kind == protocol.VideoProtocol {
-		writeJSON(c, 202, protocol.Response{RequestID: id, ModelKey: model, State: string(task.State)})
+		writeJSON(c, 202, protocol.Response{RequestID: id, TraceID: task.TraceID, ModelKey: model, State: string(task.State)})
 		return
 	}
 	// 响应等待不持有原始上传，也不取消已经提交到 PG 的生成。
@@ -381,9 +381,16 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 }
 
 func taskResponse(task *ent.Request) protocol.Response {
-	response := protocol.Response{RequestID: task.ID, ModelKey: task.ModelKey, State: string(task.State)}
+	response := protocol.Response{RequestID: task.ID, TraceID: task.TraceID, ModelKey: task.ModelKey, State: string(task.State)}
 	if task.ErrorCode != "" {
 		response.Error = &protocol.RequestError{Code: task.ErrorCode, Message: task.ErrorMessage}
+		if task.DispatchAttempts > 0 {
+			retry := &protocol.RetrySummary{Count: task.DispatchAttempts - 1}
+			if retry.Count > 0 {
+				retry.LastReason = task.DispatchRetryReason
+			}
+			response.Error.Retries = &protocol.GenerationRetries{GatewayDispatch: retry}
+		}
 	}
 	if len(task.Result) != 0 {
 		response.Result = &protocol.Result{}

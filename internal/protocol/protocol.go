@@ -100,8 +100,9 @@ type Object struct {
 }
 
 type Result struct {
-	Files []Object    `json:"files,omitempty"`
-	HTTP  *HTTPResult `json:"http,omitempty"`
+	Generation *Generation `json:"generation,omitempty"`
+	Files      []Object    `json:"files,omitempty"`
+	HTTP       *HTTPResult `json:"http,omitempty"`
 }
 
 // HTTPResult 只记录同步响应的执行证据，原始文本、图片和流仍按现有协议交给调用方。
@@ -112,11 +113,13 @@ type HTTPResult struct {
 }
 
 type RequestError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Retries *GenerationRetries `json:"retries,omitempty"`
+	Code    string             `json:"code"`
+	Message string             `json:"message"`
 }
 
 type Response struct {
+	TraceID   string        `json:"trace_id,omitempty"`
 	RequestID string        `json:"request_id"`
 	ModelKey  string        `json:"model_key,omitempty"`
 	State     string        `json:"state"`

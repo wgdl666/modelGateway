@@ -310,14 +310,18 @@ class Adapter:
             return True
         try:
             refs = []
-            for index, image in enumerate(response.json()["data"]):
+            native_result = response.json()
+            for index, image in enumerate(native_result["data"]):
                 data = base64.b64decode(image["b64_json"], validate=True)
                 suffix, mime = image_type(data)
                 key = f"outputs/{row['request_id']}/{index}.{suffix}"
                 refs.append(await asyncio.to_thread(self.objects.put, key, mime, io.BytesIO(data)))
             if not refs:
                 raise ValueError("empty image results")
-            row.update(state="succeeded", result={"files": refs})
+            result = {"files": refs}
+            if generation := compact_generation(native_result.get("generation")):
+                result["generation"] = generation
+            row.update(state="succeeded", result=result)
         except Exception as exc:
             # 此时图片执行已返回，上传失败属于结果发布失败，可以安全释放 GPU。
             LOG.warning("image result publication failed (%s)", type(exc).__name__)
@@ -326,7 +330,7 @@ class Adapter:
         await self.save(row)
         return True
 
-    async def publish_video(self, row, job_id):
+    async def publish_video(self, row, job_id, generation=None):
         try:
             # 先流式落临时文件，再由 SDK 上传，避免在适配器内存保留整个视频。
             with tempfile.TemporaryFile() as body:
@@ -343,7 +347,10 @@ class Adapter:
                 body.seek(0)
                 key = f"outputs/{row['request_id']}/0.mp4"
                 result = await asyncio.to_thread(self.objects.put, key, "video/mp4", body)
-            row.update(state="succeeded", result={"files": [result]})
+            published = {"files": [result]}
+            if generation := compact_generation(generation):
+                published["generation"] = generation
+            row.update(state="succeeded", result=published)
         except Exception as exc:
             LOG.warning("video result publication failed (%s)", type(exc).__name__)
             await self.fail(row, "result_unavailable", "cannot publish video result")
@@ -379,9 +386,29 @@ class Adapter:
             return
         latest["backend_task_id"] = job
         if native.get("status") == "done":
-            self.spawn(request_id, self.publish_video(latest, job))
+            self.spawn(request_id, self.publish_video(latest, job, native.get("generation")))
         elif native.get("status") in ("error", "cancelled", "interrupted"):
             await self.fail(latest, "model_failed", "native video execution failed")
+
+
+def compact_generation(value):
+    if not isinstance(value, dict):
+        return None
+    def fields(source, keys):
+        return {key: source[key] for key in keys if key in source} if isinstance(source, dict) else None
+    result = fields(value, ("effective_prompt", "pe_status", "pe_fallback_reason"))
+    version = fields(value.get("model_version"), ("checkpoint", "revision", "sha256"))
+    if version is not None and isinstance(value["model_version"].get("lora"), dict):
+        version["lora"] = fields(value["model_version"]["lora"], ("checkpoint", "revision", "sha256", "strength"))
+    retries = value.get("retries")
+    if isinstance(retries, dict):
+        result["retries"] = {stage: fields(retries[stage], ("count", "last_reason"))
+                             for stage in ("pe", "generation") if stage in retries}
+    result["model_version"] = version
+    result["parameters"] = fields(value.get("parameters"),
+        ("seed", "width", "height", "steps", "guidance", "output_format", "stage_steps", "fps", "num_frames"))
+    result["timings"] = fields(value.get("timings"), ("queue_ms", "pe_ms", "inference_ms", "total_ms"))
+    return result
 
 
 def image_type(data):

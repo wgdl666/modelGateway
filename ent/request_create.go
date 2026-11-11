@@ -183,6 +183,34 @@ func (_c *RequestCreate) SetNillableBackendTaskID(v *string) *RequestCreate {
 	return _c
 }
 
+// SetDispatchAttempts sets the "dispatch_attempts" field.
+func (_c *RequestCreate) SetDispatchAttempts(v int) *RequestCreate {
+	_c.mutation.SetDispatchAttempts(v)
+	return _c
+}
+
+// SetNillableDispatchAttempts sets the "dispatch_attempts" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableDispatchAttempts(v *int) *RequestCreate {
+	if v != nil {
+		_c.SetDispatchAttempts(*v)
+	}
+	return _c
+}
+
+// SetDispatchRetryReason sets the "dispatch_retry_reason" field.
+func (_c *RequestCreate) SetDispatchRetryReason(v string) *RequestCreate {
+	_c.mutation.SetDispatchRetryReason(v)
+	return _c
+}
+
+// SetNillableDispatchRetryReason sets the "dispatch_retry_reason" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableDispatchRetryReason(v *string) *RequestCreate {
+	if v != nil {
+		_c.SetDispatchRetryReason(*v)
+	}
+	return _c
+}
+
 // SetDeadlineAt sets the "deadline_at" field.
 func (_c *RequestCreate) SetDeadlineAt(v time.Time) *RequestCreate {
 	_c.mutation.SetDeadlineAt(v)
@@ -398,6 +426,14 @@ func (_c *RequestCreate) defaults() {
 		v := request.DefaultBackendTaskID
 		_c.mutation.SetBackendTaskID(v)
 	}
+	if _, ok := _c.mutation.DispatchAttempts(); !ok {
+		v := request.DefaultDispatchAttempts
+		_c.mutation.SetDispatchAttempts(v)
+	}
+	if _, ok := _c.mutation.DispatchRetryReason(); !ok {
+		v := request.DefaultDispatchRetryReason
+		_c.mutation.SetDispatchRetryReason(v)
+	}
 	if _, ok := _c.mutation.PollClaim(); !ok {
 		v := request.DefaultPollClaim
 		_c.mutation.SetPollClaim(v)
@@ -482,6 +518,17 @@ func (_c *RequestCreate) check() error {
 	}
 	if _, ok := _c.mutation.BackendTaskID(); !ok {
 		return &ValidationError{Name: "backend_task_id", err: errors.New(`ent: missing required field "Request.backend_task_id"`)}
+	}
+	if _, ok := _c.mutation.DispatchAttempts(); !ok {
+		return &ValidationError{Name: "dispatch_attempts", err: errors.New(`ent: missing required field "Request.dispatch_attempts"`)}
+	}
+	if v, ok := _c.mutation.DispatchAttempts(); ok {
+		if err := request.DispatchAttemptsValidator(v); err != nil {
+			return &ValidationError{Name: "dispatch_attempts", err: fmt.Errorf(`ent: validator failed for field "Request.dispatch_attempts": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.DispatchRetryReason(); !ok {
+		return &ValidationError{Name: "dispatch_retry_reason", err: errors.New(`ent: missing required field "Request.dispatch_retry_reason"`)}
 	}
 	if _, ok := _c.mutation.DeadlineAt(); !ok {
 		return &ValidationError{Name: "deadline_at", err: errors.New(`ent: missing required field "Request.deadline_at"`)}
@@ -598,6 +645,14 @@ func (_c *RequestCreate) createSpec() (*Request, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.BackendTaskID(); ok {
 		_spec.SetField(request.FieldBackendTaskID, field.TypeString, value)
 		_node.BackendTaskID = value
+	}
+	if value, ok := _c.mutation.DispatchAttempts(); ok {
+		_spec.SetField(request.FieldDispatchAttempts, field.TypeInt, value)
+		_node.DispatchAttempts = value
+	}
+	if value, ok := _c.mutation.DispatchRetryReason(); ok {
+		_spec.SetField(request.FieldDispatchRetryReason, field.TypeString, value)
+		_node.DispatchRetryReason = value
 	}
 	if value, ok := _c.mutation.DeadlineAt(); ok {
 		_spec.SetField(request.FieldDeadlineAt, field.TypeTime, value)
