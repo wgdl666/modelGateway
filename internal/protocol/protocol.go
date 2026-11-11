@@ -31,8 +31,10 @@ var (
 // Instance 记录部署身份和同卡分组。是否可派由主动探针及排空状态决定。
 // 原生视频用地址中的单卡路径绑定 GPU。
 type Instance struct {
-	ID       string `json:"instance_id"`
-	ModelKey string `json:"model_key"`
+	// InitiallyDraining applies only to creation; registration retries never change live drain state.
+	InitiallyDraining bool   `json:"initially_draining,omitempty"`
+	ID                string `json:"instance_id"`
+	ModelKey          string `json:"model_key"`
 	// 协议由登记显式指定，模型名称只作为身份与路由标识。
 	Protocol      string `json:"protocol"`
 	Endpoint      string `json:"endpoint"`

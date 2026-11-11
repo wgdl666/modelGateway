@@ -45,6 +45,7 @@ func New(tasks *store.Store, runtime *config.Runtime, probe func(context.Context
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	// 同步推理可包含原图，只允许直连配置中的私网模型地址。
 	transport.Proxy = nil
+	transport.DialContext = config.SubjectPoolDialer(transport.DialContext)
 	return &Server{
 		store: tasks, runtime: runtime, uploads: make(chan struct{}, 2), probe: probe,
 		direct: &http.Client{
