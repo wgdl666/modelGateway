@@ -1326,6 +1326,9 @@ type RequestMutation struct {
 	endpoint              *string
 	artifact_digest       *string
 	backend_task_id       *string
+	dispatch_attempts     *int
+	adddispatch_attempts  *int
+	dispatch_retry_reason *string
 	deadline_at           *time.Time
 	started_at            *time.Time
 	finished_at           *time.Time
@@ -2072,6 +2075,98 @@ func (m *RequestMutation) ResetBackendTaskID() {
 	m.backend_task_id = nil
 }
 
+// SetDispatchAttempts sets the "dispatch_attempts" field.
+func (m *RequestMutation) SetDispatchAttempts(i int) {
+	m.dispatch_attempts = &i
+	m.adddispatch_attempts = nil
+}
+
+// DispatchAttempts returns the value of the "dispatch_attempts" field in the mutation.
+func (m *RequestMutation) DispatchAttempts() (r int, exists bool) {
+	v := m.dispatch_attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDispatchAttempts returns the old "dispatch_attempts" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldDispatchAttempts(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDispatchAttempts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDispatchAttempts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDispatchAttempts: %w", err)
+	}
+	return oldValue.DispatchAttempts, nil
+}
+
+// AddDispatchAttempts adds i to the "dispatch_attempts" field.
+func (m *RequestMutation) AddDispatchAttempts(i int) {
+	if m.adddispatch_attempts != nil {
+		*m.adddispatch_attempts += i
+	} else {
+		m.adddispatch_attempts = &i
+	}
+}
+
+// AddedDispatchAttempts returns the value that was added to the "dispatch_attempts" field in this mutation.
+func (m *RequestMutation) AddedDispatchAttempts() (r int, exists bool) {
+	v := m.adddispatch_attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDispatchAttempts resets all changes to the "dispatch_attempts" field.
+func (m *RequestMutation) ResetDispatchAttempts() {
+	m.dispatch_attempts = nil
+	m.adddispatch_attempts = nil
+}
+
+// SetDispatchRetryReason sets the "dispatch_retry_reason" field.
+func (m *RequestMutation) SetDispatchRetryReason(s string) {
+	m.dispatch_retry_reason = &s
+}
+
+// DispatchRetryReason returns the value of the "dispatch_retry_reason" field in the mutation.
+func (m *RequestMutation) DispatchRetryReason() (r string, exists bool) {
+	v := m.dispatch_retry_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDispatchRetryReason returns the old "dispatch_retry_reason" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldDispatchRetryReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDispatchRetryReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDispatchRetryReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDispatchRetryReason: %w", err)
+	}
+	return oldValue.DispatchRetryReason, nil
+}
+
+// ResetDispatchRetryReason resets all changes to the "dispatch_retry_reason" field.
+func (m *RequestMutation) ResetDispatchRetryReason() {
+	m.dispatch_retry_reason = nil
+}
+
 // SetDeadlineAt sets the "deadline_at" field.
 func (m *RequestMutation) SetDeadlineAt(t time.Time) {
 	m.deadline_at = &t
@@ -2590,7 +2685,7 @@ func (m *RequestMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RequestMutation) Fields() []string {
-	fields := make([]string, 0, 26)
+	fields := make([]string, 0, 28)
 	if m.model_key != nil {
 		fields = append(fields, request.FieldModelKey)
 	}
@@ -2635,6 +2730,12 @@ func (m *RequestMutation) Fields() []string {
 	}
 	if m.backend_task_id != nil {
 		fields = append(fields, request.FieldBackendTaskID)
+	}
+	if m.dispatch_attempts != nil {
+		fields = append(fields, request.FieldDispatchAttempts)
+	}
+	if m.dispatch_retry_reason != nil {
+		fields = append(fields, request.FieldDispatchRetryReason)
 	}
 	if m.deadline_at != nil {
 		fields = append(fields, request.FieldDeadlineAt)
@@ -2707,6 +2808,10 @@ func (m *RequestMutation) Field(name string) (ent.Value, bool) {
 		return m.ArtifactDigest()
 	case request.FieldBackendTaskID:
 		return m.BackendTaskID()
+	case request.FieldDispatchAttempts:
+		return m.DispatchAttempts()
+	case request.FieldDispatchRetryReason:
+		return m.DispatchRetryReason()
 	case request.FieldDeadlineAt:
 		return m.DeadlineAt()
 	case request.FieldStartedAt:
@@ -2768,6 +2873,10 @@ func (m *RequestMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldArtifactDigest(ctx)
 	case request.FieldBackendTaskID:
 		return m.OldBackendTaskID(ctx)
+	case request.FieldDispatchAttempts:
+		return m.OldDispatchAttempts(ctx)
+	case request.FieldDispatchRetryReason:
+		return m.OldDispatchRetryReason(ctx)
 	case request.FieldDeadlineAt:
 		return m.OldDeadlineAt(ctx)
 	case request.FieldStartedAt:
@@ -2904,6 +3013,20 @@ func (m *RequestMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetBackendTaskID(v)
 		return nil
+	case request.FieldDispatchAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDispatchAttempts(v)
+		return nil
+	case request.FieldDispatchRetryReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDispatchRetryReason(v)
+		return nil
 	case request.FieldDeadlineAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -2995,6 +3118,9 @@ func (m *RequestMutation) AddedFields() []string {
 	if m.addunits != nil {
 		fields = append(fields, request.FieldUnits)
 	}
+	if m.adddispatch_attempts != nil {
+		fields = append(fields, request.FieldDispatchAttempts)
+	}
 	if m.adderror_status != nil {
 		fields = append(fields, request.FieldErrorStatus)
 	}
@@ -3010,6 +3136,8 @@ func (m *RequestMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedPayloadBytes()
 	case request.FieldUnits:
 		return m.AddedUnits()
+	case request.FieldDispatchAttempts:
+		return m.AddedDispatchAttempts()
 	case request.FieldErrorStatus:
 		return m.AddedErrorStatus()
 	}
@@ -3034,6 +3162,13 @@ func (m *RequestMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddUnits(v)
+		return nil
+	case request.FieldDispatchAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDispatchAttempts(v)
 		return nil
 	case request.FieldErrorStatus:
 		v, ok := value.(int)
@@ -3146,6 +3281,12 @@ func (m *RequestMutation) ResetField(name string) error {
 		return nil
 	case request.FieldBackendTaskID:
 		m.ResetBackendTaskID()
+		return nil
+	case request.FieldDispatchAttempts:
+		m.ResetDispatchAttempts()
+		return nil
+	case request.FieldDispatchRetryReason:
+		m.ResetDispatchRetryReason()
 		return nil
 	case request.FieldDeadlineAt:
 		m.ResetDeadlineAt()

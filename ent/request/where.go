@@ -124,6 +124,16 @@ func BackendTaskID(v string) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldBackendTaskID, v))
 }
 
+// DispatchAttempts applies equality check predicate on the "dispatch_attempts" field. It's identical to DispatchAttemptsEQ.
+func DispatchAttempts(v int) predicate.Request {
+	return predicate.Request(sql.FieldEQ(FieldDispatchAttempts, v))
+}
+
+// DispatchRetryReason applies equality check predicate on the "dispatch_retry_reason" field. It's identical to DispatchRetryReasonEQ.
+func DispatchRetryReason(v string) predicate.Request {
+	return predicate.Request(sql.FieldEQ(FieldDispatchRetryReason, v))
+}
+
 // DeadlineAt applies equality check predicate on the "deadline_at" field. It's identical to DeadlineAtEQ.
 func DeadlineAt(v time.Time) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldDeadlineAt, v))
@@ -852,6 +862,111 @@ func BackendTaskIDEqualFold(v string) predicate.Request {
 // BackendTaskIDContainsFold applies the ContainsFold predicate on the "backend_task_id" field.
 func BackendTaskIDContainsFold(v string) predicate.Request {
 	return predicate.Request(sql.FieldContainsFold(FieldBackendTaskID, v))
+}
+
+// DispatchAttemptsEQ applies the EQ predicate on the "dispatch_attempts" field.
+func DispatchAttemptsEQ(v int) predicate.Request {
+	return predicate.Request(sql.FieldEQ(FieldDispatchAttempts, v))
+}
+
+// DispatchAttemptsNEQ applies the NEQ predicate on the "dispatch_attempts" field.
+func DispatchAttemptsNEQ(v int) predicate.Request {
+	return predicate.Request(sql.FieldNEQ(FieldDispatchAttempts, v))
+}
+
+// DispatchAttemptsIn applies the In predicate on the "dispatch_attempts" field.
+func DispatchAttemptsIn(vs ...int) predicate.Request {
+	return predicate.Request(sql.FieldIn(FieldDispatchAttempts, vs...))
+}
+
+// DispatchAttemptsNotIn applies the NotIn predicate on the "dispatch_attempts" field.
+func DispatchAttemptsNotIn(vs ...int) predicate.Request {
+	return predicate.Request(sql.FieldNotIn(FieldDispatchAttempts, vs...))
+}
+
+// DispatchAttemptsGT applies the GT predicate on the "dispatch_attempts" field.
+func DispatchAttemptsGT(v int) predicate.Request {
+	return predicate.Request(sql.FieldGT(FieldDispatchAttempts, v))
+}
+
+// DispatchAttemptsGTE applies the GTE predicate on the "dispatch_attempts" field.
+func DispatchAttemptsGTE(v int) predicate.Request {
+	return predicate.Request(sql.FieldGTE(FieldDispatchAttempts, v))
+}
+
+// DispatchAttemptsLT applies the LT predicate on the "dispatch_attempts" field.
+func DispatchAttemptsLT(v int) predicate.Request {
+	return predicate.Request(sql.FieldLT(FieldDispatchAttempts, v))
+}
+
+// DispatchAttemptsLTE applies the LTE predicate on the "dispatch_attempts" field.
+func DispatchAttemptsLTE(v int) predicate.Request {
+	return predicate.Request(sql.FieldLTE(FieldDispatchAttempts, v))
+}
+
+// DispatchRetryReasonEQ applies the EQ predicate on the "dispatch_retry_reason" field.
+func DispatchRetryReasonEQ(v string) predicate.Request {
+	return predicate.Request(sql.FieldEQ(FieldDispatchRetryReason, v))
+}
+
+// DispatchRetryReasonNEQ applies the NEQ predicate on the "dispatch_retry_reason" field.
+func DispatchRetryReasonNEQ(v string) predicate.Request {
+	return predicate.Request(sql.FieldNEQ(FieldDispatchRetryReason, v))
+}
+
+// DispatchRetryReasonIn applies the In predicate on the "dispatch_retry_reason" field.
+func DispatchRetryReasonIn(vs ...string) predicate.Request {
+	return predicate.Request(sql.FieldIn(FieldDispatchRetryReason, vs...))
+}
+
+// DispatchRetryReasonNotIn applies the NotIn predicate on the "dispatch_retry_reason" field.
+func DispatchRetryReasonNotIn(vs ...string) predicate.Request {
+	return predicate.Request(sql.FieldNotIn(FieldDispatchRetryReason, vs...))
+}
+
+// DispatchRetryReasonGT applies the GT predicate on the "dispatch_retry_reason" field.
+func DispatchRetryReasonGT(v string) predicate.Request {
+	return predicate.Request(sql.FieldGT(FieldDispatchRetryReason, v))
+}
+
+// DispatchRetryReasonGTE applies the GTE predicate on the "dispatch_retry_reason" field.
+func DispatchRetryReasonGTE(v string) predicate.Request {
+	return predicate.Request(sql.FieldGTE(FieldDispatchRetryReason, v))
+}
+
+// DispatchRetryReasonLT applies the LT predicate on the "dispatch_retry_reason" field.
+func DispatchRetryReasonLT(v string) predicate.Request {
+	return predicate.Request(sql.FieldLT(FieldDispatchRetryReason, v))
+}
+
+// DispatchRetryReasonLTE applies the LTE predicate on the "dispatch_retry_reason" field.
+func DispatchRetryReasonLTE(v string) predicate.Request {
+	return predicate.Request(sql.FieldLTE(FieldDispatchRetryReason, v))
+}
+
+// DispatchRetryReasonContains applies the Contains predicate on the "dispatch_retry_reason" field.
+func DispatchRetryReasonContains(v string) predicate.Request {
+	return predicate.Request(sql.FieldContains(FieldDispatchRetryReason, v))
+}
+
+// DispatchRetryReasonHasPrefix applies the HasPrefix predicate on the "dispatch_retry_reason" field.
+func DispatchRetryReasonHasPrefix(v string) predicate.Request {
+	return predicate.Request(sql.FieldHasPrefix(FieldDispatchRetryReason, v))
+}
+
+// DispatchRetryReasonHasSuffix applies the HasSuffix predicate on the "dispatch_retry_reason" field.
+func DispatchRetryReasonHasSuffix(v string) predicate.Request {
+	return predicate.Request(sql.FieldHasSuffix(FieldDispatchRetryReason, v))
+}
+
+// DispatchRetryReasonEqualFold applies the EqualFold predicate on the "dispatch_retry_reason" field.
+func DispatchRetryReasonEqualFold(v string) predicate.Request {
+	return predicate.Request(sql.FieldEqualFold(FieldDispatchRetryReason, v))
+}
+
+// DispatchRetryReasonContainsFold applies the ContainsFold predicate on the "dispatch_retry_reason" field.
+func DispatchRetryReasonContainsFold(v string) predicate.Request {
+	return predicate.Request(sql.FieldContainsFold(FieldDispatchRetryReason, v))
 }
 
 // DeadlineAtEQ applies the EQ predicate on the "deadline_at" field.

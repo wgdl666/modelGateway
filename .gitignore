@@ -4,3 +4,6 @@ bootstrap.json
 *.log
 /bin/
 /work/
+
+# Python worker adapter test artifacts
+__pycache__/

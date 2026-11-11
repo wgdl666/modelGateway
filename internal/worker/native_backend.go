@@ -247,8 +247,9 @@ func (w *Reconciler) nativeHealth(ctx context.Context, cfg *config.Snapshot, tar
 var nativeJobID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
 
 type nativeJob struct {
-	ID     string `json:"job_id"`
-	Status string `json:"status"`
+	Generation *protocol.Generation `json:"generation"`
+	ID         string               `json:"job_id"`
+	Status     string               `json:"status"`
 }
 
 func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, task *ent.Request, input protocol.Submission, backend config.NativeBackend) error {
@@ -291,16 +292,19 @@ func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, ta
 		return w.saveModelResponse(cfg, task, response, false)
 	}
 
-	files, err := w.results.publishImages(ctx, task.ID, raw)
+	result, err := w.results.publishImages(ctx, task.ID, raw)
 	if err != nil {
 		return w.saveModelResponse(cfg, task, nativeFailure(task.ID, "result_unavailable", "cannot publish image result"), false)
 	}
-	return w.saveModelResponse(cfg, task, nativeSuccess(task.ID, files), false)
+	response := nativeSuccess(task.ID, result.Files)
+	response.Result.Generation = result.Generation
+	return w.saveModelResponse(cfg, task, response, false)
 }
 
-func (u *resultUploader) publishImages(ctx context.Context, id string, raw []byte) ([]protocol.Object, error) {
+func (u *resultUploader) publishImages(ctx context.Context, id string, raw []byte) (*protocol.Result, error) {
 	var images struct {
-		Data []struct {
+		Generation *protocol.Generation `json:"generation"`
+		Data       []struct {
 			Bytes []byte `json:"b64_json"`
 		} `json:"data"`
 	}
@@ -326,7 +330,7 @@ func (u *resultUploader) publishImages(ctx context.Context, id string, raw []byt
 		}
 		files = append(files, file)
 	}
-	return files, nil
+	return &protocol.Result{Files: files, Generation: images.Generation}, nil
 }
 
 func (w *Reconciler) pollNative(cfg *config.Snapshot, task *ent.Request, backend config.NativeBackend) error {
@@ -355,7 +359,7 @@ func (w *Reconciler) pollNative(cfg *config.Snapshot, task *ent.Request, backend
 	switch job.Status {
 	case "done":
 		publish := func() error {
-			return w.completeNativeVideo(cfg, task, auth, jobURL+"/video")
+			return w.completeNativeVideo(cfg, task, auth, jobURL+"/video", job.Generation)
 		}
 		// 发布协程忙时按原间隔回查重试，避免轮询阻塞或把在途领取堆在内存里。
 		select {
@@ -369,7 +373,7 @@ func (w *Reconciler) pollNative(cfg *config.Snapshot, task *ent.Request, backend
 	return w.saveModelResponse(cfg, task, protocol.ModelResponse{Response: protocol.Response{RequestID: task.ID, State: "processing"}}, true)
 }
 
-func (w *Reconciler) completeNativeVideo(cfg *config.Snapshot, task *ent.Request, auth nativeAuth, url string) error {
+func (w *Reconciler) completeNativeVideo(cfg *config.Snapshot, task *ent.Request, auth nativeAuth, url string, generation *protocol.Generation) error {
 	ctx, cancel := context.WithTimeout(w.ctx, cfg.BackendTimeout)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
@@ -386,7 +390,9 @@ func (w *Reconciler) completeNativeVideo(cfg *config.Snapshot, task *ent.Request
 		}
 		return w.saveModelResponse(cfg, task, nativeFailure(task.ID, "result_unavailable", "cannot publish video result"), true)
 	}
-	return w.saveModelResponse(cfg, task, nativeSuccess(task.ID, []protocol.Object{file}), true)
+	response := nativeSuccess(task.ID, []protocol.Object{file})
+	response.Result.Generation = generation
+	return w.saveModelResponse(cfg, task, response, true)
 }
 
 func (w *Reconciler) publishNativeVideo(ctx context.Context, results *resultUploader, auth nativeAuth, id, url string) (protocol.Object, error) {

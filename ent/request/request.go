@@ -44,6 +44,10 @@ const (
 	FieldArtifactDigest = "artifact_digest"
 	// FieldBackendTaskID holds the string denoting the backend_task_id field in the database.
 	FieldBackendTaskID = "backend_task_id"
+	// FieldDispatchAttempts holds the string denoting the dispatch_attempts field in the database.
+	FieldDispatchAttempts = "dispatch_attempts"
+	// FieldDispatchRetryReason holds the string denoting the dispatch_retry_reason field in the database.
+	FieldDispatchRetryReason = "dispatch_retry_reason"
 	// FieldDeadlineAt holds the string denoting the deadline_at field in the database.
 	FieldDeadlineAt = "deadline_at"
 	// FieldStartedAt holds the string denoting the started_at field in the database.
@@ -88,6 +92,8 @@ var Columns = []string{
 	FieldEndpoint,
 	FieldArtifactDigest,
 	FieldBackendTaskID,
+	FieldDispatchAttempts,
+	FieldDispatchRetryReason,
 	FieldDeadlineAt,
 	FieldStartedAt,
 	FieldFinishedAt,
@@ -132,6 +138,12 @@ var (
 	DefaultArtifactDigest string
 	// DefaultBackendTaskID holds the default value on creation for the "backend_task_id" field.
 	DefaultBackendTaskID string
+	// DefaultDispatchAttempts holds the default value on creation for the "dispatch_attempts" field.
+	DefaultDispatchAttempts int
+	// DispatchAttemptsValidator is a validator for the "dispatch_attempts" field. It is called by the builders before save.
+	DispatchAttemptsValidator func(int) error
+	// DefaultDispatchRetryReason holds the default value on creation for the "dispatch_retry_reason" field.
+	DefaultDispatchRetryReason string
 	// DefaultPollClaim holds the default value on creation for the "poll_claim" field.
 	DefaultPollClaim string
 	// DefaultErrorCode holds the default value on creation for the "error_code" field.
@@ -247,6 +259,16 @@ func ByArtifactDigest(opts ...sql.OrderTermOption) OrderOption {
 // ByBackendTaskID orders the results by the backend_task_id field.
 func ByBackendTaskID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBackendTaskID, opts...).ToFunc()
+}
+
+// ByDispatchAttempts orders the results by the dispatch_attempts field.
+func ByDispatchAttempts(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDispatchAttempts, opts...).ToFunc()
+}
+
+// ByDispatchRetryReason orders the results by the dispatch_retry_reason field.
+func ByDispatchRetryReason(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDispatchRetryReason, opts...).ToFunc()
 }
 
 // ByDeadlineAt orders the results by the deadline_at field.

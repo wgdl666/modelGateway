@@ -93,28 +93,38 @@ func init() {
 	requestDescBackendTaskID := requestFields[15].Descriptor()
 	// request.DefaultBackendTaskID holds the default value on creation for the backend_task_id field.
 	request.DefaultBackendTaskID = requestDescBackendTaskID.Default.(string)
+	// requestDescDispatchAttempts is the schema descriptor for dispatch_attempts field.
+	requestDescDispatchAttempts := requestFields[16].Descriptor()
+	// request.DefaultDispatchAttempts holds the default value on creation for the dispatch_attempts field.
+	request.DefaultDispatchAttempts = requestDescDispatchAttempts.Default.(int)
+	// request.DispatchAttemptsValidator is a validator for the "dispatch_attempts" field. It is called by the builders before save.
+	request.DispatchAttemptsValidator = requestDescDispatchAttempts.Validators[0].(func(int) error)
+	// requestDescDispatchRetryReason is the schema descriptor for dispatch_retry_reason field.
+	requestDescDispatchRetryReason := requestFields[17].Descriptor()
+	// request.DefaultDispatchRetryReason holds the default value on creation for the dispatch_retry_reason field.
+	request.DefaultDispatchRetryReason = requestDescDispatchRetryReason.Default.(string)
 	// requestDescPollClaim is the schema descriptor for poll_claim field.
-	requestDescPollClaim := requestFields[20].Descriptor()
+	requestDescPollClaim := requestFields[22].Descriptor()
 	// request.DefaultPollClaim holds the default value on creation for the poll_claim field.
 	request.DefaultPollClaim = requestDescPollClaim.Default.(string)
 	// requestDescErrorCode is the schema descriptor for error_code field.
-	requestDescErrorCode := requestFields[22].Descriptor()
+	requestDescErrorCode := requestFields[24].Descriptor()
 	// request.DefaultErrorCode holds the default value on creation for the error_code field.
 	request.DefaultErrorCode = requestDescErrorCode.Default.(string)
 	// requestDescErrorMessage is the schema descriptor for error_message field.
-	requestDescErrorMessage := requestFields[23].Descriptor()
+	requestDescErrorMessage := requestFields[25].Descriptor()
 	// request.DefaultErrorMessage holds the default value on creation for the error_message field.
 	request.DefaultErrorMessage = requestDescErrorMessage.Default.(string)
 	// requestDescErrorStatus is the schema descriptor for error_status field.
-	requestDescErrorStatus := requestFields[24].Descriptor()
+	requestDescErrorStatus := requestFields[26].Descriptor()
 	// request.DefaultErrorStatus holds the default value on creation for the error_status field.
 	request.DefaultErrorStatus = requestDescErrorStatus.Default.(int)
 	// requestDescCreatedAt is the schema descriptor for created_at field.
-	requestDescCreatedAt := requestFields[25].Descriptor()
+	requestDescCreatedAt := requestFields[27].Descriptor()
 	// request.DefaultCreatedAt holds the default value on creation for the created_at field.
 	request.DefaultCreatedAt = requestDescCreatedAt.Default.(func() time.Time)
 	// requestDescUpdatedAt is the schema descriptor for updated_at field.
-	requestDescUpdatedAt := requestFields[26].Descriptor()
+	requestDescUpdatedAt := requestFields[28].Descriptor()
 	// request.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	request.DefaultUpdatedAt = requestDescUpdatedAt.Default.(func() time.Time)
 	// request.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

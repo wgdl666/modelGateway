@@ -88,6 +88,7 @@ func (s *Store) updateExecution(ctx context.Context, id, claim string, apply fun
 	task, err := tx.Request.Query().Where(request.IDEQ(id)).ForUpdate().Select(
 		request.FieldID, request.FieldSlotReserved, request.FieldState,
 		request.FieldPollClaim, request.FieldBackendTaskID, request.FieldDeadlineAt,
+		request.FieldCreatedAt, request.FieldStartedAt, request.FieldDispatchAttempts, request.FieldDispatchRetryReason,
 	).Only(ctx)
 	if err != nil {
 		return err
@@ -127,6 +128,29 @@ func (s *Store) RecordResponse(ctx context.Context, id, claim string, response p
 		if response.State == "failed" {
 			update.SetErrorStatus(502).SetErrorCode(response.Error.Code).SetErrorMessage(response.Error.Message)
 			return nil
+		}
+		if response.Result.Generation == nil {
+			response.Result.Generation = &protocol.Generation{}
+		}
+		if response.Result.Generation.Timings == nil {
+			response.Result.Generation.Timings = &protocol.GenerationTimings{}
+		}
+		if task.DispatchAttempts > 0 {
+			if response.Result.Generation.Retries == nil {
+				response.Result.Generation.Retries = &protocol.GenerationRetries{}
+			}
+			retry := &protocol.RetrySummary{Count: task.DispatchAttempts - 1}
+			if retry.Count > 0 {
+				retry.LastReason = task.DispatchRetryReason
+			}
+			response.Result.Generation.Retries.GatewayDispatch = retry
+		}
+		timings := response.Result.Generation.Timings
+		total := float64(now.Sub(task.CreatedAt)) / float64(time.Millisecond)
+		timings.GatewayTotalMS = &total
+		if task.StartedAt != nil {
+			queue := float64(task.StartedAt.Sub(task.CreatedAt)) / float64(time.Millisecond)
+			timings.GatewayQueueMS = &queue
 		}
 		raw, err := json.Marshal(response.Result)
 		if err == nil {

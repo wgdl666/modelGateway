@@ -205,7 +205,7 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 
 func (w *Reconciler) dispatchError(task *ent.Request, err error) error {
 	if errors.Is(err, errWorkerBusyBeforeExecution) {
-		return w.requeueDispatch(task)
+		return w.requeueDispatch(task, "worker_busy_before_execution")
 	}
 	var status modelStatusError
 	if errors.As(err, &status) {
@@ -224,11 +224,11 @@ func (w *Reconciler) dispatchError(task *ent.Request, err error) error {
 	return w.requeueDispatch(task)
 }
 
-func (w *Reconciler) requeueDispatch(task *ent.Request) error {
+func (w *Reconciler) requeueDispatch(task *ent.Request, reasons ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), store.ExecutionWriteTimeout)
 	defer cancel()
 	// 待投递记录与释放同次写入，成功后消费者才 ACK；MQ 短暂不可用也不会丢掉重试。
-	return w.store.RequeueDispatch(ctx, task.ID, *task.StartedAt, task.PollClaim)
+	return w.store.RequeueDispatch(ctx, task.ID, *task.StartedAt, task.PollClaim, reasons...)
 }
 
 func (w *Reconciler) failDispatch(task *ent.Request, status int, code, message string, hold bool) error {
