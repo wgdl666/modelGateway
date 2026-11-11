@@ -41,6 +41,36 @@ func viewRequest(row *ent.Request) requestView {
 	}
 }
 
+// 统计窗口上限 7 天：分位数需要扫描窗口内全部请求，更长的范围应走离线报表。
+const maxStatsWindow = 7 * 24 * time.Hour
+
+func (s *Server) requestStats(ctx context.Context, c *app.RequestContext) {
+	to := time.Now().UTC()
+	from := to.Add(-24 * time.Hour)
+	for key, target := range map[string]*time.Time{"from": &from, "to": &to} {
+		if value := c.Query(key); value != "" {
+			bound, err := time.Parse(time.RFC3339, value)
+			if err != nil {
+				writeError(c, 400, "invalid_time", "stats time range must use RFC3339", "")
+				return
+			}
+			*target = bound
+		}
+	}
+	if window := to.Sub(from); window < time.Hour || window > maxStatsWindow {
+		writeError(c, 400, "invalid_time", "stats window must be between 1 hour and 7 days", "")
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	stats, err := s.store.RequestStats(ctx, from, to)
+	if err != nil {
+		storeError(c, err, "")
+		return
+	}
+	writeJSON(c, 200, stats)
+}
+
 func (s *Server) listRequests(ctx context.Context, c *app.RequestContext) {
 	limit, errLimit := strconv.Atoi(c.DefaultQuery("limit", "50"))
 	offset, errOffset := strconv.Atoi(c.DefaultQuery("offset", "0"))

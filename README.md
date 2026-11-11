@@ -72,7 +72,7 @@
 
 ## 处理和恢复
 
-Ops 使用管理凭据访问 `GET /v1/admin/requests` 和 `GET /v1/admin/requests/{request_id}`。列表的 `model` 参数精确匹配 `model_key`。列表也支持请求 ID、Trace ID、实例、制品摘要、状态和时间过滤，`limit` 最大 100。详情返回对象引用、终态错误，以及去掉图片字节后的业务参数和媒体清单。单张输入或成品通过 `GET /v1/admin/requests/{request_id}/media?kind=input|output&index=0` 读取。列表省略原始输入图片。实例查询分别返回 `reserved_requests` 和 `reserved_units`，健康与排空独立展示。
+Ops 使用管理凭据访问 `GET /v1/admin/requests` 和 `GET /v1/admin/requests/{request_id}`。列表的 `model` 参数精确匹配 `model_key`。列表也支持请求 ID、Trace ID、实例、制品摘要、状态和时间过滤，`limit` 最大 100。详情返回对象引用、终态错误，以及去掉图片字节后的业务参数和媒体清单。单张输入或成品通过 `GET /v1/admin/requests/{request_id}/media?kind=input|output&index=0` 读取。列表省略原始输入图片。`GET /v1/admin/request-stats?from=&to=` 按 `model_key` 汇总时间窗内的请求量、成功与失败数、成功请求总耗时和排队耗时的 P50/P95，以及 24 个等宽时间桶的请求量和失败量。`queued`、`processing` 是当前积压，不受时间窗限制。同一响应按错误码、模型和实例分组返回最多 20 组失败，每组附带最近一次的请求 ID 和错误信息。时间窗默认最近 24 小时，可在 1 小时到 7 天之间。实例查询分别返回 `reserved_requests` 和 `reserved_units`，健康与排空独立展示。
 
 `requests` 保存原始业务 JSON、四态、截止时间、实际派发实例和制品、容量预留、后端任务及对象结果。受理时同一事务记录待投递时间，RabbitMQ 确认持久消息后才清除。消息只包含请求 ID，Broker 暂时不可用时由网关继续补投。消费者按 ID 加锁检查状态，提交归属和容量后再调用模型。已领取、已取消或已过期的任务收到重复消息时会直接确认。每个消费者预取一条，GPU 容量仍从已预留请求汇总。
 
