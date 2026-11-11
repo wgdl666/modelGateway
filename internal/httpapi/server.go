@@ -87,6 +87,7 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.PATCH("/v1/resource-groups", s.auth("admin", s.updateResourceGroup))
 	h.PATCH("/v1/resource-groups/machine", s.auth("admin", s.renameResourceGroupMachine))
 	h.GET("/v1/admin/requests", s.auth("admin", s.listRequests))
+	h.GET("/v1/admin/request-stats", s.auth("admin", s.requestStats))
 	h.GET("/v1/admin/requests/:id/media", s.auth("admin", s.requestMedia))
 	h.GET("/v1/admin/requests/:id", s.auth("admin", s.requestDetail))
 	h.POST("/v1/gateway/requests/cancel", s.auth("api", s.cancelRequest))
