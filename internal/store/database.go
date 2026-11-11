@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/wgdl666/modelGateway/ent"
+	"github.com/wgdl666/modelGateway/internal/telemetry"
 )
 
 // OpenDatabase 连接 PostgreSQL，库表由数据库发布流程提前准备。
@@ -32,6 +33,7 @@ func OpenDatabase(ctx context.Context, dsn string) (*ent.Client, error) {
 		WHERE attrelid IN (to_regclass('model_instances'), to_regclass('requests'))
 			AND attname = 'capability' AND NOT attisdropped
 	)`).Scan(&legacySchema); err != nil {
+		telemetry.LogError(ctx, "gateway database connection failed", err)
 		_ = db.Close()
 		return nil, errors.New("cannot connect to configured PostgreSQL")
 	}

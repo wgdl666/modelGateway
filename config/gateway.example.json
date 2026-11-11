@@ -1,4 +1,11 @@
 {
+  "logfire": {
+    "token": "",
+    "env": "US_ppe_exhibition",
+    "service": "model-gateway",
+    "version": "",
+    "otel_log_level": "info"
+  },
   "database_url": "postgresql://gateway:replace-me@postgres:5432/model_gateway?sslmode=verify-full",
   "rabbitmq_queue": "model-gateway.requests.dev",
   "listen": ":18580",

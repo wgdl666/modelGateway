@@ -18,6 +18,7 @@ import (
 )
 
 type Config struct {
+	Logfire         LogfireConfig  `json:"logfire"`
 	DatabaseURL     string         `json:"database_url"`
 	RabbitMQURL     string         `json:"-"`
 	RabbitMQQueue   string         `json:"rabbitmq_queue"`
@@ -44,6 +45,15 @@ type Config struct {
 	NativeModels           map[string]NativeBackend `json:"native_models,omitempty"`
 	NativeResults          NativeResults            `json:"native_results"`
 	NativeExecutionTimeout time.Duration            `json:"-"`
+}
+
+// Logfire 与 ModelHub 使用同一项目的写入凭据；服务名独立，不能记录凭据或请求正文。
+type LogfireConfig struct {
+	Token        string `json:"token"`
+	Env          string `json:"env"`
+	Service      string `json:"service"`
+	Version      string `json:"version"`
+	OtelLogLevel string `json:"otel_log_level"`
 }
 
 // 入队固定上游等待截止时间，原生模型的执行预算从领取任务时起算。
@@ -209,6 +219,10 @@ func (r *Runtime) Reload(c Config) error {
 	defer r.mu.Unlock()
 	if next.DatabaseURL != r.current.DatabaseURL {
 		return errors.New("changing database_url requires draining and restarting the gateway")
+	}
+	// Exporter 在进程启动时绑定项目和服务身份，热更新不能只改快照却仍向旧项目写入。
+	if next.Logfire != r.current.Logfire {
+		return errors.New("changing logfire requires restarting the gateway")
 	}
 	// 发布与消费必须指向同一队列，切换队列要先处理完旧队列的任务。
 	if next.RabbitMQURL != r.current.RabbitMQURL || next.RabbitMQQueue != r.current.RabbitMQQueue {

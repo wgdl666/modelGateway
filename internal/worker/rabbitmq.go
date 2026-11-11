@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/rabbitmq/amqp091-go"
 	"github.com/wgdl666/modelGateway/internal/protocol"
+	"github.com/wgdl666/modelGateway/internal/telemetry"
 )
 
 // 发布者与消费者各自恢复 AMQP 连接，回查和在途模型调用沿用网关的生命周期。
@@ -19,7 +19,7 @@ func (w *Reconciler) runRabbit(label string, work func(*amqp091.Channel, string)
 	w.wg.Go(func() {
 		for w.ctx.Err() == nil {
 			if err := w.rabbitSession(cfg.RabbitMQURL, cfg.RabbitMQQueue, work); err != nil && w.ctx.Err() == nil {
-				slog.Error(label, "error_type", fmt.Sprintf("%T", err))
+				telemetry.LogError(w.ctx, label, err)
 			}
 			select {
 			case <-w.ctx.Done():
@@ -55,6 +55,8 @@ func (w *Reconciler) rabbitSession(uri, queue string, work func(*amqp091.Channel
 	if _, err := ch.QueueDeclare(queue, true, false, false, false, nil); err != nil {
 		return err
 	}
+	// 只在建立连接且确认队列后记录一次；不能把消费者启动当成模型或数据库就绪。
+	slog.InfoContext(w.ctx, "gateway RabbitMQ session ready", "queue", queue)
 	return work(ch, queue)
 }
 

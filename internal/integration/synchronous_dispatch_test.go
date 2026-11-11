@@ -94,7 +94,9 @@ func TestSynchronousRoutesUseRegisteredTargets(t *testing.T) {
 	}
 	var expected string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != expected || r.URL.RawQuery != "" || r.Header.Get("Authorization") != "" || r.Header.Get("X-Trace-ID") != "1234567890abcdef1234567890abcdef" {
+		// 标准上下文传到模型执行端，业务 Trace ID 和敏感头隔离仍保持原约定。
+		if r.URL.Path != expected || r.URL.RawQuery != "" || r.Header.Get("Authorization") != "" || r.Header.Get("X-Trace-ID") != "1234567890abcdef1234567890abcdef" ||
+			!strings.HasPrefix(r.Header.Get("traceparent"), "00-1234567890abcdef1234567890abcdef-") {
 			t.Errorf("wrong execution request: %s", r.URL)
 		}
 		body, err := io.ReadAll(r.Body)

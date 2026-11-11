@@ -167,6 +167,10 @@ VMind-Image 和 LTX 的原生鉴权分别使用 `MODEL_GATEWAY_NATIVE_IMAGE_*` �
 
 配置正文见 [gateway.example.json](config/gateway.example.json)。同一环境的副本共享 PG schema 和 RabbitMQ 队列，不同环境使用独立队列。网关会声明持久队列，需要配置、写入和读取权限。更换数据库或队列前先排空任务并重启。
 
+Logfire 复用 ModelHub 的 `kangaroo/logs`，将结构化日志和 Trace 发到同一项目。在配置中心增加 `logfire`，沿用同环境 ModelHub 的 `token`、`env` 和 `otel_log_level`，将 `service` 设为 `model-gateway`，`version` 填网关版本。美东路演环境名为 `US_ppe_exhibition`。密钥只通过受控配置传递，示例文件中留空；未配置密钥时仅输出控制台日志。Logfire 配置变化需要重启，热更新会保留原配置并报错。
+
+Logfire 写入权限由同一枚 token 决定，查询权限沿用该项目的成员权限。AWS 任务角色继续读取网关自己的 AppConfig 文档，无需授予读取 ModelHub 文档的权限。日志保留启动阶段、配置更新、MQ 连接和数据库失败信息。readiness 失败包含检查项及 PostgreSQL SQLSTATE，HTTP 仍返回 503。正常探活不产生遥测；业务请求只记录路由模板、状态和耗时，不记录请求头、查询参数、正文、媒体或连接串。`gateway.http_handler` span 只覆盖响应头处理阶段，流式媒体完成和模型终态仍以账本为准。
+
 ```sh
 go build -o bin/model-gateway ./cmd/model-gateway
 export XX_WG_REGION=CN

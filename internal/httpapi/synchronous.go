@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptrace"
 	"strings"
@@ -22,6 +21,8 @@ import (
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 	"github.com/wgdl666/modelGateway/internal/store"
+	"github.com/wgdl666/modelGateway/internal/telemetry"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // 同步协议仍由原连接返回；受理、暂停与容量和异步任务使用同一份持久账本。
@@ -128,7 +129,7 @@ func (s *Server) executeSynchronous(ctx context.Context, c *app.RequestContext, 
 		writeCtx, end := context.WithTimeout(context.Background(), store.ExecutionWriteTimeout)
 		defer end()
 		if err := s.store.CompleteSynchronous(writeCtx, task.ID, task.PollClaim, result, known); err != nil {
-			slog.Error("synchronous outcome persistence failed", "request_id", task.ID, "error", err)
+			telemetry.LogError(execCtx, "synchronous outcome persistence failed", err, "request_id", task.ID)
 		}
 		cancel()
 	}
@@ -140,6 +141,8 @@ func (s *Server) executeSynchronous(ctx context.Context, c *app.RequestContext, 
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("X-Request-ID", task.ID)
+	// 网关 span 接在 ModelHub 后面；标准上下文与已有业务 Trace ID 一起传给同步执行端。
+	(propagation.TraceContext{}).Inject(execCtx, propagation.HeaderCarrier(req.Header))
 	if task.TraceID != "" {
 		req.Header.Set("X-Trace-ID", task.TraceID)
 	}

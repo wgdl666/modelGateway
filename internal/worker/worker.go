@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -18,6 +17,7 @@ import (
 	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 	"github.com/wgdl666/modelGateway/internal/store"
+	"github.com/wgdl666/modelGateway/internal/telemetry"
 )
 
 const (
@@ -297,7 +297,7 @@ func (w *Reconciler) probe(cfg *config.Snapshot) error {
 				ready = err == nil && result.Ready
 			}
 			if err := w.store.RecordProbe(w.ctx, row.ID, checked, ready); err != nil && w.ctx.Err() == nil {
-				slog.Error("model health update failed", "error_type", fmt.Sprintf("%T", err))
+				telemetry.LogError(w.ctx, "model health update failed", err, "instance_id", row.ID)
 			}
 		})
 	}
@@ -311,7 +311,7 @@ func (w *Reconciler) runWorker(label string, interval time.Duration, work func()
 		defer ticker.Stop()
 		for w.ctx.Err() == nil {
 			if err := work(); err != nil && w.ctx.Err() == nil {
-				slog.Error(label, "error_type", fmt.Sprintf("%T", err))
+				telemetry.LogError(w.ctx, label, err)
 			}
 			select {
 			case <-w.ctx.Done():
@@ -329,7 +329,7 @@ func (w *Reconciler) runVideoPublisher() {
 			return
 		case publish := <-w.videoPublications:
 			if err := publish(); err != nil && w.ctx.Err() == nil {
-				slog.Error("native video publication failed", "error_type", fmt.Sprintf("%T", err))
+				telemetry.LogError(w.ctx, "native video publication failed", err)
 			}
 		}
 	}

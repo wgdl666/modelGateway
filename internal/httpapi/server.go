@@ -6,9 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"log/slog"
 	"mime"
 	"net"
 	"net/http"
@@ -23,6 +21,7 @@ import (
 	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 	"github.com/wgdl666/modelGateway/internal/store"
+	"github.com/wgdl666/modelGateway/internal/telemetry"
 )
 
 // Server 固定每次入站请求的配置快照，让鉴权、地址校验和受理使用同一份配置。
@@ -71,6 +70,7 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.Use(func(ctx context.Context, c *app.RequestContext) {
 		c.Next(context.WithValue(ctx, runtimeKey{}, s.runtime.Current()))
 	})
+	h.Use(observeRequest)
 	h.GET("/_gateway/live", func(_ context.Context, c *app.RequestContext) { writeJSON(c, 200, map[string]bool{"live": true}) })
 	h.GET("/_gateway/ready", s.ready)
 	// 实例登记决定网关可以向哪些执行地址派单，因此使用管理凭据。
@@ -170,7 +170,7 @@ func storeError(c *app.RequestContext, err error, id string) {
 	case errors.Is(err, store.ErrModelUnregistered):
 		writeError(c, 503, "model_unregistered", "model has no registered instance", id)
 	default:
-		slog.Error("database operation failed", "error_type", fmt.Sprintf("%T", err))
+		telemetry.LogError(context.Background(), "database operation failed", err, "request_id", id)
 		writeError(c, 503, "database_unavailable", "task storage is temporarily unavailable", id)
 	}
 }
@@ -207,7 +207,8 @@ func (s *Server) ready(ctx context.Context, c *app.RequestContext) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	if err := s.store.CheckReady(ctx); err != nil {
-		storeError(c, err, "")
+		// 具体检查项由 Store 记录，响应保持脱敏且仍拒绝接流量。
+		writeError(c, 503, "database_unavailable", "task storage is temporarily unavailable", "")
 		return
 	}
 	writeJSON(c, 200, map[string]bool{"ready": true})

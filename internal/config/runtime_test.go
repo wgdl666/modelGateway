@@ -61,3 +61,34 @@ func TestHotReloadKeepsQueueDatabase(t *testing.T) {
 		t.Fatal("database hot reload could abandon accepted requests")
 	}
 }
+
+func TestLogfireConfigRequiresRestart(t *testing.T) {
+	cfg, err := Parse([]byte(`{"database_url":"postgres://fixture/db","api_token":"test-api-token-at-least-24-chars","admin_token":"test-admin-token-at-least-24-chars","backend_cidrs":["127.0.0.0/8"],"backend_ports":["8001"],"logfire":{"token":"test-write-token","env":"US_ppe_exhibition","service":"model-gateway","version":"test-version","otel_log_level":"info"}}`))
+	if err != nil || cfg.Logfire.Token != "test-write-token" || cfg.Logfire.Service != "model-gateway" ||
+		cfg.Logfire.Env != "US_ppe_exhibition" || cfg.Logfire.Version != "test-version" || cfg.Logfire.OtelLogLevel != "info" {
+		t.Fatalf("Logfire config was not loaded: %v", err)
+	}
+	runtime, err := NewRuntime(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 凭据、项目环境和服务身份都绑定 exporter；拒绝后必须保留原配置快照。
+	for _, field := range []string{"token", "env", "service", "version", "level"} {
+		next := cfg
+		switch field {
+		case "token":
+			next.Logfire.Token = "different-token"
+		case "env":
+			next.Logfire.Env = "other-environment"
+		case "service":
+			next.Logfire.Service = "other-service"
+		case "version":
+			next.Logfire.Version = "other-version"
+		case "level":
+			next.Logfire.OtelLogLevel = "error"
+		}
+		if err := runtime.Reload(next); err == nil || runtime.Current().Logfire != cfg.Logfire {
+			t.Fatalf("changing %s must reject the whole reload", field)
+		}
+	}
+}

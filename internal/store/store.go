@@ -11,6 +11,7 @@ import (
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/ent/resourcegroup"
+	"github.com/wgdl666/modelGateway/internal/telemetry"
 )
 
 var (
@@ -30,14 +31,19 @@ func New(db *ent.Client) *Store {
 func (s *Store) CheckReady(ctx context.Context) error {
 	// 组表先迁移，网关才能按统一容量接单。
 	if _, err := s.db.ResourceGroup.Query().Select(resourcegroup.FieldCapacityUnits).Limit(1).All(ctx); err != nil {
+		telemetry.LogError(ctx, "gateway readiness failed", err, "check", "resource_groups.capacity_units")
 		return err
 	}
 	// 就绪检查覆盖软删除及协议字段，迁移完成后才允许新副本接流量。
 	if _, err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).Select(modelinstance.FieldProtocol).Limit(1).All(ctx); err != nil {
+		telemetry.LogError(ctx, "gateway readiness failed", err, "check", "model_instances.protocol/deleted_at")
 		return err
 	}
 	// 同步、多卡请求都依赖这份占用快照，迁移缺失时不能接流量。
 	_, err := s.db.Request.Query().Select(request.FieldProtocol, request.FieldQueuePublishAt, request.FieldResourceGroups, request.FieldDispatchAttempts, request.FieldDispatchRetryReason).Limit(1).All(ctx)
+	if err != nil {
+		telemetry.LogError(ctx, "gateway readiness failed", err, "check", "requests.protocol/queue_publish_at/resource_groups/dispatch_attempts/dispatch_retry_reason")
+	}
 	return err
 }
 

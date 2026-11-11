@@ -16,6 +16,7 @@ import (
 	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/httpapi"
 	"github.com/wgdl666/modelGateway/internal/store"
+	"github.com/wgdl666/modelGateway/internal/telemetry"
 	"github.com/wgdl666/modelGateway/internal/worker"
 )
 
@@ -30,7 +31,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, path string) error {
+func run(ctx context.Context, path string) (runErr error) {
 	loader, err := config.NewLoader(path)
 	if err != nil {
 		return err
@@ -41,6 +42,25 @@ func run(ctx context.Context, path string) error {
 		return err
 	}
 	cfg := runtime.Current()
+	observability, err := telemetry.Setup(ctx, cfg.Logfire)
+	if err != nil {
+		return err
+	}
+	stage := "database"
+	// 失败日志必须先于 exporter 关闭；主函数在 run 返回后才打印，无法再冲刷到 Logfire。
+	defer func() {
+		if runErr != nil {
+			telemetry.LogError(context.Background(), "gateway failed", runErr, "stage", stage)
+		} else {
+			slog.Info("gateway stopped")
+		}
+		flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := observability.Shutdown(flushCtx); err != nil {
+			telemetry.LogError(context.Background(), "telemetry shutdown failed", err)
+		}
+	}()
+	slog.Info("gateway starting", "listen", cfg.Listen, "logfire_enabled", cfg.Logfire.Token != "")
 	dbCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	db, err := store.OpenDatabase(dbCtx, cfg.DatabaseURL)
 	cancel()
@@ -49,6 +69,7 @@ func run(ctx context.Context, path string) error {
 	}
 	defer db.Close()
 	ledger := store.New(db)
+	stage = "worker"
 	reconciler, err := worker.New(ledger, runtime)
 	if err != nil {
 		return err
@@ -56,6 +77,7 @@ func run(ctx context.Context, path string) error {
 	app := httpapi.New(ledger, runtime, reconciler.ProbeInstance)
 	// 先排空 HTTP，再等后台写入完成，最后关闭两者共享的 PG 连接。
 	defer reconciler.Close()
+	stage = "listener"
 	listener, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		return errors.New("cannot listen on configured address")
@@ -80,6 +102,7 @@ func run(ctx context.Context, path string) error {
 		shutdown(server)
 		retiring.Wait()
 	}()
+	stage = "configuration_watch"
 	stopListening, err := loader.Listen(ctx, runtime, func(listener net.Listener) {
 		old := server
 		server = serve(listener)
@@ -91,6 +114,9 @@ func run(ctx context.Context, path string) error {
 		return err
 	}
 	defer stopListening()
+	stage = "serving"
+	// 已监听不等于 readiness 通过；就绪仍由原有数据库字段检查决定。
+	slog.Info("gateway listening", "listen", cfg.Listen)
 	select {
 	case <-ctx.Done():
 		return nil
