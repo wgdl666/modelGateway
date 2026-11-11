@@ -82,8 +82,10 @@ type Metadata struct {
 }
 
 type Submission struct {
-	Input    json.RawMessage `json:"input"`
-	Metadata Metadata        `json:"metadata,omitempty"`
+	Input json.RawMessage `json:"input"`
+	// 输出能力来自调用方，具体协议只能来自登记；旧调用方缺省时沿用原入口契约。
+	Output   string   `json:"output,omitempty"`
+	Metadata Metadata `json:"metadata,omitempty"`
 }
 
 type ModelRequest struct {

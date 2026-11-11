@@ -262,15 +262,17 @@ func TestTwoReplicasReserveSharedGPUAndReleaseExactlyOnce(t *testing.T) {
 func TestQueuedUntilMatchingInstanceHasFreshProbe(t *testing.T) {
 	a, b, db := stores(t)
 	matching := testInstance(protocol.WardrobeModel, "http://127.0.0.1:8001", 1)
-	in := testAdmission(matching, uuid.NewString(), 1)
-	if task, err := a.Admit(t.Context(), in); err != nil || task.State != request.StateQueued {
-		t.Fatalf("admit with no instances: task=%v err=%v", task, err)
-	}
-	product := testInstance(protocol.ClothGenModel, "http://127.0.0.1:8002", 1)
-	registerReady(t, a, product)
+	// 登记决定模型存在性；尚无健康快照只影响派发，不能阻止已知模型入队。
+	ensureTestGroup(t, a, matching)
 	if err := a.Register(t.Context(), matching, ""); err != nil {
 		t.Fatal(err)
 	}
+	in := testAdmission(matching, uuid.NewString(), 1)
+	if task, err := a.Admit(t.Context(), in); err != nil || task.State != request.StateQueued {
+		t.Fatalf("admit without a healthy instance: task=%v err=%v", task, err)
+	}
+	product := testInstance(protocol.ClothGenModel, "http://127.0.0.1:8002", 1)
+	registerReady(t, a, product)
 	if err := a.RecordProbe(t.Context(), matching.ID, time.Now().Add(-time.Minute), true); err != nil {
 		t.Fatal(err)
 	}

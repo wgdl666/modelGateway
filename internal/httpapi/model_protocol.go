@@ -9,7 +9,7 @@ import (
 	"github.com/wgdl666/modelGateway/internal/store"
 )
 
-// 查询已有登记的协议供调用方选择适配器；可用性仍由独立的实例探活与派发判断。
+// 在受理边界解析登记协议；实例健康与空闲容量仍在派发时判断，不能混同模型不存在。
 func (s *Server) resolveModelProtocol(ctx context.Context, c *app.RequestContext, model string) (string, bool) {
 	if !protocol.ValidModelKey(model) {
 		writeError(c, 404, "model_not_found", "invalid model key", "")

@@ -21,8 +21,14 @@ type visionRoute struct {
 	modelKey, protocol string
 }
 
+const mattePath = "/segment-person/api/matte"
+
 // 只开放固定推理路径和内联入图字段，避免调用方借用 G6 的网络和存储权限拉取图片。
 var visionRoutes = []visionRoute{
+	{
+		path: mattePath, mediaType: "application/json",
+		fields: []string{"image", "method", "person_method", "subject_method", "output", "trace_id"},
+	},
 	{
 		path: "/human-parser/human_parser/predict", modelKey: protocol.HumanParseModel, protocol: protocol.HumanParseProtocol,
 		mediaType: "application/json", fields: []string{"image"},
@@ -102,12 +108,59 @@ func (s *Server) visionPredict(route visionRoute) app.HandlerFunc {
 		if !ok {
 			return
 		}
-		if kind != route.protocol {
+		targetPath := route.path
+		if route.path == mattePath {
+			// 一次抠图提交只携带模型名，人物/商品入口及算法在网关内按登记选择。
+			if kind != protocol.SegmentPersonProtocol && kind != protocol.SegmentSubjectProtocol {
+				writeError(c, 400, "invalid_protocol", "model does not use a segment protocol", "")
+				return
+			}
+			body, contentType = prepareMatteBody(body, kind)
+			if body == nil {
+				writeError(c, 400, "invalid_vision_input", "segment input requires an inline image and method", "")
+				return
+			}
+			targetPath = "/segment-person/api/segment"
+			if kind == protocol.SegmentSubjectProtocol {
+				targetPath += "_subject"
+			}
+		} else if kind != route.protocol {
 			writeError(c, 400, "invalid_protocol", "model protocol does not match this vision route", "")
 			return
 		}
-		s.forwardSynchronous(ctx, c, client, model, kind, route.path, contentType, body)
+		s.forwardSynchronous(ctx, c, client, model, kind, targetPath, contentType, body)
 	}
+}
+
+func prepareMatteBody(raw []byte, kind string) ([]byte, string) {
+	var fields map[string]string
+	if json.Unmarshal(raw, &fields) != nil || fields["image"] == "" || fields["output"] != "b64" {
+		return nil, ""
+	}
+	methodKey := "subject_method"
+	if kind == protocol.SegmentPersonProtocol {
+		methodKey = "person_method"
+		fields["preprocess"] = "false"
+	}
+	if fields[methodKey] != "" {
+		fields["method"] = fields[methodKey]
+	}
+	if fields["method"] == "" {
+		return nil, ""
+	}
+	delete(fields, "person_method")
+	delete(fields, "subject_method")
+	var body bytes.Buffer
+	out := multipart.NewWriter(&body)
+	for key, value := range fields {
+		if err := out.WriteField(key, value); err != nil {
+			return nil, ""
+		}
+	}
+	if out.Close() != nil {
+		return nil, ""
+	}
+	return body.Bytes(), out.FormDataContentType()
 }
 
 // 只校验字段名，避免再复制一份 Base64 图片。

@@ -12,7 +12,7 @@ const chatCompletionsPath = "/v1/chat/completions"
 
 func (s *Server) chatCompletions(ctx context.Context, c *app.RequestContext) {
 	cfg := requestConfig(ctx)
-	if cfg.VLMAddr == "" {
+	if cfg.VLMAddr == "" && cfg.DecisionAddr == "" {
 		writeError(c, 404, "model_not_found", "model is not configured", "")
 		return
 	}
@@ -39,9 +39,33 @@ func (s *Server) chatCompletions(ctx context.Context, c *app.RequestContext) {
 	if !ok {
 		return
 	}
+	if kind == protocol.DecisionProtocol {
+		if cfg.DecisionAddr == "" {
+			writeError(c, 404, "model_not_found", "decision execution is not configured", "")
+			return
+		}
+		// 对话和分类共用一次文本请求，具体编码由已登记协议决定，不要求 ModelHub 预查询。
+		form, contentType, stream, err := prepareDecisionChat(fields)
+		if err != nil {
+			writeError(c, 400, "invalid_input", err.Error(), "")
+			return
+		}
+		c.Set(decisionChatStreamKey, stream)
+		s.forwardSynchronous(ctx, c, s.direct, model, kind, "/v1/predict", contentType, form)
+		return
+	}
 	if kind != protocol.ChatProtocol {
 		writeError(c, 400, "invalid_protocol", "model does not use chat completions", "")
 		return
+	}
+	if cfg.VLMAddr == "" {
+		writeError(c, 404, "model_not_found", "chat execution is not configured", "")
+		return
+	}
+	if _, exists := fields["model_traits"]; exists {
+		// 内部模型参数不是 Chat Completions 字段，不能泄漏给原生对话服务。
+		delete(fields, "model_traits")
+		body, _ = json.Marshal(fields)
 	}
 	s.forwardSynchronous(ctx, c, s.direct, model, kind, chatCompletionsPath, "application/json", body)
 }

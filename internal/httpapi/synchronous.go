@@ -160,6 +160,11 @@ func (s *Server) executeSynchronous(ctx context.Context, c *app.RequestContext, 
 	tracked := &synchronousBody{ReadCloser: resp.Body, complete: complete,
 		result:  protocol.HTTPResult{StatusCode: resp.StatusCode, ContentType: resp.Header.Get("Content-Type")},
 		unknown: resp.Header.Get("X-Model-Outcome") == "unknown"}
+	if stream, convert := c.Get(decisionChatStreamKey); convert && task.Protocol == protocol.DecisionProtocol && resp.StatusCode == http.StatusOK {
+		// 从同一个受跟踪响应读取分类结果，不能因转换响应而提前释放执行占用。
+		writeDecisionChat(c, tracked, task.ID, task.ModelKey, stream == true)
+		return
+	}
 	c.Response.SetBodyStream(tracked, int(resp.ContentLength))
 }
 

@@ -350,7 +350,17 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		<-s.uploads
 		return
 	}
-	err := protocol.ValidateInput(kind, input.Input)
+	// 模型存在性、输出能力和具体字段在同一次受理内校验，不依赖调用方预查询。
+	if input.Output != "" && ((input.Output != "image" && input.Output != "video") || (input.Output == "video") != (kind == protocol.VideoProtocol)) {
+		<-s.uploads
+		writeError(c, 400, "invalid_protocol", "model protocol does not match the requested output", id)
+		return
+	}
+	normalized, err := protocol.NormalizeMediaInput(kind, input.Input)
+	if err == nil {
+		input.Input = normalized
+		err = protocol.ValidateInput(kind, input.Input)
+	}
 	for _, value := range []string{input.Metadata.TraceID, input.Metadata.UserID} {
 		if len(value) > 256 || strings.ContainsFunc(value, func(r rune) bool { return r < 32 || r == 127 }) {
 			err = errors.New("invalid metadata")
@@ -359,6 +369,12 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 	if err != nil {
 		<-s.uploads
 		writeError(c, 400, "invalid_input", err.Error(), id)
+		return
+	}
+	raw, err = json.Marshal(input)
+	if err != nil {
+		<-s.uploads
+		writeError(c, 400, "invalid_input", "could not encode normalized input", id)
 		return
 	}
 	task, err := s.store.Admit(ctx, store.Admission{

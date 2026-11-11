@@ -53,15 +53,20 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 		if !ent.IsNotFound(err) {
 			return err
 		}
-		// 同步连接不能在未登记时保留原请求；异步任务保持原有持久排队等待部署的语义。
+		// 登记与受理共用串行事务，写队列前再次核对模型及协议，避免校验与落库之间变化。
+		registered := tx.ModelInstance.Query().Where(modelinstance.ModelKeyEQ(in.ModelKey))
 		if protocol.SynchronousKind(in.Protocol) != "" {
-			registered, err := tx.ModelInstance.Query().Where(modelinstance.ModelKeyEQ(in.ModelKey), modelinstance.DeletedAtIsNil()).Exist(ctx)
-			if err != nil {
-				return err
-			}
-			if !registered {
-				return ErrModelUnregistered
-			}
+			registered.Where(modelinstance.DeletedAtIsNil())
+		}
+		model, err := registered.Select(modelinstance.FieldProtocol).First(ctx)
+		if ent.IsNotFound(err) {
+			return ErrModelUnregistered
+		}
+		if err != nil {
+			return err
+		}
+		if model.Protocol != in.Protocol {
+			return ErrConflict
 		}
 		// 实例短时下线时仍可接单。派发再查健康和可用容量，超过原截止时间的任务按排队超时结束。
 		// 同模型只按等待条数限流，可串行化事务避免多个副本同时接单超额。
