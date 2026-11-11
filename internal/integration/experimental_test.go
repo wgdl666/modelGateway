@@ -59,7 +59,9 @@ func TestExperimentalTokenAdmitsGenerationOverrides(t *testing.T) {
 		t.Fatalf("experimental token with overrides: %d %s", status, body)
 	}
 	row, err := db.Request.Get(t.Context(), id)
-	if err != nil || row.State != "queued" || !strings.Contains(string(row.RequestPayload), `"duration":"4"`) {
+	var stored protocol.Submission
+	var fields map[string]any
+	if err != nil || row.State != "queued" || json.Unmarshal(row.RequestPayload, &stored) != nil || json.Unmarshal(stored.Input, &fields) != nil || fields["duration"] != "4" || fields["resolution"] != "720p" {
 		t.Fatalf("experimental request was not queued with its overrides: %+v %v", row, err)
 	}
 }
