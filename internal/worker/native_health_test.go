@@ -37,7 +37,7 @@ func TestNativeVideoHealthUsesRegisteredGPUWithAnyBasePath(t *testing.T) {
 		{"/gpu3", nil, false},
 		{"/gpu3", []int{7}, false},
 	} {
-		target := protocol.InstanceTarget{ModelKey: protocol.VideoModel, Endpoint: server.URL + test.path,
+		target := protocol.InstanceTarget{ModelKey: protocol.VideoModel, Protocol: protocol.VideoProtocol, Endpoint: server.URL + test.path,
 			HealthURL: server.URL + test.path + "/healthz", GPUDevices: test.devices}
 		result, err := reconciler.ProbeInstance(t.Context(), runtime.Current(), target)
 		if err != nil || result.Ready != test.ready {

@@ -21,11 +21,11 @@ func TestSynchronousHealthUsesExecutionReplica(t *testing.T) {
 	defer vision.Close()
 	reconciler := &Reconciler{client: vision.Client()}
 	sample := reconciler.readSynchronousHealth(t.Context(), protocol.SyncVision, vision.URL)
-	if !sample.ready(protocol.HumanParseModel, "http://127.0.0.1:6105", 1) ||
-		!sample.ready(protocol.SegmentPersonModel, "http://127.0.0.1:6106", 4) ||
-		!sample.ready(protocol.SegmentSubjectModel, "http://127.0.0.1:6106", 4) ||
-		sample.ready(protocol.SegmentSubjectModel, "http://127.0.0.1:6111", 4) ||
-		sample.ready(protocol.SegmentPersonModel, "http://127.0.0.1:6112", 4) {
+	if !sample.ready(protocol.HumanParseProtocol, "http://127.0.0.1:6105", 1) ||
+		!sample.ready(protocol.SegmentPersonProtocol, "http://127.0.0.1:6106", 4) ||
+		!sample.ready(protocol.SegmentSubjectProtocol, "http://127.0.0.1:6106", 4) ||
+		sample.ready(protocol.SegmentSubjectProtocol, "http://127.0.0.1:6111", 4) ||
+		sample.ready(protocol.SegmentPersonProtocol, "http://127.0.0.1:6112", 4) {
 		t.Fatalf("unexpected G6 probe: %+v", sample)
 	}
 
@@ -34,7 +34,7 @@ func TestSynchronousHealthUsesExecutionReplica(t *testing.T) {
 	}))
 	defer decision.Close()
 	sample = reconciler.readSynchronousHealth(t.Context(), protocol.SyncDecision, decision.URL)
-	if sample.ready(protocol.DecisionModel, "http://127.0.0.1:19101", 2) {
+	if sample.ready(protocol.DecisionProtocol, "http://127.0.0.1:19101", 2) {
 		t.Fatal("a partial aggregate must not identify a healthy Decision worker")
 	}
 }

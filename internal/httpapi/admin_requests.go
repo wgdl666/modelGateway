@@ -102,7 +102,7 @@ func inspectRequest(row *ent.Request) inspectedRequest {
 	view := viewRequest(row)
 	parameters := json.RawMessage(`{}`)
 	inputs := []protocol.MediaRef{}
-	if params, refs, _, err := protocol.PreviewSubmission(row.ModelKey, row.RequestPayload); err == nil {
+	if params, refs, _, err := protocol.PreviewSubmission(row.Protocol, row.RequestPayload); err == nil {
 		parameters = params
 		inputs = refs
 	}
@@ -177,7 +177,7 @@ func (s *Server) requestMedia(ctx context.Context, c *app.RequestContext) {
 	}
 	switch kind {
 	case "input":
-		_, _, images, err := protocol.PreviewSubmission(row.ModelKey, row.RequestPayload)
+		_, _, images, err := protocol.PreviewSubmission(row.Protocol, row.RequestPayload)
 		if err != nil || index >= len(images) || !allowedInputMIME(images[index].MIMEType) || int64(len(images[index].Data)) > maxImageBytes {
 			writeError(c, 404, "media_unavailable", "input image is unavailable", id)
 			return

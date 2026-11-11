@@ -54,30 +54,30 @@ func (w *Reconciler) nativeAuth(backend config.NativeBackend) nativeAuth {
 	return w.nativeImageAuth
 }
 
-// 原生接口路径和文件字段随模型键固定，商品图和拆衣各走自己的入口。
+// 原生接口路径和文件字段由登记协议决定，商品图和拆衣各走自己的入口。
 var nativeRoutes = map[string]struct {
 	path   string
 	images []string
 }{
-	protocol.ClothGenModel: {"/v2/images/product_generation", []string{"image"}},
-	protocol.WardrobeModel: {"/v2/images/garment_extraction", []string{"image", "parse_mask"}},
-	protocol.OutfitModel:   {"/v2/images/vton", []string{"person_image", "garment_image"}},
-	protocol.BodyModel:     {"/v2/images/body_model", []string{"image"}},
-	protocol.VideoModel:    {"/vton", []string{"image"}},
+	protocol.ClothGenProtocol: {"/v2/images/product_generation", []string{"image"}},
+	protocol.WardrobeProtocol: {"/v2/images/garment_extraction", []string{"image", "parse_mask"}},
+	protocol.OutfitProtocol:   {"/v2/images/vton", []string{"person_image", "garment_image"}},
+	protocol.BodyProtocol:     {"/v2/images/body_model", []string{"image"}},
+	protocol.VideoProtocol:    {"/vton", []string{"image"}},
 }
 
 // 视频 worker 由执行地址的单卡路径选定，表单只转发业务输入。
 func nativeMultipart(task *ent.Request, input protocol.Submission, backend config.NativeBackend) (string, *bytes.Buffer, http.Header, error) {
-	route, ok := nativeRoutes[task.ModelKey]
-	if !ok || !backend.Matches(task.ModelKey) {
-		return "", nil, nil, errors.New("model key does not match native backend")
+	route, ok := nativeRoutes[task.Protocol]
+	if !ok || !backend.Matches(task.Protocol) {
+		return "", nil, nil, errors.New("registered protocol does not match native backend")
 	}
 	fields, images, err := protocol.DecodeInput(input.Input)
 	if err != nil {
 		return "", nil, nil, err
 	}
 	minImages := len(route.images)
-	if task.ModelKey == protocol.WardrobeModel {
+	if task.Protocol == protocol.WardrobeProtocol {
 		minImages = 1
 	}
 	if len(images) < minImages || len(images) > len(route.images) {
@@ -93,7 +93,7 @@ func nativeMultipart(task *ent.Request, input protocol.Submission, backend confi
 		}
 		form[key] = value
 	}
-	fluxEdits := backend.VTONEdits && task.ModelKey == protocol.OutfitModel
+	fluxEdits := backend.VTONEdits && task.Protocol == protocol.OutfitProtocol
 	if fluxEdits {
 		// 国内 FLUX 由 vton LoRA 选择试衣，两个文件按人像、衣物顺序使用同一个字段名。
 		route.path = fluxEditsPath
@@ -273,7 +273,7 @@ func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, ta
 		return w.dispatchError(task, err)
 	}
 	limit := int64(nativeImageLimit)
-	if task.ModelKey == protocol.VideoModel {
+	if task.Protocol == protocol.VideoProtocol {
 		limit = workerResponseLimit
 	}
 	raw, err := readModelBody(resp.Body, limit)
@@ -281,7 +281,7 @@ func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, ta
 	if err != nil {
 		return w.dispatchError(task, err)
 	}
-	if task.ModelKey == protocol.VideoModel {
+	if task.Protocol == protocol.VideoProtocol {
 		var job nativeJob
 		if json.Unmarshal(raw, &job) != nil || !nativeJobID.MatchString(job.ID) {
 			return w.requeueDispatch(task)
@@ -330,7 +330,7 @@ func (u *resultUploader) publishImages(ctx context.Context, id string, raw []byt
 }
 
 func (w *Reconciler) pollNative(cfg *config.Snapshot, task *ent.Request, backend config.NativeBackend) error {
-	if !backend.Matches(task.ModelKey) {
+	if !backend.Matches(task.Protocol) {
 		return w.pollUnavailable(cfg, task)
 	}
 	if !backend.Video || task.BackendTaskID == "" {

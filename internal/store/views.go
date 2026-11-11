@@ -14,7 +14,7 @@ import (
 // 等待响应时只取响应字段和截止时间，避免反复读取入队保存的大图。
 func (s *Store) Get(ctx context.Context, id string) (*ent.Request, error) {
 	return s.db.Request.Query().Where(request.IDEQ(id)).Select(
-		request.FieldID, request.FieldModelKey, request.FieldState, request.FieldInstanceID,
+		request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldState, request.FieldInstanceID,
 		request.FieldDeadlineAt, request.FieldResult, request.FieldErrorCode, request.FieldErrorMessage, request.FieldErrorStatus,
 	).Only(ctx)
 }
@@ -62,7 +62,7 @@ func (s *Store) ListInstances(ctx context.Context) ([]InstanceView, error) {
 		row.GroupCapacityUnits = limits[row.ResourceGroup]
 		// 预留单位和请求数分别返回，避免把加权容量显示为在途任务数。
 		healthy := instanceHealthy(row, now)
-		synchronous := protocol.SynchronousKind(row.ModelKey) != ""
+		synchronous := protocol.SynchronousKind(row.Protocol) != ""
 		var memberships []string
 		if synchronous {
 			memberships = gpuGroups.instanceGroups(row)
@@ -88,7 +88,7 @@ type RequestFilter struct {
 
 // 运维查询只读取执行归属与状态，原始媒体仍留在队列账本里。
 var requestSummaryFields = []string{
-	request.FieldID, request.FieldModelKey, request.FieldTraceID,
+	request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldTraceID,
 	request.FieldState, request.FieldCreatedAt, request.FieldStartedAt, request.FieldFinishedAt,
 	request.FieldInstanceID, request.FieldResourceGroup, request.FieldResourceGroups, request.FieldEndpoint, request.FieldArtifactDigest,
 	request.FieldBackendTaskID, request.FieldSlotReserved, request.FieldErrorCode,

@@ -73,8 +73,8 @@ func TestChatCompletions(t *testing.T) {
 	if got := call(cfg.AdminToken, request); got.Code != http.StatusUnauthorized {
 		t.Fatalf("wrong credential returned %d", got.Code)
 	}
-	if got := call(cfg.APIToken, strings.Replace(request, `"Vmind_dream_v1"`, `"vmind"`, 1)); got.Code != http.StatusNotFound {
-		t.Fatalf("retired model name returned %d", got.Code)
+	if got := call(cfg.APIToken, strings.Replace(request, `"Vmind_dream_v1"`, `"../invalid"`, 1)); got.Code != http.StatusNotFound {
+		t.Fatalf("invalid model identifier returned %d", got.Code)
 	}
 	// 有效推理及响应协议由 PostgreSQL 集成测试覆盖，单测只检查边界拒绝。
 	cfg.VLMAddr = "8.8.8.8:30332"

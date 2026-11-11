@@ -16,35 +16,35 @@ import (
 )
 
 type visionRoute struct {
-	path, mediaType string
-	fields          []string
-	modelKey        string
+	path, mediaType    string
+	fields             []string
+	modelKey, protocol string
 }
 
 // 只开放固定推理路径和内联入图字段，避免调用方借用 G6 的网络和存储权限拉取图片。
 var visionRoutes = []visionRoute{
 	{
-		path: "/human-parser/human_parser/predict", modelKey: protocol.HumanParseModel,
+		path: "/human-parser/human_parser/predict", modelKey: protocol.HumanParseModel, protocol: protocol.HumanParseProtocol,
 		mediaType: "application/json", fields: []string{"image"},
 	},
 	{
-		path: "/human-yolo/predict", modelKey: protocol.HumanYOLOModel,
+		path: "/human-yolo/predict", modelKey: protocol.HumanYOLOModel, protocol: protocol.HumanYOLOProtocol,
 		mediaType: "multipart/form-data", fields: []string{"file", "image", "conf", "iou"},
 	},
 	{
-		path: "/facesim/compare", modelKey: protocol.FaceSimModel,
+		path: "/facesim/compare", modelKey: protocol.FaceSimModel, protocol: protocol.FaceSimProtocol,
 		mediaType: "multipart/form-data", fields: []string{"file_a", "file_b", "image_a", "image_b", "face_index_a", "face_index_b"},
 	},
 	{
-		path: "/segment-person/api/segment", modelKey: protocol.SegmentPersonModel,
+		path: "/segment-person/api/segment", modelKey: protocol.SegmentPersonModel, protocol: protocol.SegmentPersonProtocol,
 		mediaType: "multipart/form-data", fields: []string{"file", "image", "method", "preprocess", "output", "trace_id"},
 	},
 	{
-		path: "/segment-person/api/segment_subject", modelKey: protocol.SegmentSubjectModel,
+		path: "/segment-person/api/segment_subject", modelKey: protocol.SegmentSubjectModel, protocol: protocol.SegmentSubjectProtocol,
 		mediaType: "multipart/form-data", fields: []string{"file", "image", "method", "output", "trace_id"},
 	},
 	{
-		path: "/lens_distortion_correction/correct", modelKey: protocol.LensCorrectionModel,
+		path: "/lens_distortion_correction/correct", modelKey: protocol.LensCorrectionModel, protocol: protocol.LensCorrectionProtocol,
 		mediaType: "application/json", fields: []string{"base64", "mirror_lens", "crop", "sampler", "preset"},
 	},
 }
@@ -93,7 +93,20 @@ func (s *Server) visionPredict(route visionRoute) app.HandlerFunc {
 			segment.Timeout = 180 * time.Second
 			client = &segment
 		}
-		s.forwardSynchronous(ctx, c, client, route.modelKey, route.path, contentType, body)
+		// 兼容现有固定路径调用，带模型名时按登记校验，避免分人请求误走分主体协议。
+		model := string(c.GetHeader("X-Model-Key"))
+		if model == "" {
+			model = route.modelKey
+		}
+		kind, ok := s.resolveModelProtocol(ctx, c, model)
+		if !ok {
+			return
+		}
+		if kind != route.protocol {
+			writeError(c, 400, "invalid_protocol", "model protocol does not match this vision route", "")
+			return
+		}
+		s.forwardSynchronous(ctx, c, client, model, kind, route.path, contentType, body)
 	}
 }
 

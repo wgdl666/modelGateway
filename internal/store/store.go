@@ -32,12 +32,12 @@ func (s *Store) CheckReady(ctx context.Context) error {
 	if _, err := s.db.ResourceGroup.Query().Select(resourcegroup.FieldCapacityUnits).Limit(1).All(ctx); err != nil {
 		return err
 	}
-	// 就绪检查覆盖软删除字段，迁移完成后才允许新副本接流量。
-	if _, err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).Exist(ctx); err != nil {
+	// 就绪检查覆盖软删除及协议字段，迁移完成后才允许新副本接流量。
+	if _, err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).Select(modelinstance.FieldProtocol).Limit(1).All(ctx); err != nil {
 		return err
 	}
 	// 同步、多卡请求都依赖这份占用快照，迁移缺失时不能接流量。
-	_, err := s.db.Request.Query().Select(request.FieldQueuePublishAt, request.FieldResourceGroups).Limit(1).All(ctx)
+	_, err := s.db.Request.Query().Select(request.FieldProtocol, request.FieldQueuePublishAt, request.FieldResourceGroups).Limit(1).All(ctx)
 	return err
 }
 

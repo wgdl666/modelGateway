@@ -19,6 +19,8 @@ func (ModelInstance) Fields() []ent.Field {
 		field.String("id").StorageKey("instance_id").SchemaType(map[string]string{dialect.Postgres: "text"}).Immutable(),
 		// 同一模型键只对应一种业务，实例以模型键加入候选集合。
 		field.Text("model_key").Immutable(),
+		// 协议随身份固定，已有请求不随登记变化改用另一种执行方式。
+		field.Text("protocol").Immutable(),
 		// 排空后可迁移执行地址，已有请求仍使用派发时写入的地址。
 		field.Text("endpoint"),
 		field.Text("health_url"),

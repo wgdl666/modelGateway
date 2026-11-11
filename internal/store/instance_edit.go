@@ -27,7 +27,7 @@ func (s *Store) EditInstance(ctx context.Context, cfg config.Config, id string, 
 			return err
 		}
 		// 同步登记的设备列表来自实际部署，队列编辑器只能携带一个组。
-		if protocol.SynchronousKind(row.ModelKey) != "" {
+		if protocol.SynchronousKind(row.Protocol) != "" {
 			return ErrInstanceAddress
 		}
 		// 返回丢失后的原样重试不会重置探活或影响已恢复的接单状态。
@@ -49,7 +49,7 @@ func (s *Store) EditInstance(ctx context.Context, cfg config.Config, id string, 
 		if held {
 			return ErrInstanceNotEditable
 		}
-		if !cfg.AcceptsInstanceAddress(row.ModelKey, settings.Endpoint, settings.HealthURL) {
+		if !cfg.AcceptsInstanceAddress(row.ModelKey, row.Protocol, settings.Endpoint, settings.HealthURL) {
 			return ErrInstanceAddress
 		}
 		group, err := tx.ResourceGroup.Get(ctx, settings.ResourceGroup)

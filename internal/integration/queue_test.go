@@ -92,7 +92,7 @@ func testConfig() config.Config {
 
 func testInstance(model, endpoint string, capacity int) protocol.Instance {
 	return protocol.Instance{
-		ID: uuid.NewString(), ModelKey: model, Endpoint: endpoint,
+		ID: uuid.NewString(), ModelKey: model, Protocol: fixtureProtocol(model), Endpoint: endpoint,
 		HealthURL: endpoint + "/health", Artifact: "sha256-" + strings.Repeat("a", 64),
 		ResourceGroup: "host/gpu0", Capacity: capacity, MachineID: "host", GPUDevices: []int{0},
 	}
@@ -123,7 +123,7 @@ func testAdmission(i protocol.Instance, id string, units int) store.Admission {
 	raw, _ := json.Marshal(protocol.Submission{Input: input})
 	cfg := testConfig()
 	return store.Admission{
-		ID: id, ModelKey: i.ModelKey, Payload: raw, Input: input, Units: units,
+		ID: id, ModelKey: i.ModelKey, Protocol: i.Protocol, Payload: raw, Input: input, Units: units,
 		MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout,
 	}
 }
@@ -178,7 +178,7 @@ func TestTwoReplicasQueueLimitAndIdempotency(t *testing.T) {
 		t.Fatalf("expected count limit, got %v", err)
 	}
 	// 模拟历史记录已用满原字节预算，队列仍按条数受理。
-	if err := db.Request.Create().SetID(uuid.NewString()).SetModelKey(same.ModelKey).
+	if err := db.Request.Create().SetID(uuid.NewString()).SetModelKey(same.ModelKey).SetProtocol(same.Protocol).
 		SetRequestPayload(same.Payload).SetPayloadBytes(128 << 20).SetUnits(same.Units).
 		SetDeadlineAt(time.Now().UTC().Add(same.BackendTimeout)).Exec(t.Context()); err != nil {
 		t.Fatal(err)
@@ -331,4 +331,26 @@ func TestQueueExpiry(t *testing.T) {
 	if err != nil || task.State != request.StateFailed || task.ErrorCode != "queue_timeout" || task.ErrorStatus != 504 {
 		t.Fatalf("expired task: %v %v", task, err)
 	}
+}
+
+// 旧模型名仅作为回归用例的输入，运行时不再保留这份名称映射。
+func fixtureProtocol(model string) string {
+	return map[string]string{
+		"registered-tryon-v2": "vton", "registered-video-v2": "outfit_video", "registered-parser-v2": "human_parse",
+		"Vmind_wardrobe_v1.0":                   "garment_extraction",
+		"Vmind_cloth_gen_v1.0":                  "product_generation",
+		"Vmind_outfit_v1.0":                     "vton",
+		"Vmind_bodymodel_v1.0":                  "body_model",
+		"Vmind_outfit_video_v1.0":               "outfit_video",
+		"Vmind_human_parse_v1.0":                "human_parse",
+		"Vmind_human_yolo_v1.0":                 "human_yolo",
+		"human-yolo":                            "human_yolo",
+		"Vmind_segment_person_bria_v1.0":        "segment_person",
+		"Vmind_segment_subject_bria_v1.0":       "segment_subject",
+		"Vmind_lens_distortion_correction_v1.0": "lens_correction",
+		"lens-distortion-correction":            "lens_correction",
+		"Vmind_dream_v1":                        "chat_completions",
+		"Vmind_decision_v1":                     "decision",
+		"facesim":                               "face_compare",
+	}[model]
 }

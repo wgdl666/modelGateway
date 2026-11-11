@@ -36,6 +36,11 @@ func TestNativeBackendsThroughGateway(t *testing.T) {
 }
 
 func testNativeBackendsThroughGateway(t *testing.T, byModel bool) {
+	// 新 key 不出现在任何生产代码中，覆盖登记、探活、原生调用和结果持久化。
+	imageKey, videoKey := protocol.OutfitModel, protocol.VideoModel
+	if byModel {
+		imageKey, videoKey = "registered-tryon-v2", "registered-video-v2"
+	}
 	for _, provider := range []string{"oss", "s3"} {
 		t.Run(provider, func(t *testing.T) {
 			ledger, _, db := stores(t)
@@ -219,11 +224,11 @@ func testNativeBackendsThroughGateway(t *testing.T, byModel bool) {
 			cfg.RabbitMQURL, cfg.RabbitMQQueue, _ = testsupport.RabbitQueue(t)
 			cfg.BackendToken = "legacy-token"
 			cfg.PollInterval = 25 * time.Millisecond
-			imageSpec := testInstance(protocol.OutfitModel, imageModel.URL+imagePrefix, 1)
+			imageSpec := testInstance(imageKey, imageModel.URL+imagePrefix, 1)
 			videoSpecs := [2]protocol.Instance{}
 			cfg.NativeBackends = map[string]config.NativeBackend{imageSpec.Endpoint: {}}
 			for gpu := range videoSpecs {
-				s := testInstance(protocol.VideoModel, fmt.Sprintf("%s/gpu%d", videoModelServer.URL, gpu), 1)
+				s := testInstance(videoKey, fmt.Sprintf("%s/gpu%d", videoModelServer.URL, gpu), 1)
 				s.ID = fmt.Sprintf("native-gpu%d", gpu)
 				s.HealthURL = s.Endpoint + "/healthz"
 				s.ResourceGroup = fmt.Sprintf("host/gpu%d", gpu)
@@ -238,7 +243,7 @@ func testNativeBackendsThroughGateway(t *testing.T, byModel bool) {
 			}
 			if byModel {
 				cfg.NativeModels = map[string]config.NativeBackend{
-					protocol.OutfitModel: {}, protocol.VideoModel: {Video: true},
+					imageKey: {}, videoKey: {Video: true},
 				}
 				cfg.NativeBackends = nil
 			}
@@ -325,10 +330,10 @@ func testNativeBackendsThroughGateway(t *testing.T, byModel bool) {
 				}
 			}
 			imageBody := `{"input":{"prompt":"try on","images":[{"mime_type":"image/png","data":"cGVyc29u"},{"mime_type":"image/png","data":"Z2FybWVudA=="}]},"metadata":{"trace_id":"test-trace","user_id":"test-user"}}`
-			imagePath := "/v1/gateway/requests/" + protocol.OutfitModel
+			imagePath := "/v1/gateway/requests/" + imageKey
 			assertResult(call(http.MethodPost, imagePath, apiToken, imageID, imageBody, 200), imageID, "0.png")
 			videoBody := `{"input":{"motion_tips":"turn","images":[{"mime_type":"image/png","data":"Zmlyc3QgZnJhbWU="}]}}`
-			videoPath := "/v1/gateway/requests/" + protocol.VideoModel
+			videoPath := "/v1/gateway/requests/" + videoKey
 			call(http.MethodPost, videoPath, apiToken, videoIDs[0], videoBody, 202)
 			waitForNativeTest(t, "first GPU reservation", func() bool {
 				row, err := db.Request.Get(t.Context(), videoIDs[0])
@@ -456,7 +461,7 @@ func TestSlowNativeVideoUploadsDoNotBlockPolling(t *testing.T) {
 	addPollingVideo := func(jobID string) string {
 		t.Helper()
 		id, now := uuid.NewString(), time.Now().UTC()
-		err := db.Request.Create().SetID(id).SetModelKey(protocol.VideoModel).
+		err := db.Request.Create().SetID(id).SetModelKey(protocol.VideoModel).SetProtocol(protocol.VideoProtocol).
 			SetRequestPayload(json.RawMessage(`{}`)).SetPayloadBytes(2).SetUnits(1).
 			SetState(request.StateProcessing).SetSlotReserved(true).SetInstanceID("ltx-test").SetResourceGroup("test/gpu").
 			SetEndpoint(endpoint).SetBackendTaskID(jobID).SetDeadlineAt(now.Add(time.Minute)).SetNextPollAt(now).Exec(t.Context())

@@ -48,8 +48,8 @@ func (c Config) NativeBackendFor(model, endpoint string) (NativeBackend, bool) {
 	return backend, ok
 }
 
-func (b NativeBackend) Matches(model string) bool {
-	return b.Video == (model == protocol.VideoModel)
+func (b NativeBackend) Matches(kind string) bool {
+	return b.Video == (kind == protocol.VideoProtocol)
 }
 
 func isGPUEndpoint(endpoint string) bool {
@@ -59,8 +59,8 @@ func isGPUEndpoint(endpoint string) bool {
 
 // 手动探活与实例登记使用同一出站规则，表单地址必须符合所选网关的配置。
 func (s *Snapshot) ValidateInstanceTarget(target protocol.InstanceTarget) error {
-	if protocol.SynchronousKind(target.ModelKey) != "" {
-		if s.acceptsSynchronousTarget(target.ModelKey, target.Endpoint, target.HealthURL) {
+	if protocol.SynchronousKind(target.Protocol) != "" {
+		if s.acceptsSynchronousTarget(target.Protocol, target.Endpoint, target.HealthURL) {
 			return nil
 		}
 		return errors.New("synchronous target must match its configured probe and execution address")
@@ -71,16 +71,16 @@ func (s *Snapshot) ValidateInstanceTarget(target protocol.InstanceTarget) error 
 	if err := s.ValidateEndpoint(target.HealthURL, true); err != nil {
 		return err
 	}
-	if !s.AcceptsInstanceAddress(target.ModelKey, target.Endpoint, target.HealthURL) {
+	if !s.AcceptsInstanceAddress(target.ModelKey, target.Protocol, target.Endpoint, target.HealthURL) {
 		return errors.New("endpoint, health URL or model_key does not match the backend configuration")
 	}
 	return nil
 }
 
 // 单卡地址使用原生视频协议，探活也须命中同一张卡，避免用其他 worker 的就绪状态派单。
-func (c Config) AcceptsInstanceAddress(model, endpoint, healthURL string) bool {
-	if protocol.SynchronousKind(model) != "" {
-		return c.acceptsSynchronousTarget(model, endpoint, healthURL)
+func (c Config) AcceptsInstanceAddress(model, kind, endpoint, healthURL string) bool {
+	if protocol.SynchronousKind(kind) != "" {
+		return c.acceptsSynchronousTarget(kind, endpoint, healthURL)
 	}
 	backend, direct := c.NativeBackendFor(model, endpoint)
 	gpu := isGPUEndpoint(endpoint)
@@ -89,7 +89,7 @@ func (c Config) AcceptsInstanceAddress(model, endpoint, healthURL string) bool {
 		return err == nil && !gpu && (u.Path == "" || u.Path == "/")
 	}
 	_, legacy := c.NativeBackends[endpoint]
-	if !backend.Matches(model) || (legacy && backend.Video != gpu) {
+	if !backend.Matches(kind) || (legacy && backend.Video != gpu) {
 		return false
 	}
 	if backend.Video {
@@ -109,7 +109,8 @@ type NativeResults struct {
 // 协议按模型配置；旧地址绑定保留用于兼容迁移。
 func (s *Snapshot) validateNative() error {
 	for model, backend := range s.NativeModels {
-		if !protocol.ValidModelKey(model) || protocol.SynchronousKind(model) != "" || !backend.Matches(model) || (backend.Video && backend.VTONEdits) {
+		// 模型名称不推断协议，实际登记时再核对该模型配置与登记协议的一致性。
+		if !protocol.ValidModelKey(model) || (backend.Video && backend.VTONEdits) {
 			return errors.New("invalid native_models protocol")
 		}
 	}

@@ -14,21 +14,22 @@ type MediaRef struct {
 	MIMEType string `json:"mime_type"`
 }
 
-func inputRoles(model string) []string {
-	switch model {
-	case ClothGenModel, BodyModel, VideoModel:
+func inputRoles(kind string) []string {
+	switch kind {
+	case ClothGenProtocol, BodyProtocol, VideoProtocol:
 		return []string{"image"}
-	case WardrobeModel:
+	case WardrobeProtocol:
 		return []string{"image", "parse_mask"}
-	case OutfitModel:
+	case OutfitProtocol:
 		return []string{"person_image", "garment_image"}
 	default:
 		return nil
 	}
 }
 
-// PreviewSubmission 从已保存的受理正文取出业务字段和图片。图片字节只留给按张读取的媒体接口。
-func PreviewSubmission(model string, payload json.RawMessage) (parameters json.RawMessage, refs []MediaRef, images []InputImage, err error) {
+// PreviewSubmission 按受理时保存的协议解释图片角色，登记变更不能重写历史预览。
+// 图片字节只留给按张读取的媒体接口。
+func PreviewSubmission(kind string, payload json.RawMessage) (parameters json.RawMessage, refs []MediaRef, images []InputImage, err error) {
 	var stored Submission
 	if json.Unmarshal(payload, &stored) != nil || len(stored.Input) == 0 {
 		return nil, nil, nil, errors.New("stored input is unavailable")
@@ -41,7 +42,7 @@ func PreviewSubmission(model string, payload json.RawMessage) (parameters json.R
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	roles := inputRoles(model)
+	roles := inputRoles(kind)
 	refs = make([]MediaRef, len(images))
 	for i, image := range images {
 		role := ""

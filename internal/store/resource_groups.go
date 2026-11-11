@@ -77,7 +77,7 @@ func (s *Store) ListResourceGroups(ctx context.Context) ([]ResourceGroupView, er
 		return nil, err
 	}
 	rows, err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).
-		Select(modelinstance.FieldResourceGroup, modelinstance.FieldModelKey, modelinstance.FieldMachineID, modelinstance.FieldGpuDevices).All(ctx)
+		Select(modelinstance.FieldResourceGroup, modelinstance.FieldModelKey, modelinstance.FieldProtocol, modelinstance.FieldMachineID, modelinstance.FieldGpuDevices).All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func (s *Store) ListResourceGroups(ctx context.Context) ([]ResourceGroupView, er
 	instances, synchronous, units := make(map[string]int), make(map[string]int), make(map[string]int)
 	gpuGroups := indexGPUResourceGroups(groups)
 	for _, row := range rows {
-		if protocol.SynchronousKind(row.ModelKey) == "" {
+		if protocol.SynchronousKind(row.Protocol) == "" {
 			instances[row.ResourceGroup]++
 			continue
 		}

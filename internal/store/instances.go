@@ -16,7 +16,7 @@ const probeMaxAge = 9 * time.Second
 
 func instanceHealthy(row *ent.ModelInstance, now time.Time) bool {
 	maxAge := probeMaxAge
-	if protocol.SynchronousKind(row.ModelKey) != "" {
+	if protocol.SynchronousKind(row.Protocol) != "" {
 		// G6 聚合探活在单个副本异常时会跨多批超时，使用同步探针的周期和超时预算。
 		maxAge = 35 * time.Second
 	}
@@ -35,6 +35,14 @@ func (s *Store) ProbeInstances(ctx context.Context) ([]*ent.ModelInstance, error
 
 func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedArtifact string) error {
 	return s.serialize(ctx, func(tx *ent.Tx) error {
+		// 同一 key 的协议跨副本及历史登记保持一致，避免新实例接到旧契约请求。
+		conflict, err := tx.ModelInstance.Query().Where(modelinstance.ModelKeyEQ(spec.ModelKey), modelinstance.ProtocolNEQ(spec.Protocol)).Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if conflict {
+			return ErrConflict
+		}
 		group, err := tx.ResourceGroup.Get(ctx, spec.ResourceGroup)
 		if ent.IsNotFound(err) {
 			return ErrResourceGroupNotFound
@@ -43,9 +51,9 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 			return err
 		}
 		// 单卡队列实例保持原绑定。多卡 Dream 以首张卡为主组，其他物理卡也必须已登记。
-		synchronous := protocol.SynchronousKind(spec.ModelKey) != ""
+		synchronous := protocol.SynchronousKind(spec.Protocol) != ""
 		// 当前 FaceSim 使用 OpenCV CPU 推理，独立逻辑组限制并发，不能伪造 GPU 0 归属。
-		cpuOnly := spec.ModelKey == protocol.FaceSimModel
+		cpuOnly := spec.Protocol == protocol.FaceSimProtocol
 		if cpuOnly && (group.GpuDevice != nil || len(spec.GPUDevices) != 0) {
 			return ErrResourceGroupDeviceMismatch
 		}
@@ -53,7 +61,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 			return ErrResourceGroupDeviceMismatch
 		}
 		if group.GpuDevice != nil && (group.MachineID != spec.MachineID || len(spec.GPUDevices) == 0 ||
-			spec.GPUDevices[0] != *group.GpuDevice || (spec.ModelKey != protocol.DreamModel && len(spec.GPUDevices) != 1)) {
+			spec.GPUDevices[0] != *group.GpuDevice || (spec.Protocol != protocol.ChatProtocol && len(spec.GPUDevices) != 1)) {
 			return ErrResourceGroupDeviceMismatch
 		}
 		if synchronous && len(spec.GPUDevices) > 1 {
@@ -73,7 +81,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 				return ErrConflict
 			}
 			// 自动获取摘要的登记重试沿用首次写入的身份，探针变化不能改写历史。
-			if old.ModelKey == spec.ModelKey && old.Endpoint == spec.Endpoint &&
+			if old.ModelKey == spec.ModelKey && old.Protocol == spec.Protocol && old.Endpoint == spec.Endpoint &&
 				old.HealthURL == spec.HealthURL && (spec.Artifact == "" || old.ArtifactDigest == spec.Artifact) &&
 				old.ResourceGroup == spec.ResourceGroup &&
 				old.CapacityUnits == spec.Capacity &&
@@ -115,7 +123,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 			artifact = reportedArtifact
 		}
 		return tx.ModelInstance.Create().
-			SetID(spec.ID).SetModelKey(spec.ModelKey).
+			SetID(spec.ID).SetModelKey(spec.ModelKey).SetProtocol(spec.Protocol).
 			SetEndpoint(spec.Endpoint).SetHealthURL(spec.HealthURL).SetArtifactDigest(artifact).
 			SetResourceGroup(spec.ResourceGroup).SetGroupCapacityUnits(group.CapacityUnits).
 			SetCapacityUnits(spec.Capacity).SetMachineID(spec.MachineID).SetGpuDevices(spec.GPUDevices).Exec(ctx)
@@ -179,4 +187,16 @@ func (s *Store) RecordProbe(ctx context.Context, id string, checked time.Time, r
 		modelinstance.UpdatedAtLTE(checked), modelinstance.HealthCheckedAtLT(checked),
 	).SetHealthCheckedAt(checked).SetReady(ready).Save(ctx)
 	return err
+}
+
+// ModelProtocol 从已有登记解析处理方式；实例暂时下线或被清除不抹掉模型契约。
+func (s *Store) ModelProtocol(ctx context.Context, model string) (string, error) {
+	row, err := s.db.ModelInstance.Query().Where(modelinstance.ModelKeyEQ(model)).Select(modelinstance.FieldProtocol).First(ctx)
+	if ent.IsNotFound(err) {
+		return "", ErrModelUnregistered
+	}
+	if err != nil {
+		return "", err
+	}
+	return row.Protocol, nil
 }

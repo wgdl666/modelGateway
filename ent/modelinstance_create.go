@@ -26,6 +26,12 @@ func (_c *ModelInstanceCreate) SetModelKey(v string) *ModelInstanceCreate {
 	return _c
 }
 
+// SetProtocol sets the "protocol" field.
+func (_c *ModelInstanceCreate) SetProtocol(v string) *ModelInstanceCreate {
+	_c.mutation.SetProtocol(v)
+	return _c
+}
+
 // SetEndpoint sets the "endpoint" field.
 func (_c *ModelInstanceCreate) SetEndpoint(v string) *ModelInstanceCreate {
 	_c.mutation.SetEndpoint(v)
@@ -238,6 +244,9 @@ func (_c *ModelInstanceCreate) check() error {
 	if _, ok := _c.mutation.ModelKey(); !ok {
 		return &ValidationError{Name: "model_key", err: errors.New(`ent: missing required field "ModelInstance.model_key"`)}
 	}
+	if _, ok := _c.mutation.Protocol(); !ok {
+		return &ValidationError{Name: "protocol", err: errors.New(`ent: missing required field "ModelInstance.protocol"`)}
+	}
 	if _, ok := _c.mutation.Endpoint(); !ok {
 		return &ValidationError{Name: "endpoint", err: errors.New(`ent: missing required field "ModelInstance.endpoint"`)}
 	}
@@ -322,6 +331,10 @@ func (_c *ModelInstanceCreate) createSpec() (*ModelInstance, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.ModelKey(); ok {
 		_spec.SetField(modelinstance.FieldModelKey, field.TypeString, value)
 		_node.ModelKey = value
+	}
+	if value, ok := _c.mutation.Protocol(); ok {
+		_spec.SetField(modelinstance.FieldProtocol, field.TypeString, value)
+		_node.Protocol = value
 	}
 	if value, ok := _c.mutation.Endpoint(); ok {
 		_spec.SetField(modelinstance.FieldEndpoint, field.TypeString, value)

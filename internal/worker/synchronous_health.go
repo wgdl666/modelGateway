@@ -64,20 +64,20 @@ func (w *Reconciler) readSynchronousHealth(ctx context.Context, kind, healthURL 
 	return synchronousHealth{}
 }
 
-func (h synchronousHealth) ready(model, endpoint string, _ int) bool {
-	switch model {
-	case protocol.DreamModel:
+func (h synchronousHealth) ready(kind, endpoint string, _ int) bool {
+	switch kind {
+	case protocol.ChatProtocol:
 		return h.dreamReady
-	case protocol.DecisionModel:
+	case protocol.DecisionProtocol:
 		return h.decisionReplicas[endpoint]
 	}
-	service := h.vision[protocol.VisionService(model)]
+	service := h.vision[protocol.VisionService(kind)]
 	// 旧前置服务会自行改派副本，未支持定向协议时不能进入统一调度。
 	if !service.TargetedDispatch {
 		return false
 	}
-	switch model {
-	case protocol.SegmentPersonModel, protocol.SegmentSubjectModel, protocol.LensCorrectionModel:
+	switch kind {
+	case protocol.SegmentPersonProtocol, protocol.SegmentSubjectProtocol, protocol.LensCorrectionProtocol:
 		// 聚合服务可能还有可用副本，按本机端口判断这条登记对应的副本。
 		port, _ := strconv.Atoi(strings.TrimPrefix(endpoint, "http://127.0.0.1:"))
 		var detail struct {
@@ -108,7 +108,7 @@ func (w *Reconciler) probeSynchronous(cfg *config.Snapshot) error {
 	}
 	batches := make(map[string][]*ent.ModelInstance)
 	for _, row := range rows {
-		if kind := protocol.SynchronousKind(row.ModelKey); kind != "" {
+		if kind := protocol.SynchronousKind(row.Protocol); kind != "" {
 			batches[kind] = append(batches[kind], row)
 		}
 	}
@@ -117,12 +117,12 @@ func (w *Reconciler) probeSynchronous(cfg *config.Snapshot) error {
 	for kind, instances := range batches {
 		probes.Go(func() {
 			var health synchronousHealth
-			if probe := cfg.SynchronousHealthURL(instances[0].ModelKey); probe != "" {
+			if probe := cfg.SynchronousHealthURL(instances[0].Protocol); probe != "" {
 				health = w.readSynchronousHealth(w.ctx, kind, probe)
 			}
 			for _, row := range instances {
-				ready := cfg.AcceptsInstanceAddress(row.ModelKey, row.Endpoint, row.HealthURL) &&
-					health.ready(row.ModelKey, row.Endpoint, len(instances))
+				ready := cfg.AcceptsInstanceAddress(row.ModelKey, row.Protocol, row.Endpoint, row.HealthURL) &&
+					health.ready(row.Protocol, row.Endpoint, len(instances))
 				if err := w.store.RecordProbe(w.ctx, row.ID, checked, ready); err != nil && w.ctx.Err() == nil {
 					slog.Error("synchronous model health update failed", "error_type", fmt.Sprintf("%T", err))
 				}

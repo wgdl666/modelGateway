@@ -25,7 +25,7 @@ import (
 )
 
 // 同步协议仍由原连接返回；受理、暂停与容量和异步任务使用同一份持久账本。
-func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, client *http.Client, model, path, contentType string, body []byte) {
+func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, client *http.Client, model, kind, path, contentType string, body []byte) {
 	cfg := requestConfig(ctx)
 	id := string(c.GetHeader("Idempotency-Key"))
 	if id == "" {
@@ -42,7 +42,7 @@ func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, 
 	if units == 0 {
 		units = 1
 	}
-	task, err := s.store.Admit(ctx, store.Admission{ID: id, ModelKey: model, TraceID: synchronousTraceID(c),
+	task, err := s.store.Admit(ctx, store.Admission{ID: id, ModelKey: model, Protocol: kind, TraceID: synchronousTraceID(c),
 		Payload: payload, Input: input, Units: units, MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout})
 	if err != nil {
 		storeError(c, err, id)
@@ -114,7 +114,7 @@ func (s *Server) executeSynchronous(ctx context.Context, c *app.RequestContext, 
 	cfg := requestConfig(ctx)
 	endpoint := task.Endpoint + path
 	port := strings.TrimPrefix(task.Endpoint, "http://127.0.0.1:")
-	switch protocol.SynchronousKind(task.ModelKey) {
+	switch protocol.SynchronousKind(task.Protocol) {
 	case protocol.SyncVision:
 		endpoint = "http://" + cfg.VisionAddr + "/_dispatch/" + port + path
 	case protocol.SyncDecision:

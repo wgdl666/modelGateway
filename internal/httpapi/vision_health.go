@@ -24,7 +24,7 @@ func (s *Server) visionHealth(ctx context.Context, c *app.RequestContext) {
 			if route.modelKey == "" {
 				continue
 			}
-			service := protocol.VisionService(route.modelKey)
+			service := protocol.VisionService(route.protocol)
 			models = append(models, visionModelHealth{ModelKey: route.modelKey, Ready: services[service].Ready})
 		}
 	}

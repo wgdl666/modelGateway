@@ -74,6 +74,7 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.GET("/_gateway/live", func(_ context.Context, c *app.RequestContext) { writeJSON(c, 200, map[string]bool{"live": true}) })
 	h.GET("/_gateway/ready", s.ready)
 	// 实例登记决定网关可以向哪些执行地址派单，因此使用管理凭据。
+	h.GET("/v1/models/:model_key", s.auth("api", s.modelProtocol))
 	h.POST("/v1/instances/register", s.auth("admin", s.register))
 	h.POST("/v1/instances/probe", s.auth("admin", s.probeInstance))
 	h.POST("/v1/instances/:id/drain", s.auth("admin", s.drain))
@@ -222,7 +223,7 @@ func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_instance", "invalid model instance specification", "")
 		return
 	}
-	target := protocol.InstanceTarget{ModelKey: spec.ModelKey, Endpoint: spec.Endpoint, HealthURL: spec.HealthURL, GPUDevices: spec.GPUDevices}
+	target := protocol.InstanceTarget{ModelKey: spec.ModelKey, Protocol: spec.Protocol, Endpoint: spec.Endpoint, HealthURL: spec.HealthURL, GPUDevices: spec.GPUDevices}
 	if err := cfg.ValidateInstanceTarget(target); err != nil {
 		writeError(c, 400, "invalid_instance", err.Error(), "")
 		return
@@ -233,7 +234,7 @@ func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	var artifact string
-	if spec.Artifact == "" && protocol.SynchronousKind(spec.ModelKey) == "" {
+	if spec.Artifact == "" && protocol.SynchronousKind(spec.Protocol) == "" {
 		// 登记时重新读取服务上报，表单预览可能来自更早的一次部署。
 		health, err := s.probe(ctx, cfg, target)
 		if err == nil {
@@ -254,8 +255,8 @@ func (s *Server) probeInstance(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	target.Endpoint = strings.TrimRight(target.Endpoint, "/")
-	if !protocol.ValidModelKey(target.ModelKey) && protocol.SynchronousKind(target.ModelKey) == "" {
-		writeError(c, 400, "invalid_instance", "unknown model_key", "")
+	if !protocol.ValidModelKey(target.ModelKey) || !protocol.ValidProtocol(target.Protocol) {
+		writeError(c, 400, "invalid_instance", "invalid model_key or protocol", "")
 		return
 	}
 	if err := cfg.ValidateInstanceTarget(target); err != nil {
@@ -327,8 +328,12 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	model := c.Param("model_key")
-	if !protocol.ValidModelKey(model) {
-		writeError(c, 404, "model_not_found", "model is not configured", id)
+	kind, ok := s.resolveModelProtocol(ctx, c, model)
+	if !ok {
+		return
+	}
+	if !protocol.MediaProtocol(kind) {
+		writeError(c, 400, "invalid_protocol", "model does not use the media task protocol", id)
 		return
 	}
 	// 同时解码的大图受限，连接等待响应时不占上传名额。
@@ -344,7 +349,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		<-s.uploads
 		return
 	}
-	err := protocol.ValidateInput(model, input.Input)
+	err := protocol.ValidateInput(kind, input.Input)
 	for _, value := range []string{input.Metadata.TraceID, input.Metadata.UserID} {
 		if len(value) > 256 || strings.ContainsFunc(value, func(r rune) bool { return r < 32 || r == 127 }) {
 			err = errors.New("invalid metadata")
@@ -356,7 +361,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	task, err := s.store.Admit(ctx, store.Admission{
-		ID: id, ModelKey: model, Payload: raw, Input: input.Input,
+		ID: id, ModelKey: model, Protocol: kind, Payload: raw, Input: input.Input,
 		// 占用单位随受理落库，后续配置更新不会改变已排队请求的重量。
 		TraceID: input.Metadata.TraceID, Units: max(1, cfg.UnitsByModelKey[model]),
 		MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout,
@@ -367,7 +372,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	// 视频调用方通过查询接口取终态，提交请求无需保持连接。
-	if model == protocol.VideoModel {
+	if kind == protocol.VideoProtocol {
 		writeJSON(c, 202, protocol.Response{RequestID: id, ModelKey: model, State: string(task.State)})
 		return
 	}

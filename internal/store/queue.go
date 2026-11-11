@@ -17,13 +17,13 @@ import (
 
 // Admission 携带本次受理的队列限制，任务入库后沿用当时计算的截止时间。
 type Admission struct {
-	ID, ModelKey   string
-	TraceID        string
-	Payload        json.RawMessage
-	Input          json.RawMessage
-	Units          int
-	MaxWaiting     int
-	BackendTimeout time.Duration
+	ID, ModelKey, Protocol string
+	TraceID                string
+	Payload                json.RawMessage
+	Input                  json.RawMessage
+	Units                  int
+	MaxWaiting             int
+	BackendTimeout         time.Duration
 }
 
 func sameInput(payload, input json.RawMessage) bool {
@@ -41,10 +41,10 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 		old, err := tx.Request.Get(ctx, in.ID)
 		if err == nil {
 			// 同步流无法重放。重复键明确冲突，不允许另一连接接管或再次执行。
-			if protocol.SynchronousKind(in.ModelKey) != "" {
+			if protocol.SynchronousKind(in.Protocol) != "" {
 				return ErrConflict
 			}
-			if old.ModelKey != in.ModelKey || !sameInput(old.RequestPayload, in.Input) {
+			if old.ModelKey != in.ModelKey || old.Protocol != in.Protocol || !sameInput(old.RequestPayload, in.Input) {
 				return ErrConflict
 			}
 			task = old
@@ -54,7 +54,7 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 			return err
 		}
 		// 同步连接不能在未登记时保留原请求；异步任务保持原有持久排队等待部署的语义。
-		if protocol.SynchronousKind(in.ModelKey) != "" {
+		if protocol.SynchronousKind(in.Protocol) != "" {
 			registered, err := tx.ModelInstance.Query().Where(modelinstance.ModelKeyEQ(in.ModelKey), modelinstance.DeletedAtIsNil()).Exist(ctx)
 			if err != nil {
 				return err
@@ -74,11 +74,11 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 		if waiting >= in.MaxWaiting {
 			return ErrFull
 		}
-		create := tx.Request.Create().SetID(in.ID).SetModelKey(in.ModelKey).
+		create := tx.Request.Create().SetID(in.ID).SetModelKey(in.ModelKey).SetProtocol(in.Protocol).
 			SetTraceID(in.TraceID).SetRequestPayload(in.Payload).SetPayloadBytes(int64(len(in.Payload))).SetUnits(in.Units).
 			SetCreatedAt(now).SetDeadlineAt(now.Add(in.BackendTimeout))
 		// 同步响应由原连接读取，容量仍在 PG 竞争；不能再投 MQ 产生第二次模型执行。
-		if protocol.SynchronousKind(in.ModelKey) == "" {
+		if protocol.SynchronousKind(in.Protocol) == "" {
 			create.SetQueuePublishAt(now)
 		}
 		task, err = create.Save(ctx)
@@ -136,7 +136,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		now := time.Now().UTC()
 		// 同一消息可能重投。按 ID 等待行锁，锁竞争不能被误当成已处理而确认消息。
 		next, err := tx.Request.Query().Where(request.IDEQ(id), request.StateEQ(request.StateQueued), request.DeadlineAtGT(now)).
-			Select(request.FieldID, request.FieldModelKey, request.FieldUnits, request.FieldDeadlineAt, request.FieldQueuePublishAt).
+			Select(request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldUnits, request.FieldDeadlineAt, request.FieldQueuePublishAt).
 			ForUpdate().Only(ctx)
 		if ent.IsNotFound(err) {
 			return nil
@@ -157,7 +157,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 			return err
 		}
 		if len(instances) == 0 {
-			if protocol.SynchronousKind(next.ModelKey) != "" {
+			if protocol.SynchronousKind(next.Protocol) != "" {
 				return nil
 			}
 			return deferPublication(ctx, tx, next)
@@ -186,7 +186,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		}
 		for _, i := range instances {
 			// 地址退出原生配置后，旧探活快照不能让它按 Worker 协议接单。
-			if !instanceHealthy(i, now) || !cfg.AcceptsInstanceAddress(i.ModelKey, i.Endpoint, i.HealthURL) {
+			if !instanceHealthy(i, now) || !cfg.AcceptsInstanceAddress(i.ModelKey, i.Protocol, i.Endpoint, i.HealthURL) {
 				continue
 			}
 			memberships := []string{i.ResourceGroup}
@@ -208,7 +208,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 				return err
 			}
 			nextPoll := next.DeadlineAt.Add(2 * time.Second)
-			if _, direct := cfg.NativeBackendFor(next.ModelKey, i.Endpoint); direct || protocol.SynchronousKind(i.ModelKey) != "" {
+			if _, direct := cfg.NativeBackendFor(next.ModelKey, i.Endpoint); direct || protocol.SynchronousKind(i.Protocol) != "" {
 				// 原生调用可晚于上游返回，给原派发者留足执行和写终态的时间。
 				nextPoll = now.Add(cfg.NativeExecutionTimeout).Add(ExecutionWriteTimeout)
 			}
@@ -218,7 +218,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 				SetStartedAt(now).SetNextPollAt(nextPoll).SetPollClaim(uuid.NewString()).Save(ctx)
 			return err
 		}
-		if protocol.SynchronousKind(next.ModelKey) != "" {
+		if protocol.SynchronousKind(next.Protocol) != "" {
 			return nil
 		}
 		return deferPublication(ctx, tx, next)
@@ -274,7 +274,7 @@ func (s *Store) Expire(ctx context.Context) error {
 		return err
 	}
 	// 同步执行的进程消失后无法回查上游任务，明确标记结果未知并保留容量，禁止静默重复执行。
-	_, err = s.db.Request.Update().Where(request.ModelKeyIn(protocol.SynchronousModels()...),
+	_, err = s.db.Request.Update().Where(request.ProtocolIn(protocol.SynchronousProtocols()...),
 		request.StateEQ(request.StateProcessing), request.SlotReservedEQ(true), request.NextPollAtLTE(now)).
 		SetState(request.StateFailed).SetErrorCode("backend_outcome_unknown").SetErrorMessage("synchronous model outcome is unknown").
 		SetErrorStatus(504).SetFinishedAt(now).ClearNextPollAt().Save(ctx)

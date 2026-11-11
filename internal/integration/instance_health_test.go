@@ -78,11 +78,15 @@ func TestInstanceHealthProbeAndAutomaticArtifact(t *testing.T) {
 	const probe = "/v1/instances/probe"
 	const register = "/v1/instances/register"
 	instance := testInstance(protocol.OutfitModel, backend.URL, 1)
+	instance.ModelKey = "registered-health-v2"
 	instance.Artifact = ""
-	target := protocol.InstanceTarget{ModelKey: instance.ModelKey, Endpoint: instance.Endpoint, HealthURL: instance.HealthURL}
+	target := protocol.InstanceTarget{ModelKey: instance.ModelKey, Protocol: instance.Protocol, Endpoint: instance.Endpoint, HealthURL: instance.HealthURL}
 	post(probe, apiToken, target, 401)
 	blocked := target
 	blocked.HealthURL = "http://192.0.2.1:" + port + "/health"
+	post(probe, adminToken, blocked, 400)
+	blocked = target
+	blocked.Protocol = "unsupported"
 	post(probe, adminToken, blocked, 400)
 	var health protocol.InstanceHealth
 	if raw := post(probe, adminToken, target, 200); json.Unmarshal(raw, &health) != nil ||
@@ -97,6 +101,27 @@ func TestInstanceHealthProbeAndAutomaticArtifact(t *testing.T) {
 	digest = strings.Repeat("b", 64)
 	report.Store(fmt.Sprintf(`{"ready":true,"artifact_digest":"sha256:%s"}`, digest))
 	post(register, adminToken, instance, 200)
+	// ModelHub 查询的类型直接来自这条登记，不要求探针先把实例标记为可派。
+	metadataRequest, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/v1/models/"+instance.ModelKey, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataRequest.Header.Set("Authorization", "Bearer "+apiToken)
+	metadataResponse, err := http.DefaultClient.Do(metadataRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata map[string]string
+	err = json.NewDecoder(metadataResponse.Body).Decode(&metadata)
+	metadataResponse.Body.Close()
+	if err != nil || metadataResponse.StatusCode != http.StatusOK || metadata["model_key"] != instance.ModelKey || metadata["protocol"] != instance.Protocol {
+		t.Fatalf("wrong registered protocol: %v %v", metadata, err)
+	}
+	// 同一个 key 的其他副本不能改用另一协议，即使实例 ID 不同。
+	conflict := instance
+	conflict.ID = "different-protocol-replica"
+	conflict.Protocol = protocol.BodyProtocol
+	post(register, adminToken, conflict, 409)
 	report.Store(`{"ready":false}`)
 	health = protocol.InstanceHealth{}
 	if raw := post(probe, adminToken, target, 200); json.Unmarshal(raw, &health) != nil ||

@@ -69,6 +69,11 @@ func ModelKey(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldModelKey, v))
 }
 
+// Protocol applies equality check predicate on the "protocol" field. It's identical to ProtocolEQ.
+func Protocol(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldProtocol, v))
+}
+
 // Endpoint applies equality check predicate on the "endpoint" field. It's identical to EndpointEQ.
 func Endpoint(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldEndpoint, v))
@@ -197,6 +202,71 @@ func ModelKeyEqualFold(v string) predicate.ModelInstance {
 // ModelKeyContainsFold applies the ContainsFold predicate on the "model_key" field.
 func ModelKeyContainsFold(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldContainsFold(FieldModelKey, v))
+}
+
+// ProtocolEQ applies the EQ predicate on the "protocol" field.
+func ProtocolEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldProtocol, v))
+}
+
+// ProtocolNEQ applies the NEQ predicate on the "protocol" field.
+func ProtocolNEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNEQ(FieldProtocol, v))
+}
+
+// ProtocolIn applies the In predicate on the "protocol" field.
+func ProtocolIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIn(FieldProtocol, vs...))
+}
+
+// ProtocolNotIn applies the NotIn predicate on the "protocol" field.
+func ProtocolNotIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotIn(FieldProtocol, vs...))
+}
+
+// ProtocolGT applies the GT predicate on the "protocol" field.
+func ProtocolGT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGT(FieldProtocol, v))
+}
+
+// ProtocolGTE applies the GTE predicate on the "protocol" field.
+func ProtocolGTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGTE(FieldProtocol, v))
+}
+
+// ProtocolLT applies the LT predicate on the "protocol" field.
+func ProtocolLT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLT(FieldProtocol, v))
+}
+
+// ProtocolLTE applies the LTE predicate on the "protocol" field.
+func ProtocolLTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLTE(FieldProtocol, v))
+}
+
+// ProtocolContains applies the Contains predicate on the "protocol" field.
+func ProtocolContains(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContains(FieldProtocol, v))
+}
+
+// ProtocolHasPrefix applies the HasPrefix predicate on the "protocol" field.
+func ProtocolHasPrefix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasPrefix(FieldProtocol, v))
+}
+
+// ProtocolHasSuffix applies the HasSuffix predicate on the "protocol" field.
+func ProtocolHasSuffix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasSuffix(FieldProtocol, v))
+}
+
+// ProtocolEqualFold applies the EqualFold predicate on the "protocol" field.
+func ProtocolEqualFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEqualFold(FieldProtocol, v))
+}
+
+// ProtocolContainsFold applies the ContainsFold predicate on the "protocol" field.
+func ProtocolContainsFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContainsFold(FieldProtocol, v))
 }
 
 // EndpointEQ applies the EQ predicate on the "endpoint" field.

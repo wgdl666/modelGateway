@@ -19,17 +19,17 @@ const (
 )
 
 // VisionService 对应 G6 聚合探活的服务名。分人和分主体共用同一组执行副本。
-func VisionService(model string) string {
-	switch model {
-	case HumanParseModel:
+func VisionService(kind string) string {
+	switch kind {
+	case HumanParseProtocol:
 		return "human-parser"
-	case HumanYOLOModel:
+	case HumanYOLOProtocol:
 		return "human-yolo"
-	case SegmentPersonModel, SegmentSubjectModel:
+	case SegmentPersonProtocol, SegmentSubjectProtocol:
 		return "segment-person"
-	case LensCorrectionModel:
+	case LensCorrectionProtocol:
 		return "lens_distortion_correction"
-	case FaceSimModel:
+	case FaceSimProtocol:
 		return "facesim"
 	default:
 		return ""
@@ -37,21 +37,21 @@ func VisionService(model string) string {
 }
 
 // SynchronousKind 选择响应协议；同步模型与生成任务共用登记和容量账本。
-func SynchronousKind(model string) string {
-	switch model {
-	case DreamModel:
+func SynchronousKind(kind string) string {
+	switch kind {
+	case ChatProtocol:
 		return SyncDream
-	case DecisionModel:
+	case DecisionProtocol:
 		return SyncDecision
 	}
-	if VisionService(model) != "" {
+	if VisionService(kind) != "" {
 		return SyncVision
 	}
 	return ""
 }
 
-// SynchronousModels 用于把连接内执行与 MQ 执行分开，避免同一请求被两个执行器重复派发。
-func SynchronousModels() []string {
-	return []string{HumanParseModel, HumanYOLOModel, SegmentPersonModel, SegmentSubjectModel,
-		LensCorrectionModel, DreamModel, DecisionModel, FaceSimModel}
+// SynchronousProtocols 用于把连接内执行与 MQ 执行分开，避免同一请求被两个执行器重复派发。
+func SynchronousProtocols() []string {
+	return []string{HumanParseProtocol, HumanYOLOProtocol, SegmentPersonProtocol, SegmentSubjectProtocol,
+		LensCorrectionProtocol, ChatProtocol, DecisionProtocol, FaceSimProtocol}
 }

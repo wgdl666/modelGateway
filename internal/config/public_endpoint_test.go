@@ -28,11 +28,12 @@ func TestRegisteredEndpointsSelectProtocolWithoutAddressBindings(t *testing.T) {
 			if model == protocol.VideoModel {
 				health = endpoint + "/healthz"
 			}
-			target := protocol.InstanceTarget{ModelKey: model, Endpoint: endpoint, HealthURL: health}
+			kind := map[string]string{protocol.OutfitModel: protocol.OutfitProtocol, protocol.BodyModel: protocol.BodyProtocol, protocol.VideoModel: protocol.VideoProtocol}[model]
+			target := protocol.InstanceTarget{ModelKey: model, Protocol: kind, Endpoint: endpoint, HealthURL: health}
 			if err := s.ValidateInstanceTarget(target); err != nil {
 				t.Fatalf("%+v: %v", target, err)
 			}
-			if backend, ok := s.NativeBackendFor(model, endpoint); !ok || !backend.Matches(model) {
+			if backend, ok := s.NativeBackendFor(model, endpoint); !ok || !backend.Matches(kind) {
 				t.Fatal("protocol not selected by model")
 			}
 		}
@@ -41,14 +42,14 @@ func TestRegisteredEndpointsSelectProtocolWithoutAddressBindings(t *testing.T) {
 		t.Fatal("test must not preconfigure any GPU endpoint")
 	}
 	// An instance can be added at a new allowed address without reloading config.
-	if err := s.ValidateInstanceTarget(protocol.InstanceTarget{ModelKey: protocol.OutfitModel,
+	if err := s.ValidateInstanceTarget(protocol.InstanceTarget{ModelKey: protocol.OutfitModel, Protocol: protocol.OutfitProtocol,
 		Endpoint: "https://new-host.bjb2.seetacloud.com:8443/gpu7", HealthURL: "https://new-host.bjb2.seetacloud.com:8443/gpu7/health"}); err != nil {
 		t.Fatal(err)
 	}
-	if s.AcceptsInstanceAddress(protocol.OutfitModel, "http://10.0.0.1:8001", "http://10.0.0.2:8001/health") {
+	if s.AcceptsInstanceAddress(protocol.OutfitModel, protocol.OutfitProtocol, "http://10.0.0.1:8001", "http://10.0.0.2:8001/health") {
 		t.Fatal("cross-origin image probe accepted")
 	}
-	if s.AcceptsInstanceAddress(protocol.VideoModel, "http://10.0.0.1:8001/gpu1", "http://10.0.0.1:8001/gpu0/healthz") {
+	if s.AcceptsInstanceAddress(protocol.VideoModel, protocol.VideoProtocol, "http://10.0.0.1:8001/gpu1", "http://10.0.0.1:8001/gpu0/healthz") {
 		t.Fatal("cross-GPU video probe accepted")
 	}
 	cfg := endpointConfig()

@@ -67,7 +67,7 @@ func TestSynchronousRegistrationUsesActualPhysicalGroups(t *testing.T) {
 	send(register, apiToken, spec, http.StatusUnauthorized)
 	send(register, adminToken, spec, http.StatusOK)
 	send(register, adminToken, spec, http.StatusOK)
-	send("/v1/gateway/requests/"+spec.ModelKey, apiToken, spec, http.StatusNotFound)
+	send("/v1/gateway/requests/"+spec.ModelKey, apiToken, spec, http.StatusBadRequest)
 
 	if err := owner.RenameResourceGroupMachine(ctx, "host", "actual-host"); err != nil {
 		t.Fatal(err)

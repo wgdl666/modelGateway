@@ -9,7 +9,7 @@ import (
 func TestPreviewKeepsBusinessFieldsAndImageRoles(t *testing.T) {
 	id := "d36fa74f-14db-4a32-9315-8307dcfc0bcd"
 	payload := json.RawMessage(`{"input":{"prompt":"try on","images":[{"mime_type":"image/png","data":"eA=="},{"mime_type":"image/jpeg","data":"eA=="}]},"metadata":{"trace_id":"trace"}}`)
-	parameters, refs, images, err := PreviewSubmission(OutfitModel, payload)
+	parameters, refs, images, err := PreviewSubmission(OutfitProtocol, payload)
 	if err != nil || len(images) != 2 || string(images[0].Data) != "x" {
 		t.Fatalf("preview images: %v %v", images, err)
 	}
@@ -33,17 +33,17 @@ func TestPreviewKeepsBusinessFieldsAndImageRoles(t *testing.T) {
 	}
 }
 
-func TestWardrobeRoutesAreSelectedByModelKey(t *testing.T) {
+func TestWardrobeRoutesAreSelectedByProtocol(t *testing.T) {
 	const product = `{"images":[{"mime_type":"image/png","data":"eA=="}],"garment_name":"shirt"}`
 	const extraction = `{"images":[{"mime_type":"image/png","data":"eA=="}],"garment_name":"shirt","bbox":[0,0,1,1]}`
 	for _, test := range []struct {
 		model, input string
 		valid        bool
 	}{
-		{ClothGenModel, product, true},
-		{WardrobeModel, extraction, true},
-		{WardrobeModel, product, false},
-		{ClothGenModel, extraction, false},
+		{ClothGenProtocol, product, true},
+		{WardrobeProtocol, extraction, true},
+		{WardrobeProtocol, product, false},
+		{ClothGenProtocol, extraction, false},
 	} {
 		if err := ValidateInput(test.model, json.RawMessage(test.input)); (err == nil) != test.valid {
 			t.Errorf("ValidateInput(%s, %s) = %v, want valid=%v", test.model, test.input, err, test.valid)
@@ -51,16 +51,28 @@ func TestWardrobeRoutesAreSelectedByModelKey(t *testing.T) {
 	}
 }
 
-func TestInstanceRegistrationRequiresKnownModelKey(t *testing.T) {
+func TestInstanceRegistrationUsesProtocolForNewModelKeys(t *testing.T) {
 	i := Instance{
 		ID: "product-1", ModelKey: "cloth_gen",
 		Artifact: "sha256-" + strings.Repeat("a", 64), ResourceGroup: "gpu0", Capacity: 1,
 	}
 	if i.Valid() {
-		t.Fatal("registered an instance without a valid model key")
+		t.Fatal("registered an instance without a supported protocol")
 	}
-	i.ModelKey = ClothGenModel
+	i.Protocol = ClothGenProtocol
 	if !i.Valid() {
-		t.Fatal("product generation registration rejected its own model key")
+		t.Fatal("new model key with product protocol was rejected")
+	}
+}
+
+func TestUnknownProtocolAndInvalidModelKeyAreRejected(t *testing.T) {
+	i := Instance{ID: "instance-1", ModelKey: "new-model-v2", Protocol: "unsupported", ResourceGroup: "gpu0", Capacity: 1}
+	if i.Valid() {
+		t.Fatal("unknown protocol accepted")
+	}
+	i.Protocol = OutfitProtocol
+	i.ModelKey = "../other-model"
+	if i.Valid() {
+		t.Fatal("invalid model identifier accepted")
 	}
 }

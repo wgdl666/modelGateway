@@ -31,8 +31,10 @@ var (
 // Instance 记录部署身份和同卡分组。是否可派由主动探针及排空状态决定。
 // 原生视频用地址中的单卡路径绑定 GPU。
 type Instance struct {
-	ID            string `json:"instance_id"`
-	ModelKey      string `json:"model_key"`
+	ID       string `json:"instance_id"`
+	ModelKey string `json:"model_key"`
+	// 协议由登记显式指定，模型名称只作为身份与路由标识。
+	Protocol      string `json:"protocol"`
 	Endpoint      string `json:"endpoint"`
 	HealthURL     string `json:"health_url"`
 	Artifact      string `json:"artifact_digest"`
@@ -46,6 +48,7 @@ type Instance struct {
 
 type InstanceTarget struct {
 	ModelKey   string `json:"model_key"`
+	Protocol   string `json:"protocol"`
 	Endpoint   string `json:"endpoint"`
 	HealthURL  string `json:"health_url"`
 	GPUDevices []int  `json:"gpu_devices,omitempty"`
@@ -59,7 +62,7 @@ type InstanceHealth struct {
 // Valid 检查部署身份和容量。地址还需按当前配置的出站白名单验证。
 func (i Instance) Valid() bool {
 	// 服务未上报摘要时留空，避免把未知部署记成某个真实版本。
-	return ValidInstanceID(i.ID) && (ValidModelKey(i.ModelKey) || SynchronousKind(i.ModelKey) != "") &&
+	return ValidInstanceID(i.ID) && ValidModelKey(i.ModelKey) && ValidProtocol(i.Protocol) &&
 		ValidResourceGroupID(i.ResourceGroup) && (i.Artifact == "" || ValidArtifact(i.Artifact)) &&
 		i.Capacity >= 1 && i.Capacity <= MaxCapacityUnits
 }
@@ -178,14 +181,9 @@ func ValidArtifact(value string) bool {
 	return err == nil
 }
 
-// ValidModelKey 限定公开模型键。业务含义变化时使用新键，避免旧登记接到不同业务的请求。
+// ValidModelKey 只校验标识格式，是否支持由实例登记的协议决定。
 func ValidModelKey(model string) bool {
-	switch model {
-	case WardrobeModel, ClothGenModel, OutfitModel, BodyModel, VideoModel:
-		return true
-	default:
-		return false
-	}
+	return instanceID.MatchString(model)
 }
 
 type InputImage struct {
@@ -212,10 +210,10 @@ func DecodeInput(input json.RawMessage) (map[string]json.RawMessage, []InputImag
 	return fields, images, nil
 }
 
-// ValidateInput 按模型键校验业务字段。缺少拆衣输入时不能转成商品图请求。
-func ValidateInput(model string, input json.RawMessage) error {
-	if !ValidModelKey(model) {
-		return errors.New("unknown model")
+// ValidateInput 按登记协议校验业务字段。缺少拆衣输入时不能转成商品图请求。
+func ValidateInput(kind string, input json.RawMessage) error {
+	if !MediaProtocol(kind) {
+		return errors.New("unsupported media protocol")
 	}
 	fields, images, err := DecodeInput(input)
 	if err != nil {
@@ -223,21 +221,21 @@ func ValidateInput(model string, input json.RawMessage) error {
 	}
 	minImages, maxImages := 1, 1
 	var allowed []string
-	switch model {
-	case ClothGenModel:
+	switch kind {
+	case ClothGenProtocol:
 		allowed = []string{"garment_name", "garment_role"}
-	case WardrobeModel:
+	case WardrobeProtocol:
 		if len(images) == 1 && fields["bbox"] == nil && fields["parse_labels"] == nil {
 			return errors.New("garment extraction requires bbox or parser input")
 		}
 		maxImages = 2
 		allowed = []string{"garment_name", "garment_role", "bbox", "bbox_format", "parse_labels"}
-	case OutfitModel:
+	case OutfitProtocol:
 		minImages, maxImages = 2, 2
 		allowed = []string{"prompt"}
-	case BodyModel:
+	case BodyProtocol:
 		allowed = []string{"gender"}
-	case VideoModel:
+	case VideoProtocol:
 		allowed = []string{"prompt", "motion_tips"}
 	}
 	if len(images) < minImages || len(images) > maxImages {

@@ -31,9 +31,9 @@ func (h healthReport) result(ready bool) protocol.InstanceHealth {
 
 // ProbeInstance 供后台探活和手动测试共用执行端协议及凭据。调用方先核对登记地址。
 func (w *Reconciler) ProbeInstance(ctx context.Context, cfg *config.Snapshot, target protocol.InstanceTarget) (protocol.InstanceHealth, error) {
-	if kind := protocol.SynchronousKind(target.ModelKey); kind != "" {
-		health := w.readSynchronousHealth(ctx, kind, cfg.SynchronousHealthURL(target.ModelKey))
-		return protocol.InstanceHealth{Ready: health.ready(target.ModelKey, target.Endpoint, 1)}, nil
+	if kind := protocol.SynchronousKind(target.Protocol); kind != "" {
+		health := w.readSynchronousHealth(ctx, kind, cfg.SynchronousHealthURL(target.Protocol))
+		return protocol.InstanceHealth{Ready: health.ready(target.Protocol, target.Endpoint, 1)}, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()

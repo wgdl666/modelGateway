@@ -29,11 +29,19 @@ func (s *Server) chatCompletions(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	var model string
-	// 网关用上游的 served-model-name 校验请求，调用方使用同一个发布标识。
-	if err := json.Unmarshal(fields["model"], &model); err != nil || model != protocol.DreamModel {
+	// model 保持真实上游标识，是否使用对话协议由登记决定。
+	if err := json.Unmarshal(fields["model"], &model); err != nil {
 		writeError(c, 404, "model_not_found", "model is not configured", "")
 		return
 	}
 
-	s.forwardSynchronous(ctx, c, s.direct, protocol.DreamModel, chatCompletionsPath, "application/json", body)
+	kind, ok := s.resolveModelProtocol(ctx, c, model)
+	if !ok {
+		return
+	}
+	if kind != protocol.ChatProtocol {
+		writeError(c, 400, "invalid_protocol", "model does not use chat completions", "")
+		return
+	}
+	s.forwardSynchronous(ctx, c, s.direct, model, kind, chatCompletionsPath, "application/json", body)
 }

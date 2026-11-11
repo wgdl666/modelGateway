@@ -27,6 +27,12 @@ func (_c *RequestCreate) SetModelKey(v string) *RequestCreate {
 	return _c
 }
 
+// SetProtocol sets the "protocol" field.
+func (_c *RequestCreate) SetProtocol(v string) *RequestCreate {
+	_c.mutation.SetProtocol(v)
+	return _c
+}
+
 // SetTraceID sets the "trace_id" field.
 func (_c *RequestCreate) SetTraceID(v string) *RequestCreate {
 	_c.mutation.SetTraceID(v)
@@ -423,6 +429,9 @@ func (_c *RequestCreate) check() error {
 	if _, ok := _c.mutation.ModelKey(); !ok {
 		return &ValidationError{Name: "model_key", err: errors.New(`ent: missing required field "Request.model_key"`)}
 	}
+	if _, ok := _c.mutation.Protocol(); !ok {
+		return &ValidationError{Name: "protocol", err: errors.New(`ent: missing required field "Request.protocol"`)}
+	}
 	if _, ok := _c.mutation.TraceID(); !ok {
 		return &ValidationError{Name: "trace_id", err: errors.New(`ent: missing required field "Request.trace_id"`)}
 	}
@@ -533,6 +542,10 @@ func (_c *RequestCreate) createSpec() (*Request, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ModelKey(); ok {
 		_spec.SetField(request.FieldModelKey, field.TypeString, value)
 		_node.ModelKey = value
+	}
+	if value, ok := _c.mutation.Protocol(); ok {
+		_spec.SetField(request.FieldProtocol, field.TypeString, value)
+		_node.Protocol = value
 	}
 	if value, ok := _c.mutation.TraceID(); ok {
 		_spec.SetField(request.FieldTraceID, field.TypeString, value)

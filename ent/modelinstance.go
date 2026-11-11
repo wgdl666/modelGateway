@@ -20,6 +20,8 @@ type ModelInstance struct {
 	ID string `json:"id,omitempty"`
 	// ModelKey holds the value of the "model_key" field.
 	ModelKey string `json:"model_key,omitempty"`
+	// Protocol holds the value of the "protocol" field.
+	Protocol string `json:"protocol,omitempty"`
 	// Endpoint holds the value of the "endpoint" field.
 	Endpoint string `json:"endpoint,omitempty"`
 	// HealthURL holds the value of the "health_url" field.
@@ -62,7 +64,7 @@ func (*ModelInstance) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case modelinstance.FieldGroupCapacityUnits, modelinstance.FieldCapacityUnits:
 			values[i] = new(sql.NullInt64)
-		case modelinstance.FieldID, modelinstance.FieldModelKey, modelinstance.FieldEndpoint, modelinstance.FieldHealthURL, modelinstance.FieldArtifactDigest, modelinstance.FieldResourceGroup, modelinstance.FieldMachineID:
+		case modelinstance.FieldID, modelinstance.FieldModelKey, modelinstance.FieldProtocol, modelinstance.FieldEndpoint, modelinstance.FieldHealthURL, modelinstance.FieldArtifactDigest, modelinstance.FieldResourceGroup, modelinstance.FieldMachineID:
 			values[i] = new(sql.NullString)
 		case modelinstance.FieldHealthCheckedAt, modelinstance.FieldDeletedAt, modelinstance.FieldCreatedAt, modelinstance.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -92,6 +94,12 @@ func (_m *ModelInstance) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field model_key", values[i])
 			} else if value.Valid {
 				_m.ModelKey = value.String
+			}
+		case modelinstance.FieldProtocol:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field protocol", values[i])
+			} else if value.Valid {
+				_m.Protocol = value.String
 			}
 		case modelinstance.FieldEndpoint:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -218,6 +226,9 @@ func (_m *ModelInstance) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("model_key=")
 	builder.WriteString(_m.ModelKey)
+	builder.WriteString(", ")
+	builder.WriteString("protocol=")
+	builder.WriteString(_m.Protocol)
 	builder.WriteString(", ")
 	builder.WriteString("endpoint=")
 	builder.WriteString(_m.Endpoint)

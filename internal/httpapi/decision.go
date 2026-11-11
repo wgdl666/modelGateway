@@ -41,5 +41,18 @@ func (s *Server) decisionPredict(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_multipart", "could not read multipart request", "")
 		return
 	}
-	s.forwardSynchronous(ctx, c, s.direct, protocol.DecisionModel, "/v1/predict", contentType, body)
+	// 旧固定路径沿用既有默认模型；显式模型名仍须匹配该入口的协议。
+	model := string(c.GetHeader("X-Model-Key"))
+	if model == "" {
+		model = protocol.DecisionModel
+	}
+	kind, ok := s.resolveModelProtocol(ctx, c, model)
+	if !ok {
+		return
+	}
+	if kind != protocol.DecisionProtocol {
+		writeError(c, 400, "invalid_protocol", "model does not use the decision protocol", "")
+		return
+	}
+	s.forwardSynchronous(ctx, c, s.direct, model, kind, "/v1/predict", contentType, body)
 }

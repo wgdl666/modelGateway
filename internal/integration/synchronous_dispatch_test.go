@@ -40,11 +40,14 @@ func synchronousServer(t *testing.T, tasks *store.Store, cfg config.Config, upst
 	t.Cleanup(transport.CloseIdleConnections)
 	return startHTTPServer(t, app)
 }
-func sendSynchronous(t *testing.T, base, path, kind, body, id string) *http.Response {
+func sendSynchronous(t *testing.T, base, path, kind, body, id string, models ...string) *http.Response {
 	t.Helper()
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, base+path, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(models) > 0 {
+		req.Header.Set("X-Model-Key", models[0])
 	}
 	req.Header.Set("Authorization", "Bearer "+apiToken)
 	req.Header.Set("Content-Type", kind)
@@ -79,6 +82,7 @@ func TestSynchronousRoutesUseRegisteredTargets(t *testing.T) {
 	const multipart = "multipart/form-data; boundary=fixture"
 	const form = "--fixture\r\nContent-Disposition: form-data; name=\"image\"\r\n\r\naW1hZ2U=\r\n--fixture--\r\n"
 	cases := []struct{ model, port, path, target, kind, body string }{
+		{"registered-parser-v2", "6104", "/v1/vision/human-parser/human_parser/predict", "/_dispatch/6104/human-parser/human_parser/predict", "application/json", `{"image":"aW1hZ2U="}`},
 		{protocol.HumanParseModel, "6105", "/v1/vision/human-parser/human_parser/predict", "/_dispatch/6105/human-parser/human_parser/predict", "application/json", `{"image":"aW1hZ2U="}`},
 		{protocol.HumanYOLOModel, "6102", "/v1/vision/human-yolo/predict", "/_dispatch/6102/human-yolo/predict", multipart, form},
 		{protocol.SegmentPersonModel, "6106", "/v1/vision/segment-person/api/segment", "/_dispatch/6106/segment-person/api/segment", multipart, form},
@@ -105,7 +109,7 @@ func TestSynchronousRoutesUseRegisteredTargets(t *testing.T) {
 	// 已配置地址而未登记时必须拒绝，不能偷偷继续直连。
 	missing := sendSynchronous(t, base, cases[0].path, cases[0].kind, cases[0].body, uuid.NewString())
 	missing.Body.Close()
-	if missing.StatusCode != 503 {
+	if missing.StatusCode != http.StatusNotFound {
 		t.Fatalf("unregistered returned %d", missing.StatusCode)
 	}
 	for _, tc := range cases {
@@ -114,7 +118,7 @@ func TestSynchronousRoutesUseRegisteredTargets(t *testing.T) {
 			if tc.model == protocol.DreamModel {
 				spec.Endpoint = "http://" + cfg.VLMAddr
 			}
-			spec.HealthURL = cfg.SynchronousHealthURL(tc.model)
+			spec.HealthURL = cfg.SynchronousHealthURL(spec.Protocol)
 			if tc.model == protocol.FaceSimModel {
 				spec.ResourceGroup = "host/cpu/facesim"
 				spec.GPUDevices = nil
@@ -132,17 +136,17 @@ func TestSynchronousRoutesUseRegisteredTargets(t *testing.T) {
 			}
 			expected = tc.target
 			id := uuid.NewString()
-			resp := sendSynchronous(t, base, tc.path+"?target=ignored", tc.kind, tc.body, id)
+			resp := sendSynchronous(t, base, tc.path+"?target=ignored", tc.kind, tc.body, id, tc.model)
 			raw, err := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			if err != nil || resp.StatusCode != 200 || string(raw) != `{"answer":"unchanged"}` || resp.Header.Get("X-Model-Instance") != spec.ID {
 				t.Fatalf("response: %d %s %v", resp.StatusCode, raw, err)
 			}
 			row := waitSynchronousState(t, db, id, request.StateSucceeded, false)
-			if row.InstanceID != spec.ID || row.Endpoint != spec.Endpoint || row.TraceID != "1234567890abcdef1234567890abcdef" || row.QueuePublishAt != nil || strings.Contains(string(row.RequestPayload), "aW1hZ2U=") {
+			if row.InstanceID != spec.ID || row.Protocol != spec.Protocol || row.ModelKey != spec.ModelKey || row.Endpoint != spec.Endpoint || row.TraceID != "1234567890abcdef1234567890abcdef" || row.QueuePublishAt != nil || strings.Contains(string(row.RequestPayload), "aW1hZ2U=") {
 				t.Fatalf("wrong dispatch evidence: %+v", row)
 			}
-			replay := sendSynchronous(t, base, tc.path, tc.kind, tc.body, id)
+			replay := sendSynchronous(t, base, tc.path, tc.kind, tc.body, id, tc.model)
 			replay.Body.Close()
 			if replay.StatusCode != 409 {
 				t.Fatalf("replay must not execute again: %d", replay.StatusCode)
@@ -262,11 +266,12 @@ func TestSynchronousSharesCapacityWithQueueAndAliases(t *testing.T) {
 		t.Fatal(err)
 	}
 	person := testInstance(protocol.SegmentPersonModel, "http://127.0.0.1:6106", 1)
-	person.HealthURL = cfg.SynchronousHealthURL(person.ModelKey)
+	person.HealthURL = cfg.SynchronousHealthURL(person.Protocol)
 	registerReady(t, a, person)
 	subject := person
 	subject.ID = uuid.NewString()
 	subject.ModelKey = protocol.SegmentSubjectModel
+	subject.Protocol = protocol.SegmentSubjectProtocol
 	registerReady(t, a, subject)
 	ids := []string{uuid.NewString(), uuid.NewString()}
 	for i, spec := range []protocol.Instance{person, subject} {

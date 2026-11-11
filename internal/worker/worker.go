@@ -286,13 +286,13 @@ func (w *Reconciler) probe(cfg *config.Snapshot) error {
 	// 同轮并行探测，单个模型超时不会阻断其他资源组的健康更新。
 	var probes sync.WaitGroup
 	for _, row := range rows {
-		if protocol.SynchronousKind(row.ModelKey) != "" {
+		if protocol.SynchronousKind(row.Protocol) != "" {
 			continue
 		}
 		probes.Go(func() {
 			var ready bool
-			if cfg.AcceptsInstanceAddress(row.ModelKey, row.Endpoint, row.HealthURL) {
-				target := protocol.InstanceTarget{ModelKey: row.ModelKey, Endpoint: row.Endpoint, HealthURL: row.HealthURL, GPUDevices: row.GpuDevices}
+			if cfg.AcceptsInstanceAddress(row.ModelKey, row.Protocol, row.Endpoint, row.HealthURL) {
+				target := protocol.InstanceTarget{ModelKey: row.ModelKey, Protocol: row.Protocol, Endpoint: row.Endpoint, HealthURL: row.HealthURL, GPUDevices: row.GpuDevices}
 				result, err := w.ProbeInstance(w.ctx, cfg, target)
 				ready = err == nil && result.Ready
 			}
