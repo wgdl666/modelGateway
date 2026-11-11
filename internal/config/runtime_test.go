@@ -62,6 +62,28 @@ func TestHotReloadKeepsQueueDatabase(t *testing.T) {
 	}
 }
 
+func TestExperimentalTokenIsOptionalAndDistinct(t *testing.T) {
+	t.Setenv("MODEL_GATEWAY_EXPERIMENTAL_TOKEN", "test-experimental-token-24-chars")
+	cfg, err := Parse([]byte(`{"database_url":"postgres://fixture/db","api_token":"test-client-token-at-least-24-chars","admin_token":"test-admin-token-at-least-24-chars","backend_cidrs":["127.0.0.0/8"],"backend_ports":["8001"]}`))
+	if err != nil || cfg.ExperimentalToken != "test-experimental-token-24-chars" {
+		t.Fatalf("experimental token was not loaded from the environment: %v", err)
+	}
+	if _, err := NewRuntime(cfg); err != nil {
+		t.Fatal(err)
+	}
+	for name, token := range map[string]string{"short": "too-short", "api": cfg.APIToken, "admin": cfg.AdminToken} {
+		next := cfg
+		next.ExperimentalToken = token
+		if _, err := NewRuntime(next); err == nil {
+			t.Errorf("%s experimental token accepted", name)
+		}
+	}
+	cfg.ExperimentalToken = ""
+	if _, err := NewRuntime(cfg); err != nil {
+		t.Fatalf("experimental token must be optional: %v", err)
+	}
+}
+
 func TestLogfireConfigRequiresRestart(t *testing.T) {
 	cfg, err := Parse([]byte(`{"database_url":"postgres://fixture/db","api_token":"test-api-token-at-least-24-chars","admin_token":"test-admin-token-at-least-24-chars","backend_cidrs":["127.0.0.0/8"],"backend_ports":["8001"],"logfire":{"token":"test-write-token","env":"US_ppe_exhibition","service":"model-gateway","version":"test-version","otel_log_level":"info"}}`))
 	if err != nil || cfg.Logfire.Token != "test-write-token" || cfg.Logfire.Service != "model-gateway" ||

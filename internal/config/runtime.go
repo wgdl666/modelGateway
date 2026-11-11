@@ -41,6 +41,9 @@ type Config struct {
 	MaxWaiting      int            `json:"max_waiting"`
 	UnitsByModelKey map[string]int `json:"units_by_model_key"`
 
+	// 实验凭据具备 API 凭据的全部权限，并可覆盖服务端默认的生成参数；为空时关闭。
+	ExperimentalToken string `json:"experimental_token,omitempty"`
+
 	// 视觉请求的 Base64 会扩张原图，允许独立于生成任务的上传上限。
 	VisionMaxBodyBytes int64 `json:"vision_max_body_bytes"`
 
@@ -83,6 +86,7 @@ func Parse(raw []byte) (Config, error) {
 		"MODEL_GATEWAY_RABBITMQ_URL":         &c.RabbitMQURL,
 		"MODEL_GATEWAY_API_TOKEN":            &c.APIToken,
 		"MODEL_GATEWAY_ADMIN_TOKEN":          &c.AdminToken,
+		"MODEL_GATEWAY_EXPERIMENTAL_TOKEN":   &c.ExperimentalToken,
 		"MODEL_GATEWAY_BACKEND_TOKEN":        &c.BackendToken,
 	} {
 		if value, ok := os.LookupEnv(key); ok {
@@ -120,6 +124,10 @@ func prepareConfig(c Config) (*Snapshot, error) {
 	// 业务调用方与管理员使用独立凭据，避免业务凭据具备实例管理权限。
 	if len(c.APIToken) < 24 || len(c.AdminToken) < 24 || c.APIToken == c.AdminToken {
 		return nil, errors.New("distinct API and admin tokens of at least 24 characters required")
+	}
+	if c.ExperimentalToken != "" && (len(c.ExperimentalToken) < 24 ||
+		c.ExperimentalToken == c.APIToken || c.ExperimentalToken == c.AdminToken) {
+		return nil, errors.New("experimental token must be at least 24 characters and differ from API and admin tokens")
 	}
 	if c.BackendTimeout == 0 {
 		// 排队和调用方等待共用入队时固定的截止时间，原生模型执行另有预算。

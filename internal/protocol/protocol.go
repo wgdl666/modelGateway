@@ -217,8 +217,26 @@ func DecodeInput(input json.RawMessage) (map[string]json.RawMessage, []InputImag
 	return fields, images, nil
 }
 
+// 实验凭据在业务字段之外可覆盖的生成参数，原样转发给模型服务。
+// 生产凭据不能覆盖服务端默认的文案、提示词增强和视频规格。
+var experimentalFields = map[string][]string{
+	WardrobeProtocol: {"prompt", "use_pe"},
+	BodyProtocol:     {"prompt"},
+	OutfitProtocol:   {"use_pe"},
+	VideoProtocol:    {"model", "duration", "resolution", "fps", "audio"},
+}
+
 // ValidateInput 按登记协议校验业务字段。缺少拆衣输入时不能转成商品图请求。
 func ValidateInput(kind string, input json.RawMessage) error {
+	return validateInput(kind, input, false)
+}
+
+// ValidateExperimentalInput 在业务字段之外放行该协议的实验参数，仅用于实验凭据。
+func ValidateExperimentalInput(kind string, input json.RawMessage) error {
+	return validateInput(kind, input, true)
+}
+
+func validateInput(kind string, input json.RawMessage, experimental bool) error {
 	if !MediaProtocol(kind) {
 		return errors.New("unsupported media protocol")
 	}
@@ -244,6 +262,9 @@ func ValidateInput(kind string, input json.RawMessage) error {
 		allowed = []string{"gender"}
 	case VideoProtocol:
 		allowed = []string{"prompt", "motion_tips"}
+	}
+	if experimental {
+		allowed = append(allowed, experimentalFields[kind]...)
 	}
 	if len(images) < minImages || len(images) > maxImages {
 		return errors.New("wrong number of input images")

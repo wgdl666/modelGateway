@@ -52,3 +52,30 @@ same-endpoint reservation protections remain in force.
 A complete EOF with `X-Model-Outcome: unknown`, or a lost response after request
 headers were written, retains ledger reservations for explicit reconciliation.
 The pool runtime and Kong must preserve that header on an active-work timeout.
+
+## AWS release persistence
+
+The exhibition release script updates `ImageDigest` with CloudFormation
+`--use-previous-template`, preserving every other stack parameter with
+`UsePreviousValue`. Registering an ECS task definition by hand does not update
+that canonical stack template; a later CI release will recreate the stack's
+original secret list.
+
+Before enabling the pool in AWS, update the `tomirro-model-gateway` stack template
+with optional string parameter `SubjectPoolSecretArn` (default empty) and a
+condition testing that it is nonempty. Under that condition only:
+
+- Append container secret `MODEL_GATEWAY_SUBJECT_POOL_API_KEY` with `ValueFrom`
+  referencing `SubjectPoolSecretArn` to the `model-gateway` container in `Task`.
+- Grant `secretsmanager:GetSecretValue` for exactly `!Ref SubjectPoolSecretArn`
+  in the `ExecutionRole` inline policy. Do not grant this to the CI release role
+  or the application task role. Do not use a wildcard secret resource.
+
+Use `AWS::NoValue` for both disabled branches. Supply the standalone secret ARN
+as a stack parameter; keep its value out of templates and configuration files.
+This one-time stack preparation includes an IAM policy change and must be
+reviewed separately from the ordinary image-only CI change set. Once applied,
+the existing release script preserves the template and parameter without
+additional CI secret access or changes to its two-resource image-update guard.
+The full exhibition ECS stack template lives outside this repository; the
+release-role template in `deploy/` is not the application stack template.

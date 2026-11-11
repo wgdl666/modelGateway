@@ -103,6 +103,9 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	return h
 }
 
+// experimentalCredential 标记请求使用了实验凭据，受理时据此放行实验参数。
+const experimentalCredential = "experimental_credential"
+
 func (s *Server) auth(role string, next app.HandlerFunc) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		cfg := requestConfig(ctx)
@@ -116,6 +119,10 @@ func (s *Server) auth(role string, next app.HandlerFunc) app.HandlerFunc {
 			allowed = match(cfg.AdminToken)
 		case "api":
 			allowed = match(cfg.APIToken)
+			if !allowed && cfg.ExperimentalToken != "" && match(cfg.ExperimentalToken) {
+				allowed = true
+				c.Set(experimentalCredential, true)
+			}
 		}
 		if !allowed {
 			writeError(c, 401, "unauthorized", "invalid gateway credential", "")
@@ -361,7 +368,11 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 	normalized, err := protocol.NormalizeMediaInput(kind, input.Input)
 	if err == nil {
 		input.Input = normalized
-		err = protocol.ValidateInput(kind, input.Input)
+		validate := protocol.ValidateInput
+		if c.GetBool(experimentalCredential) {
+			validate = protocol.ValidateExperimentalInput
+		}
+		err = validate(kind, input.Input)
 	}
 	for _, value := range []string{input.Metadata.TraceID, input.Metadata.UserID} {
 		if len(value) > 256 || strings.ContainsFunc(value, func(r rune) bool { return r < 32 || r == 127 }) {

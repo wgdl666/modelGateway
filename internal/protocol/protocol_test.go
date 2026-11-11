@@ -51,6 +51,40 @@ func TestWardrobeRoutesAreSelectedByProtocol(t *testing.T) {
 	}
 }
 
+func TestExperimentalFieldsRequireExperimentalCredential(t *testing.T) {
+	const image = `{"mime_type":"image/png","data":"eA=="}`
+	for _, test := range []struct {
+		kind, input  string
+		experimental bool
+	}{
+		{WardrobeProtocol, `{"images":[` + image + `],"garment_name":"shirt","bbox":[0,0,1,1],"prompt":"keep the logo","use_pe":"false"}`, true},
+		{BodyProtocol, `{"images":[` + image + `],"gender":"female","prompt":"studio light"}`, true},
+		{OutfitProtocol, `{"images":[` + image + `,` + image + `],"prompt":"try on","use_pe":"false"}`, true},
+		{VideoProtocol, `{"images":[` + image + `],"prompt":"walk","model":"ltx","duration":"4","resolution":"720p","fps":"24","audio":"false"}`, true},
+		{WardrobeProtocol, `{"images":[` + image + `],"garment_name":"shirt","bbox":[0,0,1,1]}`, false},
+	} {
+		if err := ValidateExperimentalInput(test.kind, json.RawMessage(test.input)); err != nil {
+			t.Errorf("experimental %s rejected %s: %v", test.kind, test.input, err)
+		}
+		if err := ValidateInput(test.kind, json.RawMessage(test.input)); (err == nil) == test.experimental {
+			t.Errorf("production %s: %s accepted=%v, want %v", test.kind, test.input, err == nil, !test.experimental)
+		}
+	}
+	for _, input := range []string{
+		`{"images":[` + image + `],"gender":"female","use_pe":"false"}`,
+		`{"images":[` + image + `],"gender":"female","seed":"42"}`,
+		`{"images":[` + image + `],"gender":"female","prompt":{"text":"x"}}`,
+		`{"images":[` + image + `],"gender":"female","prompt":null}`,
+	} {
+		if err := ValidateExperimentalInput(BodyProtocol, json.RawMessage(input)); err == nil {
+			t.Errorf("experimental body accepted %s", input)
+		}
+	}
+	if err := ValidateExperimentalInput(ClothGenProtocol, json.RawMessage(`{"images":[`+image+`],"garment_name":"shirt","prompt":"x"}`)); err == nil {
+		t.Error("product generation has no experimental fields")
+	}
+}
+
 func TestInstanceRegistrationUsesProtocolForNewModelKeys(t *testing.T) {
 	i := Instance{
 		ID: "product-1", ModelKey: "cloth_gen",

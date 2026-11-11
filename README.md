@@ -18,6 +18,17 @@
 | `Vmind_bodymodel_v1.0` | 体模 | 人物图与性别。 |
 | `Vmind_outfit_video_v1.0` | 试衣视频 | 首帧、提示词和可选动作参数。 |
 
+实验凭据 `MODEL_GATEWAY_EXPERIMENTAL_TOKEN` 可选，未设置时关闭。它具备 API 凭据的全部权限，不能访问管理接口；受理时在上表业务字段之外，额外放行以下生成参数，原样转发给模型服务。生产凭据仍按服务端默认值执行，传入这些字段返回 400。
+
+| 模型键 | 实验参数 |
+|---|---|
+| `Vmind_wardrobe_v1.0` | `prompt`、`use_pe` |
+| `Vmind_bodymodel_v1.0` | `prompt` |
+| `Vmind_outfit_v1.0` | `use_pe` |
+| `Vmind_outfit_video_v1.0` | `model`、`duration`、`resolution`、`fps`、`audio` |
+
+参数值均为字符串。实验请求的参数保存在请求记录中，可在管理端预览。
+
 图片持久入队后同步等待结果。视频持久入队后立即返回 202 和 `request_id`、`state`。使用相同请求头调用 `GET /v1/gateway/requests` 查询。成功响应为 `result.files[]`，每项只有 `provider`、`region`、`bucket` 和 `key`。在排队时可用 `POST /v1/gateway/requests/cancel` 取消，已经派发返回 409。
 
 队列按 `model_key` 限制等待条数，`max_waiting` 默认 128。队列满返回 429，PostgreSQL 不可用返回 503。`units_by_model_key` 配置每个模型键的占用单位，未配置的键按 1 个单位计算。受理时把占用单位写入请求账本。

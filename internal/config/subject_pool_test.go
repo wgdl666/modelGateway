@@ -188,3 +188,31 @@ func TestSubjectPoolDialerPinsNumericAddressAndPreservesLegacy(t *testing.T) {
 		t.Fatalf("unexpected dial targets: %v", targets)
 	}
 }
+
+// Both optional credentials must survive deployment configuration parsing after
+// merging the independently released experimental and subject pool features.
+func TestSubjectPoolAndExperimentalCredentialsCoexist(t *testing.T) {
+	t.Setenv("MODEL_GATEWAY_SUBJECT_POOL_API_KEY", "pool-environment-fixture")
+	t.Setenv("MODEL_GATEWAY_EXPERIMENTAL_TOKEN", "experimental-environment-fixture-at-least-24")
+	c := poolConfig()
+	c.DatabaseURL = "fixture-test-database"
+	raw, err := json.Marshal(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.SubjectPoolAPIKey != "pool-environment-fixture" || parsed.ExperimentalToken != "experimental-environment-fixture-at-least-24" {
+		t.Fatal("one optional credential was lost during parsing")
+	}
+	r, err := NewRuntime(parsed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := parsed.SubjectPools[protocol.SegmentSubjectModel]
+	if _, ok := r.Current().SubjectPoolFor(protocol.SegmentSubjectModel, protocol.SegmentSubjectProtocol, p.Endpoint); !ok {
+		t.Fatal("experimental configuration disabled the pool")
+	}
+}

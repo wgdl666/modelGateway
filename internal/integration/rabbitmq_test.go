@@ -192,7 +192,11 @@ func TestRabbitMQDispatchRetriesUnavailableModelAndDeduplicates(t *testing.T) {
 	waiting := testInstance(protocol.VideoModel, model.URL, 1)
 	ready := testInstance(protocol.OutfitModel, model.URL, 1)
 	registerReady(t, ledger, ready)
-	// 模拟进程尚未启动发布循环时已受理的请求，旧请求没有模型也不能卡住下一条。
+	// 未登记的模型不能受理。实例已登记但探针未通过时可以排队，且不能挡住另一个模型。
+	ensureTestGroup(t, ledger, waiting)
+	if err := ledger.Register(t.Context(), waiting, ""); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := ledger.Admit(t.Context(), testAdmission(waiting, waitingID, 1)); err != nil {
 		t.Fatal(err)
 	}
