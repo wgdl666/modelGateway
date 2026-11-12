@@ -126,7 +126,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 			SetID(spec.ID).SetModelKey(spec.ModelKey).SetProtocol(spec.Protocol).
 			SetEndpoint(spec.Endpoint).SetHealthURL(spec.HealthURL).SetArtifactDigest(artifact).
 			SetResourceGroup(spec.ResourceGroup).SetGroupCapacityUnits(group.CapacityUnits).
-			SetCapacityUnits(spec.Capacity).SetMachineID(spec.MachineID).SetGpuDevices(spec.GPUDevices).Exec(ctx)
+			SetCapacityUnits(spec.Capacity).SetMachineID(spec.MachineID).SetGpuDevices(spec.GPUDevices).SetDraining(spec.InitiallyDraining).Exec(ctx)
 	})
 }
 

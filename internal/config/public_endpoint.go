@@ -56,6 +56,29 @@ func (s *Snapshot) ResolveBackend(ctx context.Context, address string,
 	if err != nil || !s.ports[port] {
 		return nil, errors.New("invalid backend dial address")
 	}
+	if s.subjectPoolHost(host) {
+		var ips []netip.Addr
+		if ip, e := netip.ParseAddr(host); e == nil {
+			ips = []netip.Addr{ip}
+		} else {
+			ips, err = lookup(ctx, "ip", host)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if len(ips) == 0 {
+			return nil, errors.New("subject pool DNS returned no addresses")
+		}
+		out := make([]string, 0, len(ips))
+		for _, ip := range ips {
+			ip = ip.Unmap()
+			if !s.privateBackendIP(ip) {
+				return nil, errors.New("subject pool resolved outside private backend allowlist")
+			}
+			out = append(out, net.JoinHostPort(ip.String(), port))
+		}
+		return out, nil
+	}
 	if s.publicHostAllowed(host) {
 		var ips []netip.Addr
 		if ip, err := netip.ParseAddr(host); err == nil {

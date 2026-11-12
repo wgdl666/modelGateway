@@ -71,7 +71,7 @@ func New(tasks *store.Store, runtime *config.Runtime) (*Reconciler, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
-	transport.DialContext = backendDialer(net.DefaultResolver.LookupNetIP, dialer.DialContext)
+	transport.DialContext = config.SubjectPoolDialer(backendDialer(net.DefaultResolver.LookupNetIP, dialer.DialContext))
 	w.client = &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return w, nil
 }

@@ -109,7 +109,11 @@ func (w *Reconciler) probeSynchronous(cfg *config.Snapshot) error {
 	batches := make(map[string][]*ent.ModelInstance)
 	for _, row := range rows {
 		if kind := protocol.SynchronousKind(row.Protocol); kind != "" {
-			batches[kind] = append(batches[kind], row)
+			key := kind
+			if _, pool := cfg.SubjectPoolFor(row.ModelKey, row.Protocol, row.Endpoint); pool {
+				key = "subject_pool:" + row.Endpoint
+			}
+			batches[key] = append(batches[key], row)
 		}
 	}
 	// 每轮每个上游只探一次，避免一张卡的多个模型登记重复触发整机探活。
@@ -117,12 +121,17 @@ func (w *Reconciler) probeSynchronous(cfg *config.Snapshot) error {
 	for kind, instances := range batches {
 		probes.Go(func() {
 			var health synchronousHealth
-			if probe := cfg.SynchronousHealthURL(instances[0].Protocol); probe != "" {
+			p, pool := cfg.SubjectPoolFor(instances[0].ModelKey, instances[0].Protocol, instances[0].Endpoint)
+			poolReady := false
+			if pool {
+				poolReady = w.readSubjectPoolHealth(w.ctx, cfg, p)
+			}
+			if probe := cfg.SynchronousHealthURL(instances[0].Protocol); probe != "" && !pool {
 				health = w.readSynchronousHealth(w.ctx, kind, probe)
 			}
 			for _, row := range instances {
 				ready := cfg.AcceptsInstanceAddress(row.ModelKey, row.Protocol, row.Endpoint, row.HealthURL) &&
-					health.ready(row.Protocol, row.Endpoint, len(instances))
+					((pool && poolReady) || (!pool && health.ready(row.Protocol, row.Endpoint, len(instances))))
 				if err := w.store.RecordProbe(w.ctx, row.ID, checked, ready); err != nil && w.ctx.Err() == nil {
 					slog.Error("synchronous model health update failed", "error_type", fmt.Sprintf("%T", err))
 				}
@@ -131,4 +140,21 @@ func (w *Reconciler) probeSynchronous(cfg *config.Snapshot) error {
 	}
 	probes.Wait()
 	return nil
+}
+
+// A successful /ready proves pool ingress availability, not replica count.
+func (w *Reconciler) readSubjectPoolHealth(ctx context.Context, cfg *config.Snapshot, p config.SubjectPool) bool {
+	ctx, cancel := context.WithTimeout(config.WithSubjectPoolPolicy(ctx, cfg), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.HealthURL, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("X-Segment-Pool-Key", cfg.SubjectPoolAPIKey)
+	resp, err := w.client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }

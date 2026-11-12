@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 	"github.com/wgdl666/modelGateway/internal/store"
 	"github.com/wgdl666/modelGateway/internal/telemetry"
@@ -113,16 +114,12 @@ func synchronousTraceID(c *app.RequestContext) string {
 
 func (s *Server) executeSynchronous(ctx context.Context, c *app.RequestContext, client *http.Client, task *ent.Request, path, contentType string, body []byte) {
 	cfg := requestConfig(ctx)
-	endpoint := task.Endpoint + path
-	port := strings.TrimPrefix(task.Endpoint, "http://127.0.0.1:")
-	switch protocol.SynchronousKind(task.Protocol) {
-	case protocol.SyncVision:
-		endpoint = "http://" + cfg.VisionAddr + "/_dispatch/" + port + path
-	case protocol.SyncDecision:
-		endpoint = "http://" + cfg.DecisionAddr + "/v1/instances/" + port + "/predict"
-	}
+	endpoint, pool := synchronousEndpoint(cfg.Config, task, path)
 	// 客户端断开不代表 GPU 已停止。独立执行预算保证继续读完响应后才归还容量。
 	execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cfg.NativeExecutionTimeout)
+	if pool {
+		execCtx = config.WithSubjectPoolPolicy(execCtx, cfg)
+	}
 	var wrote atomic.Bool
 	execCtx = httptrace.WithClientTrace(execCtx, &httptrace.ClientTrace{WroteHeaders: func() { wrote.Store(true) }})
 	complete := func(result protocol.HTTPResult, known bool) {
@@ -138,6 +135,9 @@ func (s *Server) executeSynchronous(ctx context.Context, c *app.RequestContext, 
 		complete(protocol.HTTPResult{StatusCode: 502}, true)
 		writeError(c, 502, "upstream_unavailable", "instance endpoint is invalid", task.ID)
 		return
+	}
+	if pool {
+		req.Header.Set("X-Segment-Pool-Key", cfg.SubjectPoolAPIKey)
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("X-Request-ID", task.ID)
@@ -198,4 +198,19 @@ func (b *synchronousBody) Close() error {
 		go func() { _, _ = io.Copy(io.Discard, b) }()
 	})
 	return nil
+}
+
+func synchronousEndpoint(cfg config.Config, task *ent.Request, path string) (string, bool) {
+	if _, ok := cfg.SubjectPoolFor(task.ModelKey, task.Protocol, task.Endpoint); ok {
+		return task.Endpoint + "/api/segment_subject", true
+	}
+	endpoint := task.Endpoint + path
+	port := strings.TrimPrefix(task.Endpoint, "http://127.0.0.1:")
+	switch protocol.SynchronousKind(task.Protocol) {
+	case protocol.SyncVision:
+		endpoint = "http://" + cfg.VisionAddr + "/_dispatch/" + port + path
+	case protocol.SyncDecision:
+		endpoint = "http://" + cfg.DecisionAddr + "/v1/instances/" + port + "/predict"
+	}
+	return endpoint, false
 }
