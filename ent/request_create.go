@@ -53,6 +53,12 @@ func (_c *RequestCreate) SetRequestPayload(v json.RawMessage) *RequestCreate {
 	return _c
 }
 
+// SetInputMedia sets the "input_media" field.
+func (_c *RequestCreate) SetInputMedia(v json.RawMessage) *RequestCreate {
+	_c.mutation.SetInputMedia(v)
+	return _c
+}
+
 // SetPayloadBytes sets the "payload_bytes" field.
 func (_c *RequestCreate) SetPayloadBytes(v int64) *RequestCreate {
 	_c.mutation.SetPayloadBytes(v)
@@ -601,6 +607,10 @@ func (_c *RequestCreate) createSpec() (*Request, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RequestPayload(); ok {
 		_spec.SetField(request.FieldRequestPayload, field.TypeJSON, value)
 		_node.RequestPayload = value
+	}
+	if value, ok := _c.mutation.InputMedia(); ok {
+		_spec.SetField(request.FieldInputMedia, field.TypeJSON, value)
+		_node.InputMedia = value
 	}
 	if value, ok := _c.mutation.PayloadBytes(); ok {
 		_spec.SetField(request.FieldPayloadBytes, field.TypeInt64, value)

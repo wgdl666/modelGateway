@@ -21,6 +21,7 @@ type Admission struct {
 	TraceID                string
 	Payload                json.RawMessage
 	Input                  json.RawMessage
+	InputMedia             json.RawMessage
 	Units                  int
 	MaxWaiting             int
 	BackendTimeout         time.Duration
@@ -82,6 +83,9 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 		create := tx.Request.Create().SetID(in.ID).SetModelKey(in.ModelKey).SetProtocol(in.Protocol).
 			SetTraceID(in.TraceID).SetRequestPayload(in.Payload).SetPayloadBytes(int64(len(in.Payload))).SetUnits(in.Units).
 			SetCreatedAt(now).SetDeadlineAt(now.Add(in.BackendTimeout))
+		if in.InputMedia != nil {
+			create.SetInputMedia(in.InputMedia)
+		}
 		// 同步响应由原连接读取，容量仍在 PG 竞争；不能再投 MQ 产生第二次模型执行。
 		if protocol.SynchronousKind(in.Protocol) == "" {
 			create.SetQueuePublishAt(now)

@@ -44,8 +44,9 @@ func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, 
 	if units == 0 {
 		units = 1
 	}
+	// 同步记录不存原图，清单确定为空，Ops 无需再读详情确认。
 	task, err := s.store.Admit(ctx, store.Admission{ID: id, ModelKey: model, Protocol: kind, TraceID: synchronousTraceID(c),
-		Payload: payload, Input: input, Units: units, MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout})
+		Payload: payload, Input: input, InputMedia: json.RawMessage(`[]`), Units: units, MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout})
 	if err != nil {
 		storeError(c, err, id)
 		return

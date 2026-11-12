@@ -410,6 +410,9 @@ func (_u *RequestUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			}
 		}
 	}
+	if _u.mutation.InputMediaCleared() {
+		_spec.ClearField(request.FieldInputMedia, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.State(); ok {
 		_spec.SetField(request.FieldState, field.TypeEnum, value)
 	}
@@ -930,6 +933,9 @@ func (_u *RequestUpdateOne) sqlSave(ctx context.Context) (_node *Request, err er
 				ps[i](selector)
 			}
 		}
+	}
+	if _u.mutation.InputMediaCleared() {
+		_spec.ClearField(request.FieldInputMedia, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.State(); ok {
 		_spec.SetField(request.FieldState, field.TypeEnum, value)

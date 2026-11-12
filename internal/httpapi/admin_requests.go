@@ -114,11 +114,36 @@ func (s *Server) listRequests(ctx context.Context, c *app.RequestContext) {
 		storeError(c, err, "")
 		return
 	}
-	items := make([]requestView, 0, len(rows))
+	items := make([]listedRequest, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, viewRequest(row))
+		items = append(items, listRequest(row))
 	}
 	writeJSON(c, 200, map[string]any{"items": items, "total": total})
+}
+
+// listedRequest 给 Ops 列表直接展示每张输入和成品。迁移前受理的请求没有输入清单，
+// 两项一并省略，表示需要读详情；空数组表示确认没有。
+type listedRequest struct {
+	requestView
+	Inputs  *[]protocol.MediaRef `json:"inputs,omitempty"`
+	Outputs *[]protocol.MediaRef `json:"outputs,omitempty"`
+}
+
+func listRequest(row *ent.Request) listedRequest {
+	listed := listedRequest{requestView: viewRequest(row)}
+	result := listed.Result
+	// 结果里有生成参数，列表只给成品清单，完整结果仍只在详情返回。
+	listed.Result = nil
+	inputs := []protocol.MediaRef{}
+	if len(row.InputMedia) == 0 || json.Unmarshal(row.InputMedia, &inputs) != nil {
+		return listed
+	}
+	outputs := []protocol.MediaRef{}
+	if result != nil {
+		outputs = protocol.OutputMedia(result.Files)
+	}
+	listed.Inputs, listed.Outputs = &inputs, &outputs
+	return listed
 }
 
 type inspectedRequest struct {

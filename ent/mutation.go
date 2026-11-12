@@ -1312,6 +1312,8 @@ type RequestMutation struct {
 	trace_id              *string
 	request_payload       *json.RawMessage
 	appendrequest_payload json.RawMessage
+	input_media           *json.RawMessage
+	appendinput_media     json.RawMessage
 	payload_bytes         *int64
 	addpayload_bytes      *int64
 	units                 *int
@@ -1609,6 +1611,71 @@ func (m *RequestMutation) AppendedRequestPayload() (json.RawMessage, bool) {
 func (m *RequestMutation) ResetRequestPayload() {
 	m.request_payload = nil
 	m.appendrequest_payload = nil
+}
+
+// SetInputMedia sets the "input_media" field.
+func (m *RequestMutation) SetInputMedia(jm json.RawMessage) {
+	m.input_media = &jm
+	m.appendinput_media = nil
+}
+
+// InputMedia returns the value of the "input_media" field in the mutation.
+func (m *RequestMutation) InputMedia() (r json.RawMessage, exists bool) {
+	v := m.input_media
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInputMedia returns the old "input_media" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldInputMedia(ctx context.Context) (v json.RawMessage, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInputMedia is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInputMedia requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInputMedia: %w", err)
+	}
+	return oldValue.InputMedia, nil
+}
+
+// AppendInputMedia adds jm to the "input_media" field.
+func (m *RequestMutation) AppendInputMedia(jm json.RawMessage) {
+	m.appendinput_media = append(m.appendinput_media, jm...)
+}
+
+// AppendedInputMedia returns the list of values that were appended to the "input_media" field in this mutation.
+func (m *RequestMutation) AppendedInputMedia() (json.RawMessage, bool) {
+	if len(m.appendinput_media) == 0 {
+		return nil, false
+	}
+	return m.appendinput_media, true
+}
+
+// ClearInputMedia clears the value of the "input_media" field.
+func (m *RequestMutation) ClearInputMedia() {
+	m.input_media = nil
+	m.appendinput_media = nil
+	m.clearedFields[request.FieldInputMedia] = struct{}{}
+}
+
+// InputMediaCleared returns if the "input_media" field was cleared in this mutation.
+func (m *RequestMutation) InputMediaCleared() bool {
+	_, ok := m.clearedFields[request.FieldInputMedia]
+	return ok
+}
+
+// ResetInputMedia resets all changes to the "input_media" field.
+func (m *RequestMutation) ResetInputMedia() {
+	m.input_media = nil
+	m.appendinput_media = nil
+	delete(m.clearedFields, request.FieldInputMedia)
 }
 
 // SetPayloadBytes sets the "payload_bytes" field.
@@ -2685,7 +2752,7 @@ func (m *RequestMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RequestMutation) Fields() []string {
-	fields := make([]string, 0, 28)
+	fields := make([]string, 0, 29)
 	if m.model_key != nil {
 		fields = append(fields, request.FieldModelKey)
 	}
@@ -2697,6 +2764,9 @@ func (m *RequestMutation) Fields() []string {
 	}
 	if m.request_payload != nil {
 		fields = append(fields, request.FieldRequestPayload)
+	}
+	if m.input_media != nil {
+		fields = append(fields, request.FieldInputMedia)
 	}
 	if m.payload_bytes != nil {
 		fields = append(fields, request.FieldPayloadBytes)
@@ -2786,6 +2856,8 @@ func (m *RequestMutation) Field(name string) (ent.Value, bool) {
 		return m.TraceID()
 	case request.FieldRequestPayload:
 		return m.RequestPayload()
+	case request.FieldInputMedia:
+		return m.InputMedia()
 	case request.FieldPayloadBytes:
 		return m.PayloadBytes()
 	case request.FieldUnits:
@@ -2851,6 +2923,8 @@ func (m *RequestMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldTraceID(ctx)
 	case request.FieldRequestPayload:
 		return m.OldRequestPayload(ctx)
+	case request.FieldInputMedia:
+		return m.OldInputMedia(ctx)
 	case request.FieldPayloadBytes:
 		return m.OldPayloadBytes(ctx)
 	case request.FieldUnits:
@@ -2935,6 +3009,13 @@ func (m *RequestMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRequestPayload(v)
+		return nil
+	case request.FieldInputMedia:
+		v, ok := value.(json.RawMessage)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInputMedia(v)
 		return nil
 	case request.FieldPayloadBytes:
 		v, ok := value.(int64)
@@ -3185,6 +3266,9 @@ func (m *RequestMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *RequestMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(request.FieldInputMedia) {
+		fields = append(fields, request.FieldInputMedia)
+	}
 	if m.FieldCleared(request.FieldQueuePublishAt) {
 		fields = append(fields, request.FieldQueuePublishAt)
 	}
@@ -3214,6 +3298,9 @@ func (m *RequestMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *RequestMutation) ClearField(name string) error {
 	switch name {
+	case request.FieldInputMedia:
+		m.ClearInputMedia()
+		return nil
 	case request.FieldQueuePublishAt:
 		m.ClearQueuePublishAt()
 		return nil
@@ -3248,6 +3335,9 @@ func (m *RequestMutation) ResetField(name string) error {
 		return nil
 	case request.FieldRequestPayload:
 		m.ResetRequestPayload()
+		return nil
+	case request.FieldInputMedia:
+		m.ResetInputMedia()
 		return nil
 	case request.FieldPayloadBytes:
 		m.ResetPayloadBytes()

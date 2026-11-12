@@ -379,6 +379,16 @@ func TraceIDContainsFold(v string) predicate.Request {
 	return predicate.Request(sql.FieldContainsFold(FieldTraceID, v))
 }
 
+// InputMediaIsNil applies the IsNil predicate on the "input_media" field.
+func InputMediaIsNil() predicate.Request {
+	return predicate.Request(sql.FieldIsNull(FieldInputMedia))
+}
+
+// InputMediaNotNil applies the NotNil predicate on the "input_media" field.
+func InputMediaNotNil() predicate.Request {
+	return predicate.Request(sql.FieldNotNull(FieldInputMedia))
+}
+
 // PayloadBytesEQ applies the EQ predicate on the "payload_bytes" field.
 func PayloadBytesEQ(v int64) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldPayloadBytes, v))

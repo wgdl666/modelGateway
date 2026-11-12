@@ -22,6 +22,8 @@ const (
 	FieldTraceID = "trace_id"
 	// FieldRequestPayload holds the string denoting the request_payload field in the database.
 	FieldRequestPayload = "request_payload"
+	// FieldInputMedia holds the string denoting the input_media field in the database.
+	FieldInputMedia = "input_media"
 	// FieldPayloadBytes holds the string denoting the payload_bytes field in the database.
 	FieldPayloadBytes = "payload_bytes"
 	// FieldUnits holds the string denoting the units field in the database.
@@ -81,6 +83,7 @@ var Columns = []string{
 	FieldProtocol,
 	FieldTraceID,
 	FieldRequestPayload,
+	FieldInputMedia,
 	FieldPayloadBytes,
 	FieldUnits,
 	FieldState,
