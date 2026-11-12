@@ -26,7 +26,7 @@ func (Request) Fields() []ent.Field {
 		field.Text("trace_id").Default("").Immutable(),
 		field.JSON("request_payload", json.RawMessage{}).Immutable(),
 		// 派生信息，不参与受理、派发和幂等。输入清单这类展示数据放在这里，避免每项加一列。
-		// 迁移前受理的请求为空，列表省略清单，只能逐条读详情。
+		// 旧副本受理的请求没有输入清单，列表省略 inputs，需读详情；outputs 仍从结果生成。
 		field.JSON("extra", json.RawMessage{}).Optional().Immutable(),
 		field.Int64("payload_bytes").Positive().Immutable(),
 		field.Int("units").Positive().Immutable(),

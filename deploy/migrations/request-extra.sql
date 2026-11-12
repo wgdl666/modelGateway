@@ -1,10 +1,6 @@
--- Apply before rolling out the admin request media manifest release.
--- Additive aside from dropping input_media, which was only added by an unreleased draft
--- and is not read by any running gateway. NULL extra means the list omits the manifest.
+-- 发布媒体清单功能前新增可空的 extra；已有请求保持 NULL，不回填历史数据。
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 ALTER TABLE model_gateway.requests
     ADD COLUMN IF NOT EXISTS extra jsonb;
-ALTER TABLE model_gateway.requests
-    DROP COLUMN IF EXISTS input_media;
 COMMIT;

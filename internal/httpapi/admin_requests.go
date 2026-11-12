@@ -121,15 +121,15 @@ func (s *Server) listRequests(ctx context.Context, c *app.RequestContext) {
 	writeJSON(c, 200, map[string]any{"items": items, "total": total})
 }
 
-// listedRequest 给 Ops 列表直接展示每张输入和成品。迁移前的请求 extra 里没有输入清单，
-// 两项一并省略，表示需要读详情；空数组表示确认没有。
+// listedRequest 给 Ops 列表直接展示每张输入和成品。请求 extra 里没有输入清单时，
+// 仅省略 inputs，表示需要读详情；outputs 始终从结果生成，空数组表示没有成品。
 type listedRequest struct {
 	requestView
 	Inputs  *[]protocol.MediaRef `json:"inputs,omitempty"`
-	Outputs *[]protocol.MediaRef `json:"outputs,omitempty"`
+	Outputs []protocol.MediaRef  `json:"outputs"`
 }
 
-// inputMedia 只认 extra.input_media。键不存在是迁移前的请求，空数组是确认没有输入。
+// inputMedia 只认 extra.input_media。键不存在表示未记录输入清单，空数组表示确认没有输入。
 func inputMedia(extra json.RawMessage) ([]protocol.MediaRef, bool) {
 	var bag struct {
 		InputMedia json.RawMessage `json:"input_media"`
@@ -149,15 +149,14 @@ func listRequest(row *ent.Request) listedRequest {
 	result := listed.Result
 	// 结果里有生成参数，列表只给成品清单，完整结果仍只在详情返回。
 	listed.Result = nil
-	inputs, ok := inputMedia(row.Extra)
-	if !ok {
-		return listed
+	if inputs, ok := inputMedia(row.Extra); ok {
+		listed.Inputs = &inputs
 	}
 	outputs := []protocol.MediaRef{}
 	if result != nil {
 		outputs = protocol.OutputMedia(result.Files)
 	}
-	listed.Inputs, listed.Outputs = &inputs, &outputs
+	listed.Outputs = outputs
 	return listed
 }
 
