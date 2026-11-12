@@ -114,11 +114,50 @@ func (s *Server) listRequests(ctx context.Context, c *app.RequestContext) {
 		storeError(c, err, "")
 		return
 	}
-	items := make([]requestView, 0, len(rows))
+	items := make([]listedRequest, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, viewRequest(row))
+		items = append(items, listRequest(row))
 	}
 	writeJSON(c, 200, map[string]any{"items": items, "total": total})
+}
+
+// listedRequest 给 Ops 列表直接展示每张输入和成品。请求 extra 里没有输入清单时，
+// 仅省略 inputs，表示需要读详情；outputs 始终从结果生成，空数组表示没有成品。
+type listedRequest struct {
+	requestView
+	Inputs  *[]protocol.MediaRef `json:"inputs,omitempty"`
+	Outputs []protocol.MediaRef  `json:"outputs"`
+}
+
+// inputMedia 只认 extra.input_media。键不存在表示未记录输入清单，空数组表示确认没有输入。
+func inputMedia(extra json.RawMessage) ([]protocol.MediaRef, bool) {
+	var bag struct {
+		InputMedia json.RawMessage `json:"input_media"`
+	}
+	if len(extra) == 0 || json.Unmarshal(extra, &bag) != nil || bag.InputMedia == nil {
+		return nil, false
+	}
+	refs := []protocol.MediaRef{}
+	if json.Unmarshal(bag.InputMedia, &refs) != nil {
+		return nil, false
+	}
+	return refs, true
+}
+
+func listRequest(row *ent.Request) listedRequest {
+	listed := listedRequest{requestView: viewRequest(row)}
+	result := listed.Result
+	// 结果里有生成参数，列表只给成品清单，完整结果仍只在详情返回。
+	listed.Result = nil
+	if inputs, ok := inputMedia(row.Extra); ok {
+		listed.Inputs = &inputs
+	}
+	outputs := []protocol.MediaRef{}
+	if result != nil {
+		outputs = protocol.OutputMedia(result.Files)
+	}
+	listed.Outputs = outputs
+	return listed
 }
 
 type inspectedRequest struct {

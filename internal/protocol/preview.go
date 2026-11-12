@@ -1,10 +1,17 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"strconv"
 	"strings"
+
+	_ "golang.org/x/image/webp"
 )
 
 // MediaRef 描述一张可单独读取的输入或成品，不包含图片字节。
@@ -12,6 +19,9 @@ type MediaRef struct {
 	Index    int    `json:"index"`
 	Role     string `json:"role,omitempty"`
 	MIMEType string `json:"mime_type"`
+	// 只读图片头得到的原始像素尺寸。受理不校验图片内容，读不出尺寸时省略。
+	Width  int `json:"width,omitempty"`
+	Height int `json:"height,omitempty"`
 }
 
 func inputRoles(kind string) []string {
@@ -42,16 +52,34 @@ func PreviewSubmission(kind string, payload json.RawMessage) (parameters json.Ra
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	return parameters, InputMedia(kind, images), images, nil
+}
+
+// InputMediaExtra 把输入清单放进通用 extra。键缺失表示未记录输入清单，空数组表示确认没有输入。
+func InputMediaExtra(refs []MediaRef) (json.RawMessage, error) {
+	if refs == nil {
+		refs = []MediaRef{}
+	}
+	return json.Marshal(struct {
+		InputMedia []MediaRef `json:"input_media"`
+	}{refs})
+}
+
+// InputMedia 按协议给每张输入图标角色。受理时写入账本，详情根据原始输入现场生成，二者口径一致。
+func InputMedia(kind string, images []InputImage) []MediaRef {
 	roles := inputRoles(kind)
-	refs = make([]MediaRef, len(images))
-	for i, image := range images {
+	refs := make([]MediaRef, len(images))
+	for i, img := range images {
 		role := ""
 		if i < len(roles) {
 			role = roles[i]
 		}
-		refs[i] = MediaRef{Index: i, Role: role, MIMEType: image.MIMEType}
+		refs[i] = MediaRef{Index: i, Role: role, MIMEType: img.MIMEType}
+		if config, _, err := image.DecodeConfig(bytes.NewReader(img.Data)); err == nil {
+			refs[i].Width, refs[i].Height = config.Width, config.Height
+		}
 	}
-	return parameters, refs, images, nil
+	return refs
 }
 
 // OutputMedia 只列出键名能对应到图片或视频的成品。其他对象引用仍留在 result 里。

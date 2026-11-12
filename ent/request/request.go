@@ -24,6 +24,8 @@ const (
 	FieldAPITokenID = "api_token_id"
 	// FieldRequestPayload holds the string denoting the request_payload field in the database.
 	FieldRequestPayload = "request_payload"
+	// FieldExtra holds the string denoting the extra field in the database.
+	FieldExtra = "extra"
 	// FieldPayloadBytes holds the string denoting the payload_bytes field in the database.
 	FieldPayloadBytes = "payload_bytes"
 	// FieldUnits holds the string denoting the units field in the database.
@@ -84,6 +86,7 @@ var Columns = []string{
 	FieldTraceID,
 	FieldAPITokenID,
 	FieldRequestPayload,
+	FieldExtra,
 	FieldPayloadBytes,
 	FieldUnits,
 	FieldState,

@@ -1,7 +1,10 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/json"
+	"image"
+	"image/png"
 	"strings"
 	"testing"
 )
@@ -30,6 +33,32 @@ func TestPreviewKeepsBusinessFieldsAndImageRoles(t *testing.T) {
 	files := OutputMedia([]Object{{Key: key}, {Key: id + "/result"}, {Key: "outputs/" + id + "/0.mp4"}})
 	if len(files) != 2 || files[0].Index != 0 || files[1].Index != 2 || files[1].MIMEType != "video/mp4" {
 		t.Fatalf("output media = %+v", files)
+	}
+}
+
+func TestInputMediaExtraOmitsNothingWhenEmpty(t *testing.T) {
+	raw, err := InputMediaExtra(nil)
+	if err != nil || string(raw) != `{"input_media":[]}` {
+		t.Fatalf("empty extra %s %v", raw, err)
+	}
+}
+
+func TestInputMediaRecordsReadableImageSize(t *testing.T) {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 1536, 2048))); err != nil {
+		t.Fatal(err)
+	}
+	refs := InputMedia(OutfitProtocol, []InputImage{{MIMEType: "image/png", Data: buf.Bytes()}, {MIMEType: "image/png", Data: []byte("x")}})
+	if refs[0].Width != 1536 || refs[0].Height != 2048 || refs[0].Role != "person_image" {
+		t.Fatalf("person ref = %+v", refs[0])
+	}
+	// 受理不校验图片内容，读不出尺寸的图仍要列出，只是不带宽高。
+	if refs[1].Width != 0 || refs[1].Height != 0 || refs[1].Role != "garment_image" {
+		t.Fatalf("garment ref = %+v", refs[1])
+	}
+	raw, _ := json.Marshal(refs[1])
+	if strings.Contains(string(raw), "width") {
+		t.Fatalf("unknown size must be omitted: %s", raw)
 	}
 }
 

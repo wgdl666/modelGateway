@@ -71,6 +71,7 @@ var (
 		{Name: "trace_id", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "api_token_id", Type: field.TypeString, Default: ""},
 		{Name: "request_payload", Type: field.TypeJSON},
+		{Name: "extra", Type: field.TypeJSON, Nullable: true},
 		{Name: "payload_bytes", Type: field.TypeInt64},
 		{Name: "units", Type: field.TypeInt},
 		{Name: "state", Type: field.TypeEnum, Enums: []string{"queued", "processing", "succeeded", "failed"}, Default: "queued"},
@@ -105,7 +106,7 @@ var (
 			{
 				Name:    "request_model_key_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[28], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[29], RequestsColumns[0]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -113,7 +114,7 @@ var (
 			{
 				Name:    "request_queue_publish_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[9], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[10], RequestsColumns[0]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued' AND queue_publish_at IS NOT NULL",
 				},
@@ -121,7 +122,7 @@ var (
 			{
 				Name:    "request_deadline_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[19]},
+				Columns: []*schema.Column{RequestsColumns[20]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -129,7 +130,7 @@ var (
 			{
 				Name:    "request_resource_group_instance_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[12], RequestsColumns[11]},
+				Columns: []*schema.Column{RequestsColumns[13], RequestsColumns[12]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "slot_reserved",
 				},
@@ -137,7 +138,7 @@ var (
 			{
 				Name:    "request_next_poll_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[22]},
+				Columns: []*schema.Column{RequestsColumns[23]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "slot_reserved",
 				},
@@ -145,7 +146,7 @@ var (
 			{
 				Name:    "request_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[28], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[29], RequestsColumns[0]},
 			},
 			{
 				Name:    "request_trace_id",

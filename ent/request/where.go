@@ -449,6 +449,16 @@ func APITokenIDContainsFold(v string) predicate.Request {
 	return predicate.Request(sql.FieldContainsFold(FieldAPITokenID, v))
 }
 
+// ExtraIsNil applies the IsNil predicate on the "extra" field.
+func ExtraIsNil() predicate.Request {
+	return predicate.Request(sql.FieldIsNull(FieldExtra))
+}
+
+// ExtraNotNil applies the NotNil predicate on the "extra" field.
+func ExtraNotNil() predicate.Request {
+	return predicate.Request(sql.FieldNotNull(FieldExtra))
+}
+
 // PayloadBytesEQ applies the EQ predicate on the "payload_bytes" field.
 func PayloadBytesEQ(v int64) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldPayloadBytes, v))

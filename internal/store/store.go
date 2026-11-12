@@ -46,10 +46,10 @@ func (s *Store) CheckReady(ctx context.Context) error {
 		telemetry.LogError(ctx, "gateway readiness failed", err, "check", "model_instances.protocol/deleted_at")
 		return err
 	}
-	// 同步、多卡请求都依赖这份占用快照，迁移缺失时不能接流量。
-	_, err := s.db.Request.Query().Select(request.FieldAPITokenID, request.FieldProtocol, request.FieldQueuePublishAt, request.FieldResourceGroups, request.FieldDispatchAttempts, request.FieldDispatchRetryReason).Limit(1).All(ctx)
+	// 同步、多卡请求都依赖这份占用快照，迁移缺失时不能接流量。受理会写入 extra，缺列时同样无法接单。
+	_, err := s.db.Request.Query().Select(request.FieldAPITokenID, request.FieldProtocol, request.FieldQueuePublishAt, request.FieldResourceGroups, request.FieldDispatchAttempts, request.FieldDispatchRetryReason, request.FieldExtra).Limit(1).All(ctx)
 	if err != nil {
-		telemetry.LogError(ctx, "gateway readiness failed", err, "check", "requests.api_token_id/protocol/queue_publish_at/resource_groups/dispatch_attempts/dispatch_retry_reason")
+		telemetry.LogError(ctx, "gateway readiness failed", err, "check", "requests.api_token_id/protocol/queue_publish_at/resource_groups/dispatch_attempts/dispatch_retry_reason/extra")
 	}
 	return err
 }

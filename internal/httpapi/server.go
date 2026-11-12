@@ -405,13 +405,21 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	raw, err = json.Marshal(input)
+	var extra []byte
+	if err == nil {
+		// 输入已通过校验，这里只为列表记下每张图的角色和尺寸。
+		var images []protocol.InputImage
+		if _, images, err = protocol.DecodeInput(input.Input); err == nil {
+			extra, err = protocol.InputMediaExtra(protocol.InputMedia(kind, images))
+		}
+	}
 	if err != nil {
 		<-s.uploads
 		writeError(c, 400, "invalid_input", "could not encode normalized input", id)
 		return
 	}
 	task, err := s.store.Admit(ctx, store.Admission{
-		ID: id, ModelKey: model, Protocol: kind, Payload: raw, Input: input.Input,
+		ID: id, ModelKey: model, Protocol: kind, Payload: raw, Input: input.Input, Extra: extra,
 		// 占用单位随受理落库，后续配置更新不会改变已排队请求的重量。
 		APITokenID: c.GetString(apiTokenID), TraceID: input.Metadata.TraceID, Units: max(1, cfg.UnitsByModelKey[model]),
 		MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout,

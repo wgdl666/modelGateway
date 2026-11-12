@@ -1939,6 +1939,8 @@ type RequestMutation struct {
 	api_token_id          *string
 	request_payload       *json.RawMessage
 	appendrequest_payload json.RawMessage
+	extra                 *json.RawMessage
+	appendextra           json.RawMessage
 	payload_bytes         *int64
 	addpayload_bytes      *int64
 	units                 *int
@@ -2272,6 +2274,71 @@ func (m *RequestMutation) AppendedRequestPayload() (json.RawMessage, bool) {
 func (m *RequestMutation) ResetRequestPayload() {
 	m.request_payload = nil
 	m.appendrequest_payload = nil
+}
+
+// SetExtra sets the "extra" field.
+func (m *RequestMutation) SetExtra(jm json.RawMessage) {
+	m.extra = &jm
+	m.appendextra = nil
+}
+
+// Extra returns the value of the "extra" field in the mutation.
+func (m *RequestMutation) Extra() (r json.RawMessage, exists bool) {
+	v := m.extra
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtra returns the old "extra" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldExtra(ctx context.Context) (v json.RawMessage, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtra is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtra requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtra: %w", err)
+	}
+	return oldValue.Extra, nil
+}
+
+// AppendExtra adds jm to the "extra" field.
+func (m *RequestMutation) AppendExtra(jm json.RawMessage) {
+	m.appendextra = append(m.appendextra, jm...)
+}
+
+// AppendedExtra returns the list of values that were appended to the "extra" field in this mutation.
+func (m *RequestMutation) AppendedExtra() (json.RawMessage, bool) {
+	if len(m.appendextra) == 0 {
+		return nil, false
+	}
+	return m.appendextra, true
+}
+
+// ClearExtra clears the value of the "extra" field.
+func (m *RequestMutation) ClearExtra() {
+	m.extra = nil
+	m.appendextra = nil
+	m.clearedFields[request.FieldExtra] = struct{}{}
+}
+
+// ExtraCleared returns if the "extra" field was cleared in this mutation.
+func (m *RequestMutation) ExtraCleared() bool {
+	_, ok := m.clearedFields[request.FieldExtra]
+	return ok
+}
+
+// ResetExtra resets all changes to the "extra" field.
+func (m *RequestMutation) ResetExtra() {
+	m.extra = nil
+	m.appendextra = nil
+	delete(m.clearedFields, request.FieldExtra)
 }
 
 // SetPayloadBytes sets the "payload_bytes" field.
@@ -3348,7 +3415,7 @@ func (m *RequestMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RequestMutation) Fields() []string {
-	fields := make([]string, 0, 29)
+	fields := make([]string, 0, 30)
 	if m.model_key != nil {
 		fields = append(fields, request.FieldModelKey)
 	}
@@ -3363,6 +3430,9 @@ func (m *RequestMutation) Fields() []string {
 	}
 	if m.request_payload != nil {
 		fields = append(fields, request.FieldRequestPayload)
+	}
+	if m.extra != nil {
+		fields = append(fields, request.FieldExtra)
 	}
 	if m.payload_bytes != nil {
 		fields = append(fields, request.FieldPayloadBytes)
@@ -3454,6 +3524,8 @@ func (m *RequestMutation) Field(name string) (ent.Value, bool) {
 		return m.APITokenID()
 	case request.FieldRequestPayload:
 		return m.RequestPayload()
+	case request.FieldExtra:
+		return m.Extra()
 	case request.FieldPayloadBytes:
 		return m.PayloadBytes()
 	case request.FieldUnits:
@@ -3521,6 +3593,8 @@ func (m *RequestMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldAPITokenID(ctx)
 	case request.FieldRequestPayload:
 		return m.OldRequestPayload(ctx)
+	case request.FieldExtra:
+		return m.OldExtra(ctx)
 	case request.FieldPayloadBytes:
 		return m.OldPayloadBytes(ctx)
 	case request.FieldUnits:
@@ -3612,6 +3686,13 @@ func (m *RequestMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRequestPayload(v)
+		return nil
+	case request.FieldExtra:
+		v, ok := value.(json.RawMessage)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtra(v)
 		return nil
 	case request.FieldPayloadBytes:
 		v, ok := value.(int64)
@@ -3862,6 +3943,9 @@ func (m *RequestMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *RequestMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(request.FieldExtra) {
+		fields = append(fields, request.FieldExtra)
+	}
 	if m.FieldCleared(request.FieldQueuePublishAt) {
 		fields = append(fields, request.FieldQueuePublishAt)
 	}
@@ -3891,6 +3975,9 @@ func (m *RequestMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *RequestMutation) ClearField(name string) error {
 	switch name {
+	case request.FieldExtra:
+		m.ClearExtra()
+		return nil
 	case request.FieldQueuePublishAt:
 		m.ClearQueuePublishAt()
 		return nil
@@ -3928,6 +4015,9 @@ func (m *RequestMutation) ResetField(name string) error {
 		return nil
 	case request.FieldRequestPayload:
 		m.ResetRequestPayload()
+		return nil
+	case request.FieldExtra:
+		m.ResetExtra()
 		return nil
 	case request.FieldPayloadBytes:
 		m.ResetPayloadBytes()
