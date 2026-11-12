@@ -16,6 +16,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/google/uuid"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/internal/config"
@@ -90,7 +91,13 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.GET("/v1/admin/request-stats", s.auth("admin", s.requestStats))
 	h.GET("/v1/admin/requests/:id/media", s.auth("admin", s.requestMedia))
 	h.GET("/v1/admin/requests/:id", s.auth("admin", s.requestDetail))
+	h.POST("/v1/images/generations", s.auth("api", s.openAIGenerations))
+	h.POST("/v1/images/edits", s.auth("api", s.openAIEdits))
+	h.POST("/v1/videos", s.auth("api", s.openAIVideos))
+	h.GET("/v1/videos/:id/content", s.auth("api", s.openAIVideoContent))
+	h.GET("/v1/videos/:id", s.auth("api", s.openAIVideo))
 	h.POST("/v1/gateway/requests/cancel", s.auth("api", s.cancelRequest))
+	h.POST("/v1/gateway/tasks", s.auth("api", s.submitExpert))
 	h.POST("/v1/gateway/requests/:model_key", s.auth("api", s.submit))
 	h.GET("/v1/gateway/requests", s.auth("api", s.get))
 	h.POST(chatCompletionsPath, s.auth("api", s.chatCompletions))
@@ -322,9 +329,25 @@ func (s *Server) instances(ctx context.Context, c *app.RequestContext) {
 }
 
 func requestID(c *app.RequestContext) (string, bool) {
+	return bindRequestID(c, true)
+}
+
+// OpenAI SDK 不默认发送 Idempotency-Key。缺省时生成一个新任务；调用方传入时重试仍落在同一次受理。
+func optionalRequestID(c *app.RequestContext) (string, bool) {
+	return bindRequestID(c, false)
+}
+
+func bindRequestID(c *app.RequestContext, required bool) (string, bool) {
+	if len(c.Request.URI().QueryString()) != 0 || len(c.GetHeader("X-Model-Version")) != 0 || len(c.GetHeader("X-Routing-Key")) != 0 {
+		writeError(c, 400, "invalid_request", "request cannot carry extra routing selectors", "")
+		return "", false
+	}
 	id := string(c.GetHeader("Idempotency-Key"))
-	if !protocol.ValidID(id) || len(c.Request.URI().QueryString()) != 0 || len(c.GetHeader("X-Model-Version")) != 0 || len(c.GetHeader("X-Routing-Key")) != 0 {
-		writeError(c, 400, "invalid_request", "supply a UUID Idempotency-Key without extra routing selectors", "")
+	if id == "" && !required {
+		id = uuid.NewString()
+	}
+	if !protocol.ValidID(id) {
+		writeError(c, 400, "invalid_request", "Idempotency-Key must be a UUID", "")
 		return "", false
 	}
 	c.Header("X-Gateway-Request-ID", id)
@@ -353,8 +376,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 	}
 	cfg := requestConfig(ctx)
 	var input protocol.Submission
-	raw, ok := readBody(c, cfg.MaxBodyBytes, &input, id)
-	if !ok {
+	if _, ok := readBody(c, cfg.MaxBodyBytes, &input, id); !ok {
 		<-s.uploads
 		return
 	}
@@ -383,12 +405,35 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_input", err.Error(), id)
 		return
 	}
-	raw, err = json.Marshal(input)
+	s.finishAdmission(ctx, c, id, model, kind, input)
+}
+
+// finishAdmission 把已经校验过的输入放进现有队列。调用方持有上传名额，这里在等待生成之前释放。
+func (s *Server) finishAdmission(ctx context.Context, c *app.RequestContext, id, model, kind string, input protocol.Submission) {
+	task, ok := s.admitMedia(ctx, c, id, model, kind, input)
+	if !ok {
+		return
+	}
+	// 视频调用方通过查询接口取终态，提交请求无需保持连接。
+	if kind == protocol.VideoProtocol {
+		writeJSON(c, 202, protocol.Response{
+			RequestID: id, TraceID: task.TraceID, ModelKey: model,
+			Expert: protocol.ExpertForModel(model), State: string(task.State),
+		})
+		return
+	}
+	// 响应等待不持有原始上传，也不取消已经提交到 PG 的生成。
+	s.waitImage(ctx, c, id)
+}
+
+func (s *Server) admitMedia(ctx context.Context, c *app.RequestContext, id, model, kind string, input protocol.Submission) (*ent.Request, bool) {
+	raw, err := json.Marshal(input)
 	if err != nil {
 		<-s.uploads
 		writeError(c, 400, "invalid_input", "could not encode normalized input", id)
-		return
+		return nil, false
 	}
+	cfg := requestConfig(ctx)
 	task, err := s.store.Admit(ctx, store.Admission{
 		ID: id, ModelKey: model, Protocol: kind, Payload: raw, Input: input.Input,
 		// 占用单位随受理落库，后续配置更新不会改变已排队请求的重量。
@@ -398,19 +443,16 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 	<-s.uploads
 	if err != nil {
 		storeError(c, err, id)
-		return
+		return nil, false
 	}
-	// 视频调用方通过查询接口取终态，提交请求无需保持连接。
-	if kind == protocol.VideoProtocol {
-		writeJSON(c, 202, protocol.Response{RequestID: id, TraceID: task.TraceID, ModelKey: model, State: string(task.State)})
-		return
-	}
-	// 响应等待不持有原始上传，也不取消已经提交到 PG 的生成。
-	s.waitImage(ctx, c, id)
+	return task, true
 }
 
 func taskResponse(task *ent.Request) protocol.Response {
-	response := protocol.Response{RequestID: task.ID, TraceID: task.TraceID, ModelKey: task.ModelKey, State: string(task.State)}
+	response := protocol.Response{
+		RequestID: task.ID, TraceID: task.TraceID, ModelKey: task.ModelKey,
+		Expert: protocol.ExpertForModel(task.ModelKey), State: string(task.State),
+	}
 	if task.ErrorCode != "" {
 		response.Error = &protocol.RequestError{Code: task.ErrorCode, Message: task.ErrorMessage}
 		if task.DispatchAttempts > 0 {
@@ -429,6 +471,14 @@ func taskResponse(task *ent.Request) protocol.Response {
 }
 
 func (s *Server) waitImage(ctx context.Context, c *app.RequestContext, id string) {
+	task, ok := s.awaitTask(ctx, c, id)
+	if !ok {
+		return
+	}
+	writeJSON(c, 200, taskResponse(task))
+}
+
+func (s *Server) awaitTask(ctx context.Context, c *app.RequestContext, id string) (*ent.Request, bool) {
 	ticker := time.NewTicker(45 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -437,7 +487,7 @@ func (s *Server) waitImage(ctx context.Context, c *app.RequestContext, id string
 			if ctx.Err() == nil {
 				storeError(c, err, id)
 			}
-			return
+			return nil, false
 		}
 		c.Header("X-Model-Key", task.ModelKey)
 		if task.InstanceID != "" {
@@ -445,19 +495,18 @@ func (s *Server) waitImage(ctx context.Context, c *app.RequestContext, id string
 		}
 		switch task.State {
 		case request.StateSucceeded:
-			writeJSON(c, 200, taskResponse(task))
-			return
+			return task, true
 		case request.StateFailed:
 			writeError(c, task.ErrorStatus, task.ErrorCode, task.ErrorMessage, id)
-			return
+			return nil, false
 		}
 		if !time.Now().Before(task.DeadlineAt) {
 			writeError(c, 504, "response_wait_timeout", "response wait timed out; query the same request ID", id)
-			return
+			return nil, false
 		}
 		select {
 		case <-ctx.Done():
-			return
+			return nil, false
 		case <-ticker.C:
 		}
 	}

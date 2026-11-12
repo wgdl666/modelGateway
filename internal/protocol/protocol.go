@@ -124,6 +124,7 @@ type Response struct {
 	TraceID   string        `json:"trace_id,omitempty"`
 	RequestID string        `json:"request_id"`
 	ModelKey  string        `json:"model_key,omitempty"`
+	Expert    string        `json:"expert,omitempty"`
 	State     string        `json:"state"`
 	Result    *Result       `json:"result,omitempty"`
 	Error     *RequestError `json:"error,omitempty"`
