@@ -37,7 +37,7 @@ func (w *Reconciler) ProbeInstance(ctx context.Context, cfg *config.Snapshot, ta
 	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	if backend, direct := cfg.NativeBackendFor(target.ModelKey, target.Endpoint); direct {
+	if backend, direct := cfg.NativeBackendFor(target.ModelKey, target.Endpoint); direct && !protocol.GenerationProtocol(target.Protocol) {
 		return w.nativeHealth(ctx, cfg, target, backend)
 	}
 	raw, err := w.modelCall(ctx, cfg, http.MethodGet, target.HealthURL, "", nil)

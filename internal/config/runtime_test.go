@@ -2,7 +2,10 @@ package config
 
 import (
 	"net"
+	"strings"
 	"testing"
+
+	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
 func TestSingleGPUEndpointRejectsPathAliases(t *testing.T) {
@@ -112,5 +115,35 @@ func TestLogfireConfigRequiresRestart(t *testing.T) {
 		if err := runtime.Reload(next); err == nil || runtime.Current().Logfire != cfg.Logfire {
 			t.Fatalf("changing %s must reject the whole reload", field)
 		}
+	}
+}
+
+func TestGenericGenerationRegistrationNeedsNoModelBinding(t *testing.T) {
+	cfg := Config{
+		APIToken: strings.Repeat("a", 24), AdminToken: strings.Repeat("b", 24),
+		AllowedNetworks: []string{"127.0.0.0/8"}, AllowedPorts: []string{"8001"},
+		NativeResults: NativeResults{Provider: "s3", Region: "test", Bucket: "test"},
+	}
+	runtime, err := NewRuntime(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{protocol.ImageGenerationProtocol, protocol.VideoGenerationProtocol} {
+		target := protocol.InstanceTarget{ModelKey: "a-new-model", Protocol: kind, Endpoint: "http://127.0.0.1:8001/pool/gpu0", HealthURL: "http://127.0.0.1:8001/pool/gpu0/health"}
+		if err := runtime.Current().ValidateInstanceTarget(target); err != nil {
+			t.Fatalf("generic registration required a model binding: %v", err)
+		}
+		target.HealthURL = "http://127.0.0.1:8001/other/health"
+		if err := runtime.Current().ValidateInstanceTarget(target); err == nil {
+			t.Fatal("accepted a different health service")
+		}
+	}
+	cfg.NativeResults = NativeResults{}
+	runtime, err = NewRuntime(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Current().ValidateInstanceTarget(protocol.InstanceTarget{ModelKey: "a-new-model", Protocol: protocol.ImageGenerationProtocol, Endpoint: "http://127.0.0.1:8001", HealthURL: "http://127.0.0.1:8001/health"}); err == nil {
+		t.Fatal("registered generation without result storage")
 	}
 }

@@ -97,7 +97,6 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.GET("/v1/videos/:id/content", s.auth("api", s.openAIVideoContent))
 	h.GET("/v1/videos/:id", s.auth("api", s.openAIVideo))
 	h.POST("/v1/gateway/requests/cancel", s.auth("api", s.cancelRequest))
-	h.POST("/v1/gateway/tasks", s.auth("api", s.submitExpert))
 	h.POST("/v1/gateway/requests/:model_key", s.auth("api", s.submit))
 	h.GET("/v1/gateway/requests", s.auth("api", s.get))
 	h.POST(chatCompletionsPath, s.auth("api", s.chatCompletions))
@@ -211,7 +210,7 @@ func readBody(c *app.RequestContext, limit int64, value any, id string) ([]byte,
 
 func readPayload(c *app.RequestContext, limit int64) ([]byte, error) {
 	reader := c.Request.BodyStream()
-	if reader == nil {
+	if !c.Request.IsBodyStream() {
 		reader = bytes.NewReader(c.Request.Body())
 	}
 	return io.ReadAll(io.LimitReader(reader, limit+1))
@@ -381,7 +380,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	// 模型存在性、输出能力和具体字段在同一次受理内校验，不依赖调用方预查询。
-	if input.Output != "" && ((input.Output != "image" && input.Output != "video") || (input.Output == "video") != (kind == protocol.VideoProtocol)) {
+	if input.Output != "" && ((input.Output != "image" && input.Output != "video") || (input.Output == "video") != protocol.VideoOutput(kind)) {
 		<-s.uploads
 		writeError(c, 400, "invalid_protocol", "model protocol does not match the requested output", id)
 		return
@@ -415,10 +414,10 @@ func (s *Server) finishAdmission(ctx context.Context, c *app.RequestContext, id,
 		return
 	}
 	// 视频调用方通过查询接口取终态，提交请求无需保持连接。
-	if kind == protocol.VideoProtocol {
+	if protocol.VideoOutput(kind) {
 		writeJSON(c, 202, protocol.Response{
 			RequestID: id, TraceID: task.TraceID, ModelKey: model,
-			Expert: protocol.ExpertForModel(model), State: string(task.State),
+			State: string(task.State),
 		})
 		return
 	}
@@ -451,7 +450,7 @@ func (s *Server) admitMedia(ctx context.Context, c *app.RequestContext, id, mode
 func taskResponse(task *ent.Request) protocol.Response {
 	response := protocol.Response{
 		RequestID: task.ID, TraceID: task.TraceID, ModelKey: task.ModelKey,
-		Expert: protocol.ExpertForModel(task.ModelKey), State: string(task.State),
+		State: string(task.State),
 	}
 	if task.ErrorCode != "" {
 		response.Error = &protocol.RequestError{Code: task.ErrorCode, Message: task.ErrorMessage}

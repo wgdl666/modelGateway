@@ -34,7 +34,19 @@ func PreviewSubmission(kind string, payload json.RawMessage) (parameters json.Ra
 	if json.Unmarshal(payload, &stored) != nil || len(stored.Input) == 0 {
 		return nil, nil, nil, errors.New("stored input is unavailable")
 	}
-	fields, images, err := DecodeInput(stored.Input)
+	previewInput := stored.Input
+	// Text-only generation has no images field. Keep the legacy decoder strict.
+	if GenerationProtocol(kind) {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(stored.Input, &fields) != nil || fields == nil {
+			return nil, nil, nil, errors.New("stored input is unavailable")
+		}
+		if fields["images"] == nil {
+			fields["images"] = json.RawMessage(`[]`)
+		}
+		previewInput, _ = json.Marshal(fields)
+	}
+	fields, images, err := DecodeInput(previewInput)
 	if err != nil {
 		return nil, nil, nil, err
 	}

@@ -2,7 +2,16 @@
 
 一个模型网关可运行多个 Go 副本，共享 PostgreSQL 和 RabbitMQ。Hertz 处理 HTTP，Ent 定义 `resource_groups`、`model_instances` 和 `requests`。每个副本启动两个 RabbitMQ 消费者。模型执行端确认终态并上传成品，ModelHub 使用 OSS/S3 对象引用读取。
 
-## 调用协议
+## 通用图像和视频生成
+
+- 图像：`POST /v1/images/generations`，JSON 输入；`POST /v1/images/edits` 为参考图 multipart 上传入口。
+- 视频：`POST /v1/videos`，独立的视频输入协议；通过 `GET /v1/videos/{id}` 查询、`GET /v1/videos/{id}/content` 下载。
+- `model` 直接选择登记模型，`prompt`、参考图和生成参数传给模型服务。网关不提供专家或业务能力，也不绑定模型名、画布或业务提示词。
+- 模型登记为 `image_generation` / `video_generation` 后，Worker 直接调用对应的通用模型接口。新增兼容模型只需登记，无需修改路由代码。
+
+请求示例、后端契约、注册和迁移要求见 [通用生成接口](docs/GENERATION_API.md)。
+
+## 兼容调用协议
 
 生成接口为 `POST /v1/gateway/requests/{model_key}`。请求使用 `Authorization: Bearer <api_token>`、`Content-Type: application/json` 和 UUID `Idempotency-Key`。UUID 同时是请求表主键和模型端查询 ID。
 

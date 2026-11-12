@@ -8,6 +8,9 @@ import (
 // NormalizeMediaInput 在网关内把 ModelHub 的统一输入转换为已登记协议的业务字段。
 // 原有直接调用仍可提交扁平字段；落队列的始终是同一份原生输入，派发与重放无需再分支。
 func NormalizeMediaInput(kind string, input json.RawMessage) (json.RawMessage, error) {
+	if GenerationProtocol(kind) {
+		return input, nil
+	}
 	var source map[string]json.RawMessage
 	if json.Unmarshal(input, &source) != nil || source == nil {
 		return nil, errors.New("input must be a JSON object")

@@ -62,6 +62,9 @@ func New(tasks *store.Store, runtime *config.Runtime) (*Reconciler, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+	if len(cfg.NativeBackends) != 0 || len(cfg.NativeModels) != 0 || cfg.NativeResults.Provider != "" {
+		var err error
 		w.results, err = newResultUploader(cfg.NativeResults)
 		if err != nil {
 			return nil, err
@@ -172,8 +175,9 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 		return w.failDispatch(task, 500, "invalid_saved_request", "saved request is invalid", false)
 	}
 	backend, direct := cfg.NativeBackendFor(task.ModelKey, task.Endpoint)
+	generic := protocol.GenerationProtocol(task.Protocol)
 	var raw []byte
-	if !direct {
+	if !direct && !generic {
 		var err error
 		raw, err = json.Marshal(protocol.ModelRequest{RequestID: task.ID, ModelKey: task.ModelKey, Submission: payload})
 		if err != nil {
@@ -183,16 +187,19 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 	if !time.Now().Before(task.DeadlineAt) {
 		return w.failDispatch(task, 504, "queue_timeout", "request expired before dispatch", false)
 	}
-	if cfg.ValidateEndpoint(task.Endpoint, false) != nil {
+	if cfg.ValidateEndpoint(task.Endpoint, generic) != nil {
 		return w.failDispatch(task, 503, "backend_unavailable", "selected model address is unavailable", false)
 	}
 	deadline := task.DeadlineAt
-	if direct {
+	if direct || generic {
 		// 上游先等超时也要继续接原生响应，拿到真实终态后才能释放 GPU。
 		deadline = task.StartedAt.Add(cfg.NativeExecutionTimeout)
 	}
 	ctx, cancel := context.WithDeadline(w.ctx, deadline)
 	defer cancel()
+	if generic {
+		return w.executeGeneration(ctx, cfg, task, payload)
+	}
 	if direct {
 		return w.executeNative(ctx, cfg, task, payload, backend)
 	}
@@ -258,6 +265,9 @@ func (w *Reconciler) saveModelResponse(cfg *config.Snapshot, task *ent.Request, 
 }
 
 func (w *Reconciler) pollModel(cfg *config.Snapshot, task *ent.Request) error {
+	if protocol.GenerationProtocol(task.Protocol) {
+		return w.pollGeneration(cfg, task)
+	}
 	if backend, direct := cfg.NativeBackendFor(task.ModelKey, task.Endpoint); direct {
 		return w.pollNative(cfg, task, backend)
 	}

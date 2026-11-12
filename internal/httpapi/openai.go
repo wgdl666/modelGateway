@@ -7,17 +7,18 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"mime"
 	"mime/multipart"
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/internal/protocol"
-	"github.com/wgdl666/modelGateway/internal/store"
 )
 
 const (
@@ -26,112 +27,107 @@ const (
 	openAIVideosPath      = "/v1/videos"
 )
 
-type openAIGenerationBody struct {
-	Model          string `json:"model"`
-	Prompt         string `json:"prompt"`
-	N              *int   `json:"n,omitempty"`
-	Size           string `json:"size,omitempty"`
-	ResponseFormat string `json:"response_format,omitempty"`
-	User           string `json:"user,omitempty"`
-}
-
+// Both JSON generation endpoints select a registered model directly. The edits
+// endpoint is only a multipart transport for the same image generation protocol.
 func (s *Server) openAIGenerations(ctx context.Context, c *app.RequestContext) {
 	id, ok := optionalRequestID(c)
-	if !ok {
+	if !ok || !s.acquireUpload(ctx) {
 		return
 	}
-	if !s.acquireUpload(ctx) {
-		return
-	}
-	cfg := requestConfig(ctx)
-	var body openAIGenerationBody
-	if !readOpenAIJSON(c, cfg.MaxBodyBytes, &body, id) {
+	var body protocol.ImageGenerationRequest
+	if _, ok := readBody(c, requestConfig(ctx).MaxBodyBytes, &body, id); !ok {
 		<-s.uploads
 		return
 	}
-	route, err := protocol.TranslateOpenAIImage(protocol.InterfaceImageGeneration, protocol.OpenAIImageRequest{
-		Model: body.Model, Prompt: body.Prompt, N: body.N, Size: body.Size, ResponseFormat: body.ResponseFormat,
-	}, c.GetBool(experimentalCredential))
-	if err != nil {
-		<-s.uploads
-		writeError(c, 400, "invalid_input", err.Error(), id)
-		return
-	}
-	s.acceptOpenAI(ctx, c, id, route, false)
+	raw, _ := json.Marshal(body.ImageGenerationInput)
+	s.acceptGeneration(ctx, c, id, body.Model, protocol.ImageGenerationProtocol, raw, body.User)
 }
 
 func (s *Server) openAIEdits(ctx context.Context, c *app.RequestContext) {
 	id, ok := optionalRequestID(c)
-	if !ok {
+	if !ok || !s.acquireUpload(ctx) {
 		return
 	}
-	if !s.acquireUpload(ctx) {
-		return
-	}
-	req, err := readOpenAIForm(c, requestConfig(ctx).MaxBodyBytes, "image", []string{
-		"model", "prompt", "n", "size", "response_format", "user", "image", "garment_name", "bbox", "bbox_format", "gender",
+	form, err := readOpenAIForm(c, requestConfig(ctx).MaxBodyBytes, "image", []string{
+		"model", "prompt", "n", "size", "response_format", "user", "image", "image[]", "parameters",
 	})
 	if err != nil {
 		<-s.uploads
 		writeUploadError(c, err, id)
 		return
 	}
-	route, err := protocol.TranslateOpenAIImage(protocol.InterfaceImageEdit, req, c.GetBool(experimentalCredential))
-	if err != nil {
+	if len(form.Images) == 0 {
 		<-s.uploads
-		writeError(c, 400, "invalid_input", err.Error(), id)
+		writeError(c, 400, "invalid_input", "image edits require reference images", id)
 		return
 	}
-	s.acceptOpenAI(ctx, c, id, route, false)
+	raw, _ := json.Marshal(protocol.ImageGenerationInput{Prompt: form.Prompt, Images: form.Images,
+		N: form.N, Size: form.Size, ResponseFormat: form.ResponseFormat, Parameters: form.Parameters})
+	s.acceptGeneration(ctx, c, id, form.Model, protocol.ImageGenerationProtocol, raw, form.User)
 }
 
 func (s *Server) openAIVideos(ctx context.Context, c *app.RequestContext) {
 	id, ok := optionalRequestID(c)
-	if !ok {
+	if !ok || !s.acquireUpload(ctx) {
 		return
 	}
-	if !s.acquireUpload(ctx) {
-		return
-	}
-	req, err := readOpenAIForm(c, requestConfig(ctx).MaxBodyBytes, "input_reference", []string{
-		"model", "prompt", "size", "user", "input_reference",
-	})
-	if err != nil {
+	var body protocol.VideoGenerationRequest
+	mediaType, _, _ := mime.ParseMediaType(string(c.GetHeader("Content-Type")))
+	if mediaType == "multipart/form-data" {
+		form, err := readOpenAIForm(c, requestConfig(ctx).MaxBodyBytes, "input_reference", []string{
+			"model", "prompt", "size", "seconds", "user", "input_reference", "parameters",
+		})
+		if err != nil {
+			<-s.uploads
+			writeUploadError(c, err, id)
+			return
+		}
+		body = protocol.VideoGenerationRequest{Model: form.Model, User: form.User,
+			VideoGenerationInput: protocol.VideoGenerationInput{Prompt: form.Prompt, Images: form.Images,
+				Size: form.Size, Seconds: form.Seconds, Parameters: form.Parameters}}
+	} else if _, ok := readBody(c, requestConfig(ctx).MaxBodyBytes, &body, id); !ok {
 		<-s.uploads
-		writeUploadError(c, err, id)
 		return
 	}
-	route, err := protocol.TranslateOpenAIVideo(req, c.GetBool(experimentalCredential))
-	if err != nil {
+	raw, _ := json.Marshal(body.VideoGenerationInput)
+	s.acceptGeneration(ctx, c, id, body.Model, protocol.VideoGenerationProtocol, raw, body.User)
+}
+
+func (s *Server) acceptGeneration(ctx context.Context, c *app.RequestContext, id, model, kind string, input json.RawMessage, user string) {
+	if !protocol.ValidModelKey(model) {
+		<-s.uploads
+		writeError(c, 400, "invalid_input", "model must be a registered model key", id)
+		return
+	}
+	if err := protocol.ValidateGenerationInput(kind, input); err != nil {
 		<-s.uploads
 		writeError(c, 400, "invalid_input", err.Error(), id)
 		return
 	}
-	s.acceptOpenAI(ctx, c, id, route, true)
-}
-
-func (s *Server) acceptOpenAI(ctx context.Context, c *app.RequestContext, id string, route protocol.ExpertRoute, video bool) {
-	registered, err := s.store.ModelProtocol(ctx, route.ModelKey)
-	if errors.Is(err, store.ErrModelUnregistered) {
+	trace := string(c.GetHeader("X-Trace-ID"))
+	for _, value := range []string{user, trace} {
+		if len(value) > 256 || strings.ContainsFunc(value, func(r rune) bool { return r < 32 || r == 127 }) {
+			<-s.uploads
+			writeError(c, 400, "invalid_input", "invalid metadata", id)
+			return
+		}
+	}
+	registered, ok := s.resolveModelProtocol(ctx, c, model)
+	if !ok {
 		<-s.uploads
-		writeError(c, 404, "model_not_found", "model has no registration", id)
 		return
 	}
-	if err != nil {
+	if registered != kind {
 		<-s.uploads
-		storeError(c, err, id)
+		writeError(c, 400, "invalid_protocol", "registered model does not support this generation interface", id)
 		return
 	}
-	if registered != route.Protocol {
-		<-s.uploads
-		writeError(c, 400, "invalid_protocol", "registered protocol does not match the expert route", id)
-		return
-	}
-	task, ok := s.admitMedia(ctx, c, id, route.ModelKey, route.Protocol, protocol.Submission{Input: route.Input})
+	task, ok := s.admitMedia(ctx, c, id, model, kind, protocol.Submission{Input: input,
+		Metadata: protocol.Metadata{UserID: user, TraceID: trace}})
 	if !ok {
 		return
 	}
-	if video {
+	if kind == protocol.VideoGenerationProtocol {
 		writeJSON(c, 200, openAIVideoObject(task))
 		return
 	}
@@ -174,7 +170,7 @@ func (s *Server) videoTask(ctx context.Context, c *app.RequestContext) (*ent.Req
 		storeError(c, err, id)
 		return nil, false
 	}
-	if task.Protocol != protocol.VideoProtocol {
+	if task.Protocol != protocol.VideoGenerationProtocol {
 		writeError(c, 404, "video_not_found", "video not found", id)
 		return nil, false
 	}
@@ -187,31 +183,38 @@ func (s *Server) writeOpenAIImage(ctx context.Context, c *app.RequestContext, id
 		return
 	}
 	view := taskResponse(task)
-	if view.Result == nil || len(view.Result.Files) != 1 {
+	if view.Result == nil || len(view.Result.Files) == 0 {
 		writeError(c, 502, "result_unavailable", "cannot publish image result", id)
 		return
 	}
-	file := view.Result.Files[0]
-	mimeType := protocol.OutputMIME(file.Key)
-	if mimeType == "" || mimeType == "video/mp4" || !protocol.MatchesOutputKey(id, 0, file.Key) {
-		writeError(c, 502, "result_unavailable", "cannot publish image result", id)
-		return
+	data := make([]map[string]string, 0, len(view.Result.Files))
+	var total int64
+	for index, file := range view.Result.Files {
+		mimeType := protocol.OutputMIME(file.Key)
+		if mimeType == "" || mimeType == "video/mp4" || !protocol.MatchesOutputKey(id, index, file.Key) {
+			writeError(c, 502, "result_unavailable", "cannot publish image result", id)
+			return
+		}
+		body, size, err := s.openObject(ctx, file, mimeType)
+		if err != nil {
+			writeError(c, 404, "media_unavailable", "output is unavailable", id)
+			return
+		}
+		total += size
+		if total > maxImageBytes {
+			_ = body.Close()
+			writeError(c, 502, "result_unavailable", "image results exceed the response size limit", id)
+			return
+		}
+		raw, err := io.ReadAll(io.LimitReader(body, size))
+		_ = body.Close()
+		if err != nil || int64(len(raw)) != size {
+			writeError(c, 502, "result_unavailable", "cannot publish image result", id)
+			return
+		}
+		data = append(data, map[string]string{"b64_json": base64.StdEncoding.EncodeToString(raw)})
 	}
-	body, size, err := s.openObject(ctx, file, mimeType)
-	if err != nil {
-		writeError(c, 404, "media_unavailable", "output is unavailable", id)
-		return
-	}
-	defer body.Close()
-	data, err := io.ReadAll(io.LimitReader(body, size))
-	if err != nil || int64(len(data)) != size {
-		writeError(c, 502, "result_unavailable", "cannot publish image result", id)
-		return
-	}
-	writeJSON(c, 200, map[string]any{
-		"created": task.CreatedAt.Unix(),
-		"data":    []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString(data)}},
-	})
+	writeJSON(c, 200, map[string]any{"created": task.CreatedAt.Unix(), "data": data})
 }
 
 func (s *Server) writeStoredObject(ctx context.Context, c *app.RequestContext, id string, index int, file protocol.Object) {
@@ -268,7 +271,7 @@ type openAIAPIError struct {
 
 func openAIVideoObject(task *ent.Request) openAIVideoJob {
 	job := openAIVideoJob{
-		ID: task.ID, Object: "video", Model: protocol.ExpertForModel(task.ModelKey),
+		ID: task.ID, Object: "video", Model: task.ModelKey,
 		Status: openAIVideoStatus(string(task.State)), CreatedAt: task.CreatedAt.Unix(),
 	}
 	if task.State == request.StateFailed {
@@ -288,42 +291,6 @@ func openAIVideoStatus(state string) string {
 	}
 }
 
-func readOpenAIJSON(c *app.RequestContext, limit int64, body *openAIGenerationBody, id string) bool {
-	mediaType, _, err := mime.ParseMediaType(string(c.GetHeader("Content-Type")))
-	if err != nil || mediaType != "application/json" {
-		c.SetConnectionClose()
-		writeError(c, 415, "unsupported_media_type", "request must use application/json", id)
-		return false
-	}
-	raw, err := readPayload(c, limit)
-	if int64(len(raw)) > limit {
-		c.SetConnectionClose()
-		writeError(c, 413, "request_too_large", "request exceeds its size limit", id)
-		return false
-	}
-	if err != nil {
-		c.SetConnectionClose()
-		writeError(c, 400, "invalid_json", "invalid JSON request body", id)
-		return false
-	}
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil || fields == nil {
-		writeError(c, 400, "invalid_json", "invalid JSON request body", id)
-		return false
-	}
-	for key := range fields {
-		if !slices.Contains([]string{"model", "prompt", "n", "size", "response_format", "user"}, key) {
-			writeError(c, 400, "invalid_input", "unsupported field", id)
-			return false
-		}
-	}
-	if json.Unmarshal(raw, body) != nil {
-		writeError(c, 400, "invalid_json", "invalid JSON request body", id)
-		return false
-	}
-	return true
-}
-
 func writeUploadError(c *app.RequestContext, err error, id string) {
 	status, code := 400, "invalid_input"
 	switch err.Error() {
@@ -337,23 +304,31 @@ func writeUploadError(c *app.RequestContext, err error, id string) {
 	writeError(c, status, code, err.Error(), id)
 }
 
-func readOpenAIForm(c *app.RequestContext, limit int64, fileField string, allowed []string) (protocol.OpenAIImageRequest, error) {
+type generationForm struct {
+	Model, Prompt, Size, ResponseFormat, User string
+	N                                         *int
+	Seconds                                   *float64
+	Images                                    []protocol.InputImage
+	Parameters                                json.RawMessage
+}
+
+func readOpenAIForm(c *app.RequestContext, limit int64, fileField string, allowed []string) (generationForm, error) {
 	mediaType, params, err := mime.ParseMediaType(string(c.GetHeader("Content-Type")))
 	if err != nil || mediaType != "multipart/form-data" || params["boundary"] == "" {
 		c.SetConnectionClose()
-		return protocol.OpenAIImageRequest{}, errors.New("request must use multipart/form-data")
+		return generationForm{}, errors.New("request must use multipart/form-data")
 	}
 	raw, err := readPayload(c, limit)
 	if int64(len(raw)) > limit {
 		c.SetConnectionClose()
-		return protocol.OpenAIImageRequest{}, errors.New("request exceeds its size limit")
+		return generationForm{}, errors.New("request exceeds its size limit")
 	}
 	if err != nil {
 		c.SetConnectionClose()
-		return protocol.OpenAIImageRequest{}, errors.New("could not read multipart request")
+		return generationForm{}, errors.New("could not read multipart request")
 	}
 	parts := multipart.NewReader(bytes.NewReader(raw), params["boundary"])
-	var req protocol.OpenAIImageRequest
+	var req generationForm
 	seen := map[string]bool{}
 	count := 0
 	for {
@@ -362,34 +337,34 @@ func readOpenAIForm(c *app.RequestContext, limit int64, fileField string, allowe
 			break
 		}
 		if err != nil {
-			return protocol.OpenAIImageRequest{}, errors.New("could not read multipart request")
+			return generationForm{}, errors.New("could not read multipart request")
 		}
 		count++
 		if count > 16 {
-			return protocol.OpenAIImageRequest{}, errors.New("too many form fields")
+			return generationForm{}, errors.New("too many form fields")
 		}
 		name := part.FormName()
 		if !slices.Contains(allowed, name) {
-			return protocol.OpenAIImageRequest{}, errors.New("unsupported field")
+			return generationForm{}, errors.New("unsupported field")
 		}
-		if name == fileField {
+		if name == fileField || (fileField == "image" && name == "image[]") {
 			if part.FileName() == "" {
-				return protocol.OpenAIImageRequest{}, errors.New("image file is required")
+				return generationForm{}, errors.New("image file is required")
 			}
 			image, err := readFormImage(part)
 			if err != nil {
-				return protocol.OpenAIImageRequest{}, err
+				return generationForm{}, err
 			}
 			req.Images = append(req.Images, image)
 			continue
 		}
 		if part.FileName() != "" || seen[name] {
-			return protocol.OpenAIImageRequest{}, errors.New("duplicate field")
+			return generationForm{}, errors.New("duplicate field")
 		}
 		seen[name] = true
 		value, err := io.ReadAll(io.LimitReader(part, 4097))
 		if err != nil || len(value) > 4096 {
-			return protocol.OpenAIImageRequest{}, errors.New("invalid field")
+			return generationForm{}, errors.New("invalid field")
 		}
 		text := string(value)
 		switch name {
@@ -402,22 +377,26 @@ func readOpenAIForm(c *app.RequestContext, limit int64, fileField string, allowe
 		case "response_format":
 			req.ResponseFormat = text
 		case "user":
-		case "garment_name":
-			req.GarmentName = text
-		case "bbox":
-			req.BBox = append(json.RawMessage(nil), value...)
-		case "bbox_format":
-			req.BBoxFormat = text
-		case "gender":
-			req.Gender = text
+			req.User = text
+		case "parameters":
+			if !json.Valid(value) {
+				return generationForm{}, errors.New("parameters must be a JSON object")
+			}
+			req.Parameters = append(json.RawMessage(nil), value...)
+		case "seconds":
+			number, err := strconv.ParseFloat(text, 64)
+			if err != nil || math.IsNaN(number) || math.IsInf(number, 0) || number <= 0 {
+				return generationForm{}, errors.New("seconds must be positive")
+			}
+			req.Seconds = &number
 		case "n":
 			number, err := strconv.Atoi(text)
 			if err != nil {
-				return protocol.OpenAIImageRequest{}, errors.New("only n=1 is supported")
+				return generationForm{}, errors.New("n must be positive")
 			}
 			req.N = &number
 		default:
-			return protocol.OpenAIImageRequest{}, errors.New("unsupported field")
+			return generationForm{}, errors.New("unsupported field")
 		}
 	}
 	return req, nil

@@ -32,7 +32,7 @@ const (
 var errNativeRouteUnavailable = errors.New("native model route is unavailable")
 
 type nativeAuth struct {
-	username, password, token string
+	username, password, token, bearer string
 }
 
 func readNativeAuth(prefix string) (nativeAuth, error) {
@@ -155,6 +155,9 @@ func (w *Reconciler) nativeHTTP(ctx context.Context, auth nativeAuth, method, ur
 	}
 	if auth.username != "" {
 		req.SetBasicAuth(auth.username, auth.password)
+	}
+	if auth.bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+auth.bearer)
 	}
 	if auth.token != "" {
 		req.Header.Set("X-Token", auth.token)

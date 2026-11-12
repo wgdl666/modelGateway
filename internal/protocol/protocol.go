@@ -124,7 +124,6 @@ type Response struct {
 	TraceID   string        `json:"trace_id,omitempty"`
 	RequestID string        `json:"request_id"`
 	ModelKey  string        `json:"model_key,omitempty"`
-	Expert    string        `json:"expert,omitempty"`
 	State     string        `json:"state"`
 	Result    *Result       `json:"result,omitempty"`
 	Error     *RequestError `json:"error,omitempty"`
@@ -236,6 +235,9 @@ func ValidateExperimentalInput(kind string, input json.RawMessage) error {
 }
 
 func validateInput(kind string, input json.RawMessage, experimental bool) error {
+	if GenerationProtocol(kind) {
+		return ValidateGenerationInput(kind, input)
+	}
 	if !MediaProtocol(kind) {
 		return errors.New("unsupported media protocol")
 	}

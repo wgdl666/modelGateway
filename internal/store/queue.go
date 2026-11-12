@@ -1,9 +1,12 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"reflect"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,9 +32,64 @@ type Admission struct {
 func sameInput(payload, input json.RawMessage) bool {
 	var stored protocol.Submission
 	var left, right any
-	return json.Unmarshal(payload, &stored) == nil &&
-		json.Unmarshal(stored.Input, &left) == nil &&
-		json.Unmarshal(input, &right) == nil && reflect.DeepEqual(left, right)
+	if json.Unmarshal(payload, &stored) != nil {
+		return false
+	}
+	// Model parameters may contain 64-bit seeds. float64 would conflate distinct
+	// requests above 2^53 and replay the wrong generated result.
+	decode := func(raw json.RawMessage, target *any) error {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		if err := decoder.Decode(target); err != nil {
+			return err
+		}
+		*target = canonicalJSONNumbers(*target)
+		return nil
+	}
+	return decode(stored.Input, &left) == nil && decode(input, &right) == nil && reflect.DeepEqual(left, right)
+}
+
+// PostgreSQL JSONB expands exponents. Compare decimal values without float64
+// rounding or allocating an integer proportional to an untrusted exponent.
+func canonicalJSONNumbers(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, item := range v {
+			v[key] = canonicalJSONNumbers(item)
+		}
+	case []any:
+		for i, item := range v {
+			v[i] = canonicalJSONNumbers(item)
+		}
+	case json.Number:
+		number := string(v)
+		mantissa, exponent := number, int64(0)
+		if i := strings.IndexAny(number, "eE"); i >= 0 {
+			parsed, err := strconv.ParseInt(number[i+1:], 10, 64)
+			// These are outside PostgreSQL's numeric range and cannot match stored data.
+			if err != nil || parsed > 1000000 || parsed < -1000000 {
+				return v
+			}
+			mantissa, exponent = number[:i], parsed
+		}
+		negative := strings.HasPrefix(mantissa, "-")
+		mantissa = strings.TrimPrefix(mantissa, "-")
+		if i := strings.IndexByte(mantissa, '.'); i >= 0 {
+			exponent -= int64(len(mantissa) - i - 1)
+			mantissa = mantissa[:i] + mantissa[i+1:]
+		}
+		mantissa = strings.TrimLeft(mantissa, "0")
+		if mantissa == "" {
+			return json.Number("0")
+		}
+		significant := strings.TrimRight(mantissa, "0")
+		exponent += int64(len(mantissa) - len(significant))
+		if negative {
+			significant = "-" + significant
+		}
+		return json.Number(significant + "e" + strconv.FormatInt(exponent, 10))
+	}
+	return value
 }
 
 func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
@@ -213,7 +271,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 				return err
 			}
 			nextPoll := next.DeadlineAt.Add(2 * time.Second)
-			if _, direct := cfg.NativeBackendFor(next.ModelKey, i.Endpoint); direct || protocol.SynchronousKind(i.Protocol) != "" {
+			if _, direct := cfg.NativeBackendFor(next.ModelKey, i.Endpoint); direct || protocol.GenerationProtocol(i.Protocol) || protocol.SynchronousKind(i.Protocol) != "" {
 				// 原生调用可晚于上游返回，给原派发者留足执行和写终态的时间。
 				nextPoll = now.Add(cfg.NativeExecutionTimeout).Add(ExecutionWriteTimeout)
 			}
