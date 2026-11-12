@@ -9,9 +9,15 @@ CREATE TABLE IF NOT EXISTS model_gateway.api_tokens (
  updated_at timestamptz NOT NULL DEFAULT now(),
  deleted_at timestamptz NULL
 );
-CREATE EXTENSION IF NOT EXISTS moddatetime;
+-- 阿里云 RDS 已有同名触发器函数但不支持安装扩展，优先复用。
+DO $$
+BEGIN
+ IF to_regprocedure('public.moddatetime()') IS NULL THEN
+  CREATE EXTENSION IF NOT EXISTS moddatetime WITH SCHEMA public;
+ END IF;
+END $$;
 DROP TRIGGER IF EXISTS api_tokens_updated_at ON model_gateway.api_tokens;
 CREATE TRIGGER api_tokens_updated_at BEFORE UPDATE ON model_gateway.api_tokens
- FOR EACH ROW EXECUTE PROCEDURE moddatetime(updated_at);
+ FOR EACH ROW EXECUTE PROCEDURE public.moddatetime(updated_at);
 ALTER TABLE model_gateway.requests ADD COLUMN IF NOT EXISTS api_token_id varchar NOT NULL DEFAULT '';
 COMMIT;
