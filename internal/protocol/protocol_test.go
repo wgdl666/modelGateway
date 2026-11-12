@@ -36,6 +36,13 @@ func TestPreviewKeepsBusinessFieldsAndImageRoles(t *testing.T) {
 	}
 }
 
+func TestInputMediaExtraOmitsNothingWhenEmpty(t *testing.T) {
+	raw, err := InputMediaExtra(nil)
+	if err != nil || string(raw) != `{"input_media":[]}` {
+		t.Fatalf("empty extra %s %v", raw, err)
+	}
+}
+
 func TestInputMediaRecordsReadableImageSize(t *testing.T) {
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 1536, 2048))); err != nil {

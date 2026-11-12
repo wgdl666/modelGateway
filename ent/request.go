@@ -26,8 +26,8 @@ type Request struct {
 	TraceID string `json:"trace_id,omitempty"`
 	// RequestPayload holds the value of the "request_payload" field.
 	RequestPayload json.RawMessage `json:"request_payload,omitempty"`
-	// InputMedia holds the value of the "input_media" field.
-	InputMedia json.RawMessage `json:"input_media,omitempty"`
+	// Extra holds the value of the "extra" field.
+	Extra json.RawMessage `json:"extra,omitempty"`
 	// PayloadBytes holds the value of the "payload_bytes" field.
 	PayloadBytes int64 `json:"payload_bytes,omitempty"`
 	// Units holds the value of the "units" field.
@@ -84,7 +84,7 @@ func (*Request) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case request.FieldRequestPayload, request.FieldInputMedia, request.FieldResourceGroups, request.FieldResult:
+		case request.FieldRequestPayload, request.FieldExtra, request.FieldResourceGroups, request.FieldResult:
 			values[i] = new([]byte)
 		case request.FieldSlotReserved:
 			values[i] = new(sql.NullBool)
@@ -141,12 +141,12 @@ func (_m *Request) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field request_payload: %w", err)
 				}
 			}
-		case request.FieldInputMedia:
+		case request.FieldExtra:
 			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field input_media", values[i])
+				return fmt.Errorf("unexpected type %T for field extra", values[i])
 			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &_m.InputMedia); err != nil {
-					return fmt.Errorf("unmarshal field input_media: %w", err)
+				if err := json.Unmarshal(*value, &_m.Extra); err != nil {
+					return fmt.Errorf("unmarshal field extra: %w", err)
 				}
 			}
 		case request.FieldPayloadBytes:
@@ -349,8 +349,8 @@ func (_m *Request) String() string {
 	builder.WriteString("request_payload=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RequestPayload))
 	builder.WriteString(", ")
-	builder.WriteString("input_media=")
-	builder.WriteString(fmt.Sprintf("%v", _m.InputMedia))
+	builder.WriteString("extra=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Extra))
 	builder.WriteString(", ")
 	builder.WriteString("payload_bytes=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PayloadBytes))

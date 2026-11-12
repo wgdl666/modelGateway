@@ -55,6 +55,16 @@ func PreviewSubmission(kind string, payload json.RawMessage) (parameters json.Ra
 	return parameters, InputMedia(kind, images), images, nil
 }
 
+// InputMediaExtra 把输入清单放进通用 extra。键缺失表示迁移前的请求，空数组表示确认没有输入。
+func InputMediaExtra(refs []MediaRef) (json.RawMessage, error) {
+	if refs == nil {
+		refs = []MediaRef{}
+	}
+	return json.Marshal(struct {
+		InputMedia []MediaRef `json:"input_media"`
+	}{refs})
+}
+
 // InputMedia 按协议给每张输入图标角色。受理时写入账本，详情对迁移前的请求现场生成，二者口径一致。
 func InputMedia(kind string, images []InputImage) []MediaRef {
 	roles := inputRoles(kind)

@@ -385,12 +385,12 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	raw, err = json.Marshal(input)
-	var media []byte
+	var extra []byte
 	if err == nil {
 		// 输入已通过校验，这里只为列表记下每张图的角色和尺寸。
 		var images []protocol.InputImage
 		if _, images, err = protocol.DecodeInput(input.Input); err == nil {
-			media, err = json.Marshal(protocol.InputMedia(kind, images))
+			extra, err = protocol.InputMediaExtra(protocol.InputMedia(kind, images))
 		}
 	}
 	if err != nil {
@@ -399,7 +399,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	task, err := s.store.Admit(ctx, store.Admission{
-		ID: id, ModelKey: model, Protocol: kind, Payload: raw, Input: input.Input, InputMedia: media,
+		ID: id, ModelKey: model, Protocol: kind, Payload: raw, Input: input.Input, Extra: extra,
 		// 占用单位随受理落库，后续配置更新不会改变已排队请求的重量。
 		TraceID: input.Metadata.TraceID, Units: max(1, cfg.UnitsByModelKey[model]),
 		MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout,

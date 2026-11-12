@@ -54,7 +54,7 @@ var (
 		{Name: "protocol", Type: field.TypeString, Size: 2147483647},
 		{Name: "trace_id", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "request_payload", Type: field.TypeJSON},
-		{Name: "input_media", Type: field.TypeJSON, Nullable: true},
+		{Name: "extra", Type: field.TypeJSON, Nullable: true},
 		{Name: "payload_bytes", Type: field.TypeInt64},
 		{Name: "units", Type: field.TypeInt},
 		{Name: "state", Type: field.TypeEnum, Enums: []string{"queued", "processing", "succeeded", "failed"}, Default: "queued"},

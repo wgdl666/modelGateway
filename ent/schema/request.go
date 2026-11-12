@@ -25,9 +25,9 @@ func (Request) Fields() []ent.Field {
 		// 查询链路只需要 Trace ID，避免 Ops 列表读取包含图片的请求正文。
 		field.Text("trace_id").Default("").Immutable(),
 		field.JSON("request_payload", json.RawMessage{}).Immutable(),
-		// 受理时记下输入图的角色、格式和尺寸，Ops 列表据此展示输入而不读取含图片的正文。
+		// 派生信息，不参与受理、派发和幂等。输入清单这类展示数据放在这里，避免每项加一列。
 		// 迁移前受理的请求为空，列表省略清单，只能逐条读详情。
-		field.JSON("input_media", json.RawMessage{}).Optional().Immutable(),
+		field.JSON("extra", json.RawMessage{}).Optional().Immutable(),
 		field.Int64("payload_bytes").Positive().Immutable(),
 		field.Int("units").Positive().Immutable(),
 		field.Enum("state").Values("queued", "processing", "succeeded", "failed").Default("queued"),

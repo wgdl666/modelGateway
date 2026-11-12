@@ -379,14 +379,14 @@ func TraceIDContainsFold(v string) predicate.Request {
 	return predicate.Request(sql.FieldContainsFold(FieldTraceID, v))
 }
 
-// InputMediaIsNil applies the IsNil predicate on the "input_media" field.
-func InputMediaIsNil() predicate.Request {
-	return predicate.Request(sql.FieldIsNull(FieldInputMedia))
+// ExtraIsNil applies the IsNil predicate on the "extra" field.
+func ExtraIsNil() predicate.Request {
+	return predicate.Request(sql.FieldIsNull(FieldExtra))
 }
 
-// InputMediaNotNil applies the NotNil predicate on the "input_media" field.
-func InputMediaNotNil() predicate.Request {
-	return predicate.Request(sql.FieldNotNull(FieldInputMedia))
+// ExtraNotNil applies the NotNil predicate on the "extra" field.
+func ExtraNotNil() predicate.Request {
+	return predicate.Request(sql.FieldNotNull(FieldExtra))
 }
 
 // PayloadBytesEQ applies the EQ predicate on the "payload_bytes" field.

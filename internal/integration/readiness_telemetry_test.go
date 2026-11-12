@@ -43,7 +43,7 @@ func TestReadinessLogsMissingSchemaWithoutBypassingHealth(t *testing.T) {
 	for _, field := range []struct{ table, column string }{
 		{"resource_groups", "capacity_units"}, {"model_instances", "protocol"}, {"model_instances", "deleted_at"},
 		{"requests", "protocol"}, {"requests", "queue_publish_at"}, {"requests", "resource_groups"},
-		{"requests", "dispatch_attempts"}, {"requests", "dispatch_retry_reason"}, {"requests", "input_media"},
+		{"requests", "dispatch_attempts"}, {"requests", "dispatch_retry_reason"}, {"requests", "extra"},
 	} {
 		t.Run(field.table+"."+field.column, func(t *testing.T) {
 			if err := output.Truncate(0); err != nil {
