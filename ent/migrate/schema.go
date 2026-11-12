@@ -9,6 +9,22 @@ import (
 )
 
 var (
+	// APITokensColumns holds the columns for the "api_tokens" table.
+	APITokensColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString},
+		{Name: "encrypted_token", Type: field.TypeString, Size: 2147483647},
+		{Name: "created_by", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+	}
+	// APITokensTable holds the schema information for the "api_tokens" table.
+	APITokensTable = &schema.Table{
+		Name:       "api_tokens",
+		Columns:    APITokensColumns,
+		PrimaryKey: []*schema.Column{APITokensColumns[0]},
+	}
 	// ModelInstancesColumns holds the columns for the "model_instances" table.
 	ModelInstancesColumns = []*schema.Column{
 		{Name: "instance_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
@@ -53,6 +69,7 @@ var (
 		{Name: "model_key", Type: field.TypeString, Size: 2147483647},
 		{Name: "protocol", Type: field.TypeString, Size: 2147483647},
 		{Name: "trace_id", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "api_token_id", Type: field.TypeString, Default: ""},
 		{Name: "request_payload", Type: field.TypeJSON},
 		{Name: "extra", Type: field.TypeJSON, Nullable: true},
 		{Name: "payload_bytes", Type: field.TypeInt64},
@@ -89,7 +106,7 @@ var (
 			{
 				Name:    "request_model_key_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[28], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[29], RequestsColumns[0]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -97,7 +114,7 @@ var (
 			{
 				Name:    "request_queue_publish_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[9], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[10], RequestsColumns[0]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued' AND queue_publish_at IS NOT NULL",
 				},
@@ -105,7 +122,7 @@ var (
 			{
 				Name:    "request_deadline_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[19]},
+				Columns: []*schema.Column{RequestsColumns[20]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -113,7 +130,7 @@ var (
 			{
 				Name:    "request_resource_group_instance_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[12], RequestsColumns[11]},
+				Columns: []*schema.Column{RequestsColumns[13], RequestsColumns[12]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "slot_reserved",
 				},
@@ -121,7 +138,7 @@ var (
 			{
 				Name:    "request_next_poll_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[22]},
+				Columns: []*schema.Column{RequestsColumns[23]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "slot_reserved",
 				},
@@ -129,7 +146,7 @@ var (
 			{
 				Name:    "request_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[28], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[29], RequestsColumns[0]},
 			},
 			{
 				Name:    "request_trace_id",
@@ -163,6 +180,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		APITokensTable,
 		ModelInstancesTable,
 		RequestsTable,
 		ResourceGroupsTable,
@@ -170,6 +188,9 @@ var (
 )
 
 func init() {
+	APITokensTable.Annotation = &entsql.Annotation{
+		Table: "api_tokens",
+	}
 	ModelInstancesTable.Annotation = &entsql.Annotation{
 		Table: "model_instances",
 	}

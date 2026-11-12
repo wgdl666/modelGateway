@@ -46,7 +46,7 @@ func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, 
 	}
 	// 同步记录不存原图。extra 里明确记下没有输入，Ops 无需再读详情确认。
 	extra, _ := protocol.InputMediaExtra(nil)
-	task, err := s.store.Admit(ctx, store.Admission{ID: id, ModelKey: model, Protocol: kind, TraceID: synchronousTraceID(c),
+	task, err := s.store.Admit(ctx, store.Admission{ID: id, ModelKey: model, Protocol: kind, TraceID: synchronousTraceID(c), APITokenID: c.GetString(apiTokenID),
 		Payload: payload, Input: input, Extra: extra, Units: units, MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout})
 	if err != nil {
 		storeError(c, err, id)

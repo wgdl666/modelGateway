@@ -79,6 +79,11 @@ func TraceID(v string) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldTraceID, v))
 }
 
+// APITokenID applies equality check predicate on the "api_token_id" field. It's identical to APITokenIDEQ.
+func APITokenID(v string) predicate.Request {
+	return predicate.Request(sql.FieldEQ(FieldAPITokenID, v))
+}
+
 // PayloadBytes applies equality check predicate on the "payload_bytes" field. It's identical to PayloadBytesEQ.
 func PayloadBytes(v int64) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldPayloadBytes, v))
@@ -377,6 +382,71 @@ func TraceIDEqualFold(v string) predicate.Request {
 // TraceIDContainsFold applies the ContainsFold predicate on the "trace_id" field.
 func TraceIDContainsFold(v string) predicate.Request {
 	return predicate.Request(sql.FieldContainsFold(FieldTraceID, v))
+}
+
+// APITokenIDEQ applies the EQ predicate on the "api_token_id" field.
+func APITokenIDEQ(v string) predicate.Request {
+	return predicate.Request(sql.FieldEQ(FieldAPITokenID, v))
+}
+
+// APITokenIDNEQ applies the NEQ predicate on the "api_token_id" field.
+func APITokenIDNEQ(v string) predicate.Request {
+	return predicate.Request(sql.FieldNEQ(FieldAPITokenID, v))
+}
+
+// APITokenIDIn applies the In predicate on the "api_token_id" field.
+func APITokenIDIn(vs ...string) predicate.Request {
+	return predicate.Request(sql.FieldIn(FieldAPITokenID, vs...))
+}
+
+// APITokenIDNotIn applies the NotIn predicate on the "api_token_id" field.
+func APITokenIDNotIn(vs ...string) predicate.Request {
+	return predicate.Request(sql.FieldNotIn(FieldAPITokenID, vs...))
+}
+
+// APITokenIDGT applies the GT predicate on the "api_token_id" field.
+func APITokenIDGT(v string) predicate.Request {
+	return predicate.Request(sql.FieldGT(FieldAPITokenID, v))
+}
+
+// APITokenIDGTE applies the GTE predicate on the "api_token_id" field.
+func APITokenIDGTE(v string) predicate.Request {
+	return predicate.Request(sql.FieldGTE(FieldAPITokenID, v))
+}
+
+// APITokenIDLT applies the LT predicate on the "api_token_id" field.
+func APITokenIDLT(v string) predicate.Request {
+	return predicate.Request(sql.FieldLT(FieldAPITokenID, v))
+}
+
+// APITokenIDLTE applies the LTE predicate on the "api_token_id" field.
+func APITokenIDLTE(v string) predicate.Request {
+	return predicate.Request(sql.FieldLTE(FieldAPITokenID, v))
+}
+
+// APITokenIDContains applies the Contains predicate on the "api_token_id" field.
+func APITokenIDContains(v string) predicate.Request {
+	return predicate.Request(sql.FieldContains(FieldAPITokenID, v))
+}
+
+// APITokenIDHasPrefix applies the HasPrefix predicate on the "api_token_id" field.
+func APITokenIDHasPrefix(v string) predicate.Request {
+	return predicate.Request(sql.FieldHasPrefix(FieldAPITokenID, v))
+}
+
+// APITokenIDHasSuffix applies the HasSuffix predicate on the "api_token_id" field.
+func APITokenIDHasSuffix(v string) predicate.Request {
+	return predicate.Request(sql.FieldHasSuffix(FieldAPITokenID, v))
+}
+
+// APITokenIDEqualFold applies the EqualFold predicate on the "api_token_id" field.
+func APITokenIDEqualFold(v string) predicate.Request {
+	return predicate.Request(sql.FieldEqualFold(FieldAPITokenID, v))
+}
+
+// APITokenIDContainsFold applies the ContainsFold predicate on the "api_token_id" field.
+func APITokenIDContainsFold(v string) predicate.Request {
+	return predicate.Request(sql.FieldContainsFold(FieldAPITokenID, v))
 }
 
 // ExtraIsNil applies the IsNil predicate on the "extra" field.

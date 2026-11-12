@@ -14,12 +14,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wgdl666/kangaroo/bizerr"
 	"github.com/wgdl666/modelGateway/internal/protocol"
+	"github.com/wgdl666/modelGateway/internal/token"
 )
 
 type Config struct {
-	SubjectPools      map[string]SubjectPool `json:"subject_pools,omitempty"`
-	SubjectPoolAPIKey string                 `json:"-"`
+	// 仅由 Secret 注入；留空时关闭独立 Token，不影响已有固定凭据。
+	TokenEncryptionKey string                 `json:"-"`
+	SubjectPools       map[string]SubjectPool `json:"subject_pools,omitempty"`
+	SubjectPoolAPIKey  string                 `json:"-"`
 
 	Logfire         LogfireConfig  `json:"logfire"`
 	DatabaseURL     string         `json:"database_url"`
@@ -84,6 +88,7 @@ func Parse(raw []byte) (Config, error) {
 		"MODEL_GATEWAY_SUBJECT_POOL_API_KEY": &c.SubjectPoolAPIKey,
 		"MODEL_GATEWAY_DATABASE_URL":         &c.DatabaseURL,
 		"MODEL_GATEWAY_RABBITMQ_URL":         &c.RabbitMQURL,
+		"MODEL_GATEWAY_TOKEN_ENCRYPTION_KEY": &c.TokenEncryptionKey,
 		"MODEL_GATEWAY_API_TOKEN":            &c.APIToken,
 		"MODEL_GATEWAY_ADMIN_TOKEN":          &c.AdminToken,
 		"MODEL_GATEWAY_EXPERIMENTAL_TOKEN":   &c.ExperimentalToken,
@@ -121,6 +126,11 @@ type Snapshot struct {
 }
 
 func prepareConfig(c Config) (*Snapshot, error) {
+	if c.TokenEncryptionKey != "" {
+		if _, err := token.Cipher(c.TokenEncryptionKey); err != nil {
+			return nil, err
+		}
+	}
 	// 业务调用方与管理员使用独立凭据，避免业务凭据具备实例管理权限。
 	if len(c.APIToken) < 24 || len(c.AdminToken) < 24 || c.APIToken == c.AdminToken {
 		return nil, errors.New("distinct API and admin tokens of at least 24 characters required")
@@ -233,6 +243,9 @@ func (r *Runtime) Reload(c Config) error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if next.TokenEncryptionKey != r.current.TokenEncryptionKey {
+		return bizerr.New(token.Unavailable, "changing Token encryption key requires restarting with a migrated key")
+	}
 	if next.DatabaseURL != r.current.DatabaseURL {
 		return errors.New("changing database_url requires draining and restarting the gateway")
 	}

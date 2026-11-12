@@ -1,5 +1,5 @@
 name: Go tests
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
 jobs:
@@ -43,7 +43,7 @@ jobs:
   deploy-cn-dev:
     name: Deploy CN Dev (ACK)
     needs: test
-    if: github.repository == 'wgdl666/modelGateway' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.repository == 'wgdl666/modelGateway' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/dev'
     # 公开仓的发布任务需要专用 runner group，避免 PR 任务接触 ACK 发布身份。
     runs-on:
       group: modelgateway-cn-dev-release
@@ -63,7 +63,7 @@ jobs:
   deploy-aws-exhibition:
     name: Deploy US East Exhibition (ECS)
     needs: test
-    if: github.repository == 'wgdl666/modelGateway' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.repository == 'wgdl666/modelGateway' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     concurrency:

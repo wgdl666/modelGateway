@@ -24,6 +24,8 @@ func (Request) Fields() []ent.Field {
 		field.Text("protocol").Immutable(),
 		// 查询链路只需要 Trace ID，避免 Ops 列表读取包含图片的请求正文。
 		field.Text("trace_id").Default("").Immutable(),
+		// 凭据归属随受理冻结，历史记录不保存明文 Token。
+		field.String("api_token_id").Default("").Immutable(),
 		field.JSON("request_payload", json.RawMessage{}).Immutable(),
 		// 派生信息，不参与受理、派发和幂等。输入清单这类展示数据放在这里，避免每项加一列。
 		// 旧副本受理的请求没有输入清单，列表省略 inputs，需读详情；outputs 仍从结果生成。
