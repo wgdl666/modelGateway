@@ -125,7 +125,7 @@ func (s *Server) executeSynchronous(ctx context.Context, c *app.RequestContext, 
 	var wrote atomic.Bool
 	execCtx = httptrace.WithClientTrace(execCtx, &httptrace.ClientTrace{WroteHeaders: func() { wrote.Store(true) }})
 	complete := func(result protocol.HTTPResult, known bool) {
-		writeCtx, end := context.WithTimeout(context.Background(), store.ExecutionWriteTimeout)
+		writeCtx, end := context.WithTimeout(context.WithoutCancel(ctx), store.SynchronousWriteTimeout)
 		defer end()
 		if err := s.store.CompleteSynchronous(writeCtx, task.ID, task.PollClaim, result, known); err != nil {
 			telemetry.LogError(execCtx, "synchronous outcome persistence failed", err, "request_id", task.ID)

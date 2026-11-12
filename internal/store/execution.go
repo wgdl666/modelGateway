@@ -2,47 +2,100 @@ package store
 
 import (
 	"context"
+	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/internal/protocol"
+	"github.com/wgdl666/modelGateway/internal/telemetry"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // ExecutionWriteTimeout 给执行终态写入预留时间，避免结果回查提前接管。
 const ExecutionWriteTimeout = 3 * time.Second
 
+// SynchronousWriteTimeout 覆盖三次独立的保存尝试和退避，不增加模型执行预算。
+// shortcut: 结果仅在进程存活且重试预算内保留；需跨重启或长故障恢复时再引入持久完成凭据。
+const SynchronousWriteTimeout = 10 * time.Second
+
 // CompleteSynchronous 以读完上游响应为释放依据；连接中断只能证明结果未知，不能虚构 GPU 已空闲。
 func (s *Store) CompleteSynchronous(ctx context.Context, id, claim string, result protocol.HTTPResult, known bool) error {
-	return s.updateExecution(ctx, id, claim, func(task *ent.Request, update *ent.RequestUpdateOne) error {
-		update.ClearNextPollAt()
-		if !known {
-			if task.State == request.StateProcessing {
-				update.SetState(request.StateFailed).SetFinishedAt(time.Now().UTC()).SetErrorStatus(504).
-					SetErrorCode("backend_outcome_unknown").SetErrorMessage("synchronous model execution outcome is unknown")
+	apply := func(attemptCtx context.Context) error {
+		return s.updateExecution(attemptCtx, id, claim, func(task *ent.Request, update *ent.RequestUpdateOne) error {
+			update.ClearNextPollAt()
+			if !known {
+				if task.State == request.StateProcessing {
+					update.SetState(request.StateFailed).SetFinishedAt(time.Now().UTC()).SetErrorStatus(504).
+						SetErrorCode("backend_outcome_unknown").SetErrorMessage("synchronous model execution outcome is unknown")
+				}
+				return nil
 			}
-			return nil
+			update.SetSlotReserved(false)
+			if task.State == request.StateFailed {
+				return nil
+			}
+			update.SetFinishedAt(time.Now().UTC())
+			if result.StatusCode < 200 || result.StatusCode >= 300 {
+				update.SetState(request.StateFailed).SetErrorStatus(result.StatusCode).
+					SetErrorCode("upstream_error").SetErrorMessage(fmt.Sprintf("model returned HTTP %d", result.StatusCode))
+				return nil
+			}
+			raw, err := json.Marshal(protocol.Result{HTTP: &result})
+			if err == nil {
+				update.SetState(request.StateSucceeded).SetResult(raw)
+			}
+			return err
+		})
+	}
+	// 只重试已拿到的执行结果。相同领取标识及原事务保护重复提交和提交结果不确定的情况。
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
-		update.SetSlotReserved(false)
-		if task.State == request.StateFailed {
-			return nil
-		}
-		update.SetFinishedAt(time.Now().UTC())
-		if result.StatusCode < 200 || result.StatusCode >= 300 {
-			update.SetState(request.StateFailed).SetErrorStatus(result.StatusCode).
-				SetErrorCode("upstream_error").SetErrorMessage(fmt.Sprintf("model returned HTTP %d", result.StatusCode))
-			return nil
-		}
-		raw, err := json.Marshal(protocol.Result{HTTP: &result})
+		attemptCtx, cancel := context.WithTimeout(ctx, ExecutionWriteTimeout)
+		err = apply(attemptCtx)
+		timedOut := errors.Is(attemptCtx.Err(), context.DeadlineExceeded)
+		cancel()
 		if err == nil {
-			update.SetState(request.StateSucceeded).SetResult(raw)
+			return nil
 		}
-		return err
-	})
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if attempt == 2 || (!timedOut && !retryableCompletionError(err)) {
+			return err
+		}
+		telemetry.LogError(ctx, "synchronous outcome persistence retry", err, "request_id", id, "attempt", attempt+1)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * 100 * time.Millisecond):
+		}
+	}
+	return err
+}
+
+// 仅重试瞬时数据库错误；校验、缺表和约束错误不会靠重复写入恢复。
+func retryableCompletionError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, driver.ErrBadConn) || pgconn.SafeToRetry(err) {
+		return true
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	return strings.HasPrefix(pgErr.Code, "08") || pgErr.Code == "40001" || pgErr.Code == "40P01" || pgErr.Code == "53300" || pgErr.Code == "57P01"
 }
 
 // ClaimPoll 领取结果回查，派发与容量归还仍由请求账本里的状态决定。
@@ -79,31 +132,56 @@ func (s *Store) ExtendPoll(ctx context.Context, id, claim string, until time.Tim
 	return count == 1, err
 }
 
-func (s *Store) updateExecution(ctx context.Context, id, claim string, apply func(*ent.Request, *ent.RequestUpdateOne) error) error {
+func (s *Store) updateExecution(ctx context.Context, id, claim string, apply func(*ent.Request, *ent.RequestUpdateOne) error) (err error) {
+	// 只记录阶段和耗时，避免数据库错误链携带 SQL 参数或媒体正文进入遥测。
+	ctx, span := otel.Tracer("github.com/wgdl666/modelGateway").Start(ctx, "gateway.db.update_execution")
+	phase := "begin_tx"
+	span.SetAttributes(attribute.String("request_id", id))
+	defer func() {
+		if err != nil {
+			span.SetAttributes(attribute.String("db.phase", phase))
+			span.SetStatus(codes.Error, phase)
+			telemetry.LogError(ctx, "gateway execution persistence failed", err, "request_id", id, "db.phase", phase)
+		}
+		span.End()
+	}()
+	started := time.Now()
 	tx, err := s.db.Tx(ctx)
+	span.SetAttributes(attribute.Float64("db.begin_tx_ms", float64(time.Since(started))/float64(time.Millisecond)))
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	phase = "lock_request"
+	started = time.Now()
 	task, err := tx.Request.Query().Where(request.IDEQ(id)).ForUpdate().Select(
 		request.FieldID, request.FieldSlotReserved, request.FieldState,
 		request.FieldPollClaim, request.FieldBackendTaskID, request.FieldDeadlineAt,
 		request.FieldCreatedAt, request.FieldStartedAt, request.FieldDispatchAttempts, request.FieldDispatchRetryReason,
 	).Only(ctx)
+	span.SetAttributes(attribute.Float64("db.lock_request_ms", float64(time.Since(started))/float64(time.Millisecond)))
 	if err != nil {
 		return err
 	}
 	if !task.SlotReserved || (claim != "" && claim != task.PollClaim) {
 		return nil
 	}
+	phase = "update"
 	update := tx.Request.UpdateOneID(id).SetPollClaim("")
-	if err := apply(task, update); err != nil {
+	if err = apply(task, update); err != nil {
 		return err
 	}
-	if err := update.Exec(ctx); err != nil {
+	started = time.Now()
+	err = update.Exec(ctx)
+	span.SetAttributes(attribute.Float64("db.update_ms", float64(time.Since(started))/float64(time.Millisecond)))
+	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	phase = "commit"
+	started = time.Now()
+	err = tx.Commit()
+	span.SetAttributes(attribute.Float64("db.commit_ms", float64(time.Since(started))/float64(time.Millisecond)))
+	return err
 }
 
 func (s *Store) RecordResponse(ctx context.Context, id, claim string, response protocol.ModelResponse, interval time.Duration) error {
