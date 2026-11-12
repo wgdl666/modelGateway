@@ -20,6 +20,8 @@ const (
 	FieldProtocol = "protocol"
 	// FieldTraceID holds the string denoting the trace_id field in the database.
 	FieldTraceID = "trace_id"
+	// FieldAPITokenID holds the string denoting the api_token_id field in the database.
+	FieldAPITokenID = "api_token_id"
 	// FieldRequestPayload holds the string denoting the request_payload field in the database.
 	FieldRequestPayload = "request_payload"
 	// FieldPayloadBytes holds the string denoting the payload_bytes field in the database.
@@ -80,6 +82,7 @@ var Columns = []string{
 	FieldModelKey,
 	FieldProtocol,
 	FieldTraceID,
+	FieldAPITokenID,
 	FieldRequestPayload,
 	FieldPayloadBytes,
 	FieldUnits,
@@ -120,6 +123,8 @@ func ValidColumn(column string) bool {
 var (
 	// DefaultTraceID holds the default value on creation for the "trace_id" field.
 	DefaultTraceID string
+	// DefaultAPITokenID holds the default value on creation for the "api_token_id" field.
+	DefaultAPITokenID string
 	// PayloadBytesValidator is a validator for the "payload_bytes" field. It is called by the builders before save.
 	PayloadBytesValidator func(int64) error
 	// UnitsValidator is a validator for the "units" field. It is called by the builders before save.
@@ -209,6 +214,11 @@ func ByProtocol(opts ...sql.OrderTermOption) OrderOption {
 // ByTraceID orders the results by the trace_id field.
 func ByTraceID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTraceID, opts...).ToFunc()
+}
+
+// ByAPITokenID orders the results by the api_token_id field.
+func ByAPITokenID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAPITokenID, opts...).ToFunc()
 }
 
 // ByPayloadBytes orders the results by the payload_bytes field.

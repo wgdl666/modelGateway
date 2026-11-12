@@ -18,6 +18,7 @@ import (
 // Admission 携带本次受理的队列限制，任务入库后沿用当时计算的截止时间。
 type Admission struct {
 	ID, ModelKey, Protocol string
+	APITokenID             string
 	TraceID                string
 	Payload                json.RawMessage
 	Input                  json.RawMessage
@@ -44,7 +45,7 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 			if protocol.SynchronousKind(in.Protocol) != "" {
 				return ErrConflict
 			}
-			if old.ModelKey != in.ModelKey || old.Protocol != in.Protocol || !sameInput(old.RequestPayload, in.Input) {
+			if old.APITokenID != in.APITokenID || old.ModelKey != in.ModelKey || old.Protocol != in.Protocol || !sameInput(old.RequestPayload, in.Input) {
 				return ErrConflict
 			}
 			task = old
@@ -80,7 +81,7 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 			return ErrFull
 		}
 		create := tx.Request.Create().SetID(in.ID).SetModelKey(in.ModelKey).SetProtocol(in.Protocol).
-			SetTraceID(in.TraceID).SetRequestPayload(in.Payload).SetPayloadBytes(int64(len(in.Payload))).SetUnits(in.Units).
+			SetAPITokenID(in.APITokenID).SetTraceID(in.TraceID).SetRequestPayload(in.Payload).SetPayloadBytes(int64(len(in.Payload))).SetUnits(in.Units).
 			SetCreatedAt(now).SetDeadlineAt(now.Add(in.BackendTimeout))
 		// 同步响应由原连接读取，容量仍在 PG 竞争；不能再投 MQ 产生第二次模型执行。
 		if protocol.SynchronousKind(in.Protocol) == "" {

@@ -44,7 +44,7 @@ func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, 
 	if units == 0 {
 		units = 1
 	}
-	task, err := s.store.Admit(ctx, store.Admission{ID: id, ModelKey: model, Protocol: kind, TraceID: synchronousTraceID(c),
+	task, err := s.store.Admit(ctx, store.Admission{ID: id, ModelKey: model, Protocol: kind, TraceID: synchronousTraceID(c), APITokenID: c.GetString(apiTokenID),
 		Payload: payload, Input: input, Units: units, MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout})
 	if err != nil {
 		storeError(c, err, id)

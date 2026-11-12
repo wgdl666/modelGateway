@@ -24,6 +24,8 @@ func (Request) Fields() []ent.Field {
 		field.Text("protocol").Immutable(),
 		// 查询链路只需要 Trace ID，避免 Ops 列表读取包含图片的请求正文。
 		field.Text("trace_id").Default("").Immutable(),
+		// 凭据归属随受理冻结，历史记录不保存明文 Token。
+		field.String("api_token_id").Default("").Immutable(),
 		field.JSON("request_payload", json.RawMessage{}).Immutable(),
 		field.Int64("payload_bytes").Positive().Immutable(),
 		field.Int("units").Positive().Immutable(),

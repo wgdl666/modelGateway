@@ -12,6 +12,8 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// APIToken is the client for interacting with the APIToken builders.
+	APIToken *APITokenClient
 	// ModelInstance is the client for interacting with the ModelInstance builders.
 	ModelInstance *ModelInstanceClient
 	// Request is the client for interacting with the Request builders.
@@ -149,6 +151,7 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.APIToken = NewAPITokenClient(tx.config)
 	tx.ModelInstance = NewModelInstanceClient(tx.config)
 	tx.Request = NewRequestClient(tx.config)
 	tx.ResourceGroup = NewResourceGroupClient(tx.config)
@@ -161,7 +164,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: ModelInstance.QueryXXX(), the query will be executed
+// applies a query, for example: APIToken.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

@@ -22,6 +22,7 @@ import (
 	"github.com/wgdl666/modelGateway/internal/protocol"
 	"github.com/wgdl666/modelGateway/internal/store"
 	"github.com/wgdl666/modelGateway/internal/telemetry"
+	"github.com/wgdl666/modelGateway/internal/token"
 )
 
 // Server 固定每次入站请求的配置快照，让鉴权、地址校验和受理使用同一份配置。
@@ -87,6 +88,10 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.POST("/v1/resource-groups", s.auth("admin", s.createResourceGroup))
 	h.PATCH("/v1/resource-groups", s.auth("admin", s.updateResourceGroup))
 	h.PATCH("/v1/resource-groups/machine", s.auth("admin", s.renameResourceGroupMachine))
+	h.GET("/v1/admin/api-tokens", s.auth("admin", s.apiTokens))
+	h.POST("/v1/admin/api-tokens", s.auth("admin", s.apiTokens))
+	h.GET("/v1/admin/api-tokens/:id", s.auth("admin", s.apiToken))
+	h.DELETE("/v1/admin/api-tokens/:id", s.auth("admin", s.apiToken))
 	h.GET("/v1/admin/requests", s.auth("admin", s.listRequests))
 	h.GET("/v1/admin/request-stats", s.auth("admin", s.requestStats))
 	h.GET("/v1/admin/requests/:id/media", s.auth("admin", s.requestMedia))
@@ -122,6 +127,21 @@ func (s *Server) auth(role string, next app.HandlerFunc) app.HandlerFunc {
 			if !allowed && cfg.ExperimentalToken != "" && match(cfg.ExperimentalToken) {
 				allowed = true
 				c.Set(experimentalCredential, true)
+			}
+			if !allowed && cfg.TokenEncryptionKey != "" && token.ID(strings.TrimPrefix(string(header), "Bearer ")) != "" && strings.HasPrefix(string(header), "Bearer ") {
+				aead := tokenCipher(ctx, c)
+				if aead == nil {
+					return
+				}
+				id, err := s.store.AuthenticateAPIToken(ctx, aead, strings.TrimPrefix(string(header), "Bearer "))
+				if err != nil {
+					tokenError(c, err)
+					return
+				}
+				allowed = id != ""
+				if allowed {
+					c.Set(apiTokenID, id)
+				}
 			}
 		}
 		if !allowed {
@@ -393,7 +413,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 	task, err := s.store.Admit(ctx, store.Admission{
 		ID: id, ModelKey: model, Protocol: kind, Payload: raw, Input: input.Input,
 		// 占用单位随受理落库，后续配置更新不会改变已排队请求的重量。
-		TraceID: input.Metadata.TraceID, Units: max(1, cfg.UnitsByModelKey[model]),
+		APITokenID: c.GetString(apiTokenID), TraceID: input.Metadata.TraceID, Units: max(1, cfg.UnitsByModelKey[model]),
 		MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout,
 	})
 	<-s.uploads

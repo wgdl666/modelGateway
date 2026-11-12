@@ -11,6 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.1
 	github.com/cloudwego/hertz v0.10.6
 	github.com/google/uuid v1.6.0
+	github.com/wgdl666/kangaroo/bizerr v0.0.0-20260805125009-85ddf2d025e0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/nacos-group/nacos-sdk-go/v2 v2.3.5
 	github.com/rabbitmq/amqp091-go v1.10.0

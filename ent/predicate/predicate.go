@@ -6,6 +6,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// APIToken is the predicate function for apitoken builders.
+type APIToken func(*sql.Selector)
+
 // ModelInstance is the predicate function for modelinstance builders.
 type ModelInstance func(*sql.Selector)
 
