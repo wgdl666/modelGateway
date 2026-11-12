@@ -2,8 +2,11 @@ package store
 
 import (
 	"context"
+	stdsql "database/sql"
 	"errors"
+	"log/slog"
 	"runtime"
+	"time"
 
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
@@ -41,5 +44,33 @@ func OpenDatabase(ctx context.Context, dsn string) (*ent.Client, error) {
 		_ = db.Close()
 		return nil, errors.New("apply the model-key-only database migration before starting the gateway")
 	}
-	return ent.NewClient(ent.Driver(sql.OpenDB(dialect.Postgres, db))), nil
+	return ent.NewClient(ent.Driver(&observedDriver{Driver: sql.OpenDB(dialect.Postgres, db)})), nil
+}
+
+// observedDriver 在 SQL 发出前记录取连接和 BEGIN 的总耗时，不把整个阶段误称为连接池等待。
+type observedDriver struct{ *sql.Driver }
+
+func (d *observedDriver) Tx(ctx context.Context) (dialect.Tx, error) {
+	return d.BeginTx(ctx, nil)
+}
+
+func (d *observedDriver) BeginTx(ctx context.Context, opts *stdsql.TxOptions) (dialect.Tx, error) {
+	before := d.DB().Stats()
+	started := time.Now()
+	tx, err := d.Driver.BeginTx(ctx, opts)
+	elapsed := time.Since(started)
+	if err != nil || elapsed >= 100*time.Millisecond {
+		after := d.DB().Stats()
+		// 池计数是此时间段内所有调用的增量，不能当成该事务独占的等待时间。
+		attrs := []any{"db.phase", "begin_tx", "db.begin_tx_ms", float64(elapsed) / float64(time.Millisecond),
+			"db.pool.wait_count_delta", after.WaitCount - before.WaitCount,
+			"db.pool.wait_duration_delta_ms", float64(after.WaitDuration-before.WaitDuration) / float64(time.Millisecond),
+			"db.pool.in_use_before", before.InUse, "db.pool.in_use_after", after.InUse, "db.pool.max_open", after.MaxOpenConnections}
+		if err != nil {
+			telemetry.LogError(ctx, "gateway database transaction start failed", err, attrs...)
+		} else {
+			slog.InfoContext(ctx, "gateway database transaction start delayed", attrs...)
+		}
+	}
+	return tx, err
 }
