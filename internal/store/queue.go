@@ -94,12 +94,25 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 		task, err = create.Save(ctx)
 		return err
 	})
+	if err == nil && task.QueuePublishAt != nil && task.State == request.StateQueued {
+		s.notifyPublication()
+	}
 	return task, err
 }
 
-func (s *Store) PendingPublications(ctx context.Context) ([]*ent.Request, error) {
+// PublicationWake 合并本副本提交后的唤醒；持久投递事实仍以 PG 为准。
+func (s *Store) PublicationWake() <-chan struct{} { return s.publicationWake }
+
+func (s *Store) notifyPublication() {
+	select {
+	case s.publicationWake <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Store) ScheduledPublications(ctx context.Context) ([]*ent.Request, error) {
 	now := time.Now().UTC()
-	return s.db.Request.Query().Where(request.StateEQ(request.StateQueued), request.QueuePublishAtLTE(now), request.DeadlineAtGT(now)).
+	return s.db.Request.Query().Where(request.StateEQ(request.StateQueued), request.QueuePublishAtNotNil(), request.DeadlineAtGT(now)).
 		Order(ent.Asc(request.FieldQueuePublishAt, request.FieldID)).Limit(32).
 		Select(request.FieldID, request.FieldQueuePublishAt, request.FieldDeadlineAt).All(ctx)
 }
@@ -141,8 +154,10 @@ func reserved(ctx context.Context, client *ent.RequestClient) ([]reservation, er
 
 func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.Request, error) {
 	var task *ent.Request
+	var deferred bool
 	err := s.serialize(ctx, func(tx *ent.Tx) error {
 		task = nil
+		deferred = false
 		now := time.Now().UTC()
 		// 同一消息可能重投。按 ID 等待行锁，锁竞争不能被误当成已处理而确认消息。
 		next, err := tx.Request.Query().Where(request.IDEQ(id), request.StateEQ(request.StateQueued), request.DeadlineAtGT(now)).
@@ -156,6 +171,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		}
 		// 旧消息可能在回队后重投。沿用延期写入新的时间标记，防止迟到的发布确认清掉下次投递。
 		if next.QueuePublishAt != nil && next.QueuePublishAt.After(now) {
+			deferred = true
 			return deferPublication(ctx, tx, next)
 		}
 		// 同键不同业务的旧登记在迁移时已归档，派发直接按请求的模型键选实例。
@@ -170,6 +186,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 			if protocol.SynchronousKind(next.Protocol) != "" {
 				return nil
 			}
+			deferred = true
 			return deferPublication(ctx, tx, next)
 		}
 		// 同一事务锁定物理卡的容量，多卡实例必须一次拿齐全部额度。
@@ -231,8 +248,12 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		if protocol.SynchronousKind(next.Protocol) != "" {
 			return nil
 		}
+		deferred = true
 		return deferPublication(ctx, tx, next)
 	})
+	if err == nil && deferred {
+		s.notifyPublication()
+	}
 	return task, err
 }
 
@@ -254,11 +275,14 @@ func (s *Store) RequeueDispatch(ctx context.Context, id string, startedAt time.T
 	}
 	// 忙、断线和调用超时统一延期回队。只撤销本轮领取，不重置总截止时间或重派已登记的异步任务。
 	due := time.Now().UTC().Add(time.Second).Truncate(time.Microsecond)
-	_, err := s.db.Request.Update().Where(request.IDEQ(id), request.StateEQ(request.StateProcessing),
+	count, err := s.db.Request.Update().Where(request.IDEQ(id), request.StateEQ(request.StateProcessing),
 		request.SlotReservedEQ(true), request.StartedAtEQ(startedAt), request.PollClaimEQ(claim), request.BackendTaskIDEQ("")).
 		SetState(request.StateQueued).SetSlotReserved(false).SetQueuePublishAt(due).SetDispatchRetryReason(reason).
 		SetInstanceID("").SetResourceGroup("").SetResourceGroups([]string{}).SetEndpoint("").SetArtifactDigest("").
 		ClearStartedAt().ClearNextPollAt().SetPollClaim("").Save(ctx)
+	if err == nil && count > 0 {
+		s.notifyPublication()
+	}
 	return err
 }
 

@@ -385,6 +385,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_protocol", "model protocol does not match the requested output", id)
 		return
 	}
+	var extra []byte
 	normalized, err := protocol.NormalizeMediaInput(kind, input.Input)
 	if err == nil {
 		input.Input = normalized
@@ -392,7 +393,12 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		if c.GetBool(experimentalCredential) {
 			validate = protocol.ValidateExperimentalInput
 		}
-		err = validate(kind, input.Input)
+		var images []protocol.InputImage
+		images, err = validate(kind, input.Input)
+		if err == nil {
+			// 清单复用校验时的解码结果；图片字节只在该块内使用，不带入终态等待。
+			extra, err = protocol.InputMediaExtra(protocol.InputMedia(kind, images))
+		}
 	}
 	for _, value := range []string{input.Metadata.TraceID, input.Metadata.UserID} {
 		if len(value) > 256 || strings.ContainsFunc(value, func(r rune) bool { return r < 32 || r == 127 }) {
@@ -405,14 +411,6 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	raw, err = json.Marshal(input)
-	var extra []byte
-	if err == nil {
-		// 输入已通过校验，这里只为列表记下每张图的角色和尺寸。
-		var images []protocol.InputImage
-		if _, images, err = protocol.DecodeInput(input.Input); err == nil {
-			extra, err = protocol.InputMediaExtra(protocol.InputMedia(kind, images))
-		}
-	}
 	if err != nil {
 		<-s.uploads
 		writeError(c, 400, "invalid_input", "could not encode normalized input", id)
@@ -458,7 +456,8 @@ func taskResponse(task *ent.Request) protocol.Response {
 }
 
 func (s *Server) waitImage(ctx context.Context, c *app.RequestContext, id string) {
-	ticker := time.NewTicker(45 * time.Millisecond)
+	// 图片生成耗时较长，每秒检查终态，减少等待期间的账本读取。
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
 		task, err := s.store.Get(ctx, id)

@@ -24,12 +24,13 @@ var (
 
 // Store 管理 PG 账本，同一事务协调多个网关副本的受理和容量分配。
 type Store struct {
-	db            *ent.Client
-	serializeGate chan struct{}
+	db              *ent.Client
+	serializeGate   chan struct{}
+	publicationWake chan struct{}
 }
 
 func New(db *ent.Client) *Store {
-	return &Store{db: db, serializeGate: make(chan struct{}, 1)}
+	return &Store{db: db, serializeGate: make(chan struct{}, 1), publicationWake: make(chan struct{}, 1)}
 }
 
 func (s *Store) CheckReady(ctx context.Context) error {

@@ -226,23 +226,24 @@ var experimentalFields = map[string][]string{
 	VideoProtocol:    {"model", "duration", "resolution", "fps", "audio"},
 }
 
-// ValidateInput 按登记协议校验业务字段。缺少拆衣输入时不能转成商品图请求。
-func ValidateInput(kind string, input json.RawMessage) error {
+// ValidateInput 按登记协议校验业务字段，返回已解码图片供受理阶段生成清单，避免重复解码。
+// 缺少拆衣输入时不能转成商品图请求。
+func ValidateInput(kind string, input json.RawMessage) ([]InputImage, error) {
 	return validateInput(kind, input, false)
 }
 
 // ValidateExperimentalInput 在业务字段之外放行该协议的实验参数，仅用于实验凭据。
-func ValidateExperimentalInput(kind string, input json.RawMessage) error {
+func ValidateExperimentalInput(kind string, input json.RawMessage) ([]InputImage, error) {
 	return validateInput(kind, input, true)
 }
 
-func validateInput(kind string, input json.RawMessage, experimental bool) error {
+func validateInput(kind string, input json.RawMessage, experimental bool) ([]InputImage, error) {
 	if !MediaProtocol(kind) {
-		return errors.New("unsupported media protocol")
+		return nil, errors.New("unsupported media protocol")
 	}
 	fields, images, err := DecodeInput(input)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	minImages, maxImages := 1, 1
 	var allowed []string
@@ -251,7 +252,7 @@ func validateInput(kind string, input json.RawMessage, experimental bool) error 
 		allowed = []string{"garment_name", "garment_role"}
 	case WardrobeProtocol:
 		if len(images) == 1 && fields["bbox"] == nil && fields["parse_labels"] == nil {
-			return errors.New("garment extraction requires bbox or parser input")
+			return nil, errors.New("garment extraction requires bbox or parser input")
 		}
 		maxImages = 2
 		allowed = []string{"garment_name", "garment_role", "bbox", "bbox_format", "parse_labels"}
@@ -267,18 +268,18 @@ func validateInput(kind string, input json.RawMessage, experimental bool) error 
 		allowed = append(allowed, experimentalFields[kind]...)
 	}
 	if len(images) < minImages || len(images) > maxImages {
-		return errors.New("wrong number of input images")
+		return nil, errors.New("wrong number of input images")
 	}
 	for key, raw := range fields {
 		if !slices.Contains(allowed, key) || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-			return errors.New("unsupported business field")
+			return nil, errors.New("unsupported business field")
 		}
 		var target any
 		switch key {
 		case "bbox":
 			var coordinates []float64
 			if json.Unmarshal(raw, &coordinates) != nil || len(coordinates) != 4 {
-				return errors.New("bbox must contain four coordinates")
+				return nil, errors.New("bbox must contain four coordinates")
 			}
 			continue
 		case "parse_labels":
@@ -287,8 +288,8 @@ func validateInput(kind string, input json.RawMessage, experimental bool) error 
 			target = new(string)
 		}
 		if json.Unmarshal(raw, target) != nil {
-			return errors.New("invalid business field")
+			return nil, errors.New("invalid business field")
 		}
 	}
-	return nil
+	return images, nil
 }

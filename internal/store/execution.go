@@ -31,7 +31,7 @@ const SynchronousWriteTimeout = 10 * time.Second
 // CompleteSynchronous 以读完上游响应为释放依据；连接中断只能证明结果未知，不能虚构 GPU 已空闲。
 func (s *Store) CompleteSynchronous(ctx context.Context, id, claim string, result protocol.HTTPResult, known bool) error {
 	apply := func(attemptCtx context.Context) error {
-		return s.updateExecution(attemptCtx, id, claim, func(task *ent.Request, update *ent.RequestUpdateOne) error {
+		return s.updateExecution(attemptCtx, id, claim, func(task *ent.Request, update *ent.RequestUpdate) error {
 			update.ClearNextPollAt()
 			if !known {
 				if task.State == request.StateProcessing {
@@ -119,8 +119,13 @@ func (s *Store) ClaimPoll(ctx context.Context) (*ent.Request, error) {
 	}
 	// 首次派发和回查共用领取标识，旧一轮调用或查询的迟到结果不能覆盖重试中的请求。
 	task.PollClaim = uuid.NewString()
-	if err := tx.Request.UpdateOneID(task.ID).SetPollClaim(task.PollClaim).SetNextPollAt(now.Add(8 * time.Second)).Exec(ctx); err != nil {
+	// 仅取更新行数，不读回实体；前面的行锁和领取标识仍负责并发隔离。
+	count, err := tx.Request.Update().Where(request.IDEQ(task.ID)).SetPollClaim(task.PollClaim).SetNextPollAt(now.Add(8 * time.Second)).Save(ctx)
+	if err != nil {
 		return nil, err
+	}
+	if count == 0 {
+		return nil, &ent.NotFoundError{}
 	}
 	return task, tx.Commit()
 }
@@ -132,7 +137,7 @@ func (s *Store) ExtendPoll(ctx context.Context, id, claim string, until time.Tim
 	return count == 1, err
 }
 
-func (s *Store) updateExecution(ctx context.Context, id, claim string, apply func(*ent.Request, *ent.RequestUpdateOne) error) (err error) {
+func (s *Store) updateExecution(ctx context.Context, id, claim string, apply func(*ent.Request, *ent.RequestUpdate) error) (err error) {
 	// 只记录阶段和耗时，避免数据库错误链携带 SQL 参数或媒体正文进入遥测。
 	ctx, span := otel.Tracer("github.com/wgdl666/modelGateway").Start(ctx, "gateway.db.update_execution")
 	phase := "begin_tx"
@@ -167,15 +172,19 @@ func (s *Store) updateExecution(ctx context.Context, id, claim string, apply fun
 		return nil
 	}
 	phase = "update"
-	update := tx.Request.UpdateOneID(id).SetPollClaim("")
+	// 已持有目标行锁，直接按 ID 更新；用影响行数判断不存在，不再查询更新后的实体。
+	update := tx.Request.Update().Where(request.IDEQ(id)).SetPollClaim("")
 	if err = apply(task, update); err != nil {
 		return err
 	}
 	started = time.Now()
-	err = update.Exec(ctx)
+	count, err := update.Save(ctx)
 	span.SetAttributes(attribute.Float64("db.update_ms", float64(time.Since(started))/float64(time.Millisecond)))
 	if err != nil {
 		return err
+	}
+	if count == 0 {
+		return &ent.NotFoundError{}
 	}
 	phase = "commit"
 	started = time.Now()
@@ -185,7 +194,7 @@ func (s *Store) updateExecution(ctx context.Context, id, claim string, apply fun
 }
 
 func (s *Store) RecordResponse(ctx context.Context, id, claim string, response protocol.ModelResponse, interval time.Duration) error {
-	return s.updateExecution(ctx, id, claim, func(task *ent.Request, update *ent.RequestUpdateOne) error {
+	return s.updateExecution(ctx, id, claim, func(task *ent.Request, update *ent.RequestUpdate) error {
 		now := time.Now().UTC()
 		if response.BackendTaskID != "" {
 			update.SetBackendTaskID(response.BackendTaskID)
@@ -239,7 +248,7 @@ func (s *Store) RecordResponse(ctx context.Context, id, claim string, response p
 }
 
 func (s *Store) DispatchFailure(ctx context.Context, id, claim string, status int, code, message string, hold bool) error {
-	return s.updateExecution(ctx, id, claim, func(task *ent.Request, update *ent.RequestUpdateOne) error {
+	return s.updateExecution(ctx, id, claim, func(task *ent.Request, update *ent.RequestUpdate) error {
 		now := time.Now().UTC()
 		if task.State == request.StateProcessing {
 			update.SetState(request.StateFailed).SetErrorStatus(status).SetErrorCode(code).SetErrorMessage(message).SetFinishedAt(now)
@@ -254,7 +263,7 @@ func (s *Store) DispatchFailure(ctx context.Context, id, claim string, status in
 }
 
 func (s *Store) PollUnavailable(ctx context.Context, id, claim string, interval time.Duration) error {
-	return s.updateExecution(ctx, id, claim, func(task *ent.Request, update *ent.RequestUpdateOne) error {
+	return s.updateExecution(ctx, id, claim, func(task *ent.Request, update *ent.RequestUpdate) error {
 		now := time.Now().UTC()
 		// 领取副本中断时可能连受理响应也未保存。查不到终态仍保留槽位，不重新提交生成。
 		if task.State == request.StateProcessing && task.BackendTaskID == "" && !now.Before(task.DeadlineAt) {

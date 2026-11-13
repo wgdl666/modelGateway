@@ -86,7 +86,8 @@ func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, 
 		}
 		select {
 		case <-waitCtx.Done():
-		case <-time.After(100 * time.Millisecond):
+		// 满槽后每 500ms 重试领取；取消仍由 waitCtx 立即唤醒。
+		case <-time.After(500 * time.Millisecond):
 		}
 	}
 	s.executeSynchronous(ctx, c, client, task, path, contentType, body)

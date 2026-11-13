@@ -38,7 +38,7 @@ func TestUnifiedImageInputUsesRegisteredProtocol(t *testing.T) {
 			raw, _ := json.Marshal(input)
 			normalized, err := NormalizeMediaInput(tc.kind, raw)
 			if err == nil {
-				err = ValidateInput(tc.kind, normalized)
+				_, err = ValidateInput(tc.kind, normalized)
 			}
 			if (err != nil) != tc.invalid {
 				t.Fatalf("normalization = %s, error = %v", normalized, err)

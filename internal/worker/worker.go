@@ -340,7 +340,8 @@ func (w *Reconciler) Start() {
 	w.runWorker("model health probe failed", probeInterval, func() error { return w.probe(w.runtime.Current()) })
 	// 同步上游有独立探活预算，不阻塞图像和视频派单使用的探针。
 	w.runWorker("synchronous model health probe failed", 5*time.Second, func() error { return w.probeSynchronous(w.runtime.Current()) })
-	w.runWorker("queue expiry failed", 200*time.Millisecond, func() error { return w.store.Expire(w.ctx) })
+	// 截止时间仍由账本保存；后台每 2 秒收敛过期状态，避免空闲高频更新。
+	w.runWorker("queue expiry failed", 2*time.Second, func() error { return w.store.Expire(w.ctx) })
 	w.runRabbit("queue publication failed", w.publishQueued)
 	for range 2 {
 		w.runRabbit("queue dispatch failed", w.consumeQueued)
@@ -348,13 +349,19 @@ func (w *Reconciler) Start() {
 	for range nativeVideoPublishWorkers {
 		w.wg.Go(w.runVideoPublisher)
 	}
-	for range 4 {
-		w.runWorker("model reconciliation failed", 125*time.Millisecond, func() error {
-			task, err := w.store.ClaimPoll(w.ctx)
-			if err != nil || task == nil {
-				return err
+	// 单条回查管线有任务时沿用 500ms 节奏，空闲时等待 2 秒，取消可立即唤醒。
+	w.runWorker("model reconciliation failed", 500*time.Millisecond, func() error {
+		task, err := w.store.ClaimPoll(w.ctx)
+		if err != nil {
+			return err
+		}
+		if task == nil {
+			select {
+			case <-w.ctx.Done():
+			case <-time.After(2 * time.Second):
 			}
-			return w.pollModel(w.runtime.Current(), task)
-		})
-	}
+			return nil
+		}
+		return w.pollModel(w.runtime.Current(), task)
+	})
 }

@@ -74,7 +74,7 @@ func TestWardrobeRoutesAreSelectedByProtocol(t *testing.T) {
 		{WardrobeProtocol, product, false},
 		{ClothGenProtocol, extraction, false},
 	} {
-		if err := ValidateInput(test.model, json.RawMessage(test.input)); (err == nil) != test.valid {
+		if _, err := ValidateInput(test.model, json.RawMessage(test.input)); (err == nil) != test.valid {
 			t.Errorf("ValidateInput(%s, %s) = %v, want valid=%v", test.model, test.input, err, test.valid)
 		}
 	}
@@ -92,10 +92,10 @@ func TestExperimentalFieldsRequireExperimentalCredential(t *testing.T) {
 		{VideoProtocol, `{"images":[` + image + `],"prompt":"walk","model":"ltx","duration":"4","resolution":"720p","fps":"24","audio":"false"}`, true},
 		{WardrobeProtocol, `{"images":[` + image + `],"garment_name":"shirt","bbox":[0,0,1,1]}`, false},
 	} {
-		if err := ValidateExperimentalInput(test.kind, json.RawMessage(test.input)); err != nil {
+		if _, err := ValidateExperimentalInput(test.kind, json.RawMessage(test.input)); err != nil {
 			t.Errorf("experimental %s rejected %s: %v", test.kind, test.input, err)
 		}
-		if err := ValidateInput(test.kind, json.RawMessage(test.input)); (err == nil) == test.experimental {
+		if _, err := ValidateInput(test.kind, json.RawMessage(test.input)); (err == nil) == test.experimental {
 			t.Errorf("production %s: %s accepted=%v, want %v", test.kind, test.input, err == nil, !test.experimental)
 		}
 	}
@@ -105,11 +105,11 @@ func TestExperimentalFieldsRequireExperimentalCredential(t *testing.T) {
 		`{"images":[` + image + `],"gender":"female","prompt":{"text":"x"}}`,
 		`{"images":[` + image + `],"gender":"female","prompt":null}`,
 	} {
-		if err := ValidateExperimentalInput(BodyProtocol, json.RawMessage(input)); err == nil {
+		if _, err := ValidateExperimentalInput(BodyProtocol, json.RawMessage(input)); err == nil {
 			t.Errorf("experimental body accepted %s", input)
 		}
 	}
-	if err := ValidateExperimentalInput(ClothGenProtocol, json.RawMessage(`{"images":[`+image+`],"garment_name":"shirt","prompt":"x"}`)); err == nil {
+	if _, err := ValidateExperimentalInput(ClothGenProtocol, json.RawMessage(`{"images":[`+image+`],"garment_name":"shirt","prompt":"x"}`)); err == nil {
 		t.Error("product generation has no experimental fields")
 	}
 }
