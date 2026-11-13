@@ -15,6 +15,9 @@ import (
 const probeMaxAge = 9 * time.Second
 
 func instanceHealthy(row *ent.ModelInstance, now time.Time) bool {
+	if row.WorkerID != "" && (row.LeaseExpiresAt == nil || !row.LeaseExpiresAt.After(now) || row.LifecycleDraining) {
+		return false
+	}
 	maxAge := probeMaxAge
 	if protocol.SynchronousKind(row.Protocol) != "" {
 		// G6 聚合探活在单个副本异常时会跨多批超时，使用同步探针的周期和超时预算。
@@ -25,18 +28,22 @@ func instanceHealthy(row *ent.ModelInstance, now time.Time) bool {
 
 // 未探测和未就绪是不同状态；暂停后过期的探活结果按未就绪处理。
 func instanceClearable(row *ent.ModelInstance, healthy bool) bool {
-	return row.Draining && row.HealthCheckedAt.Unix() > 0 && !healthy
+	return (row.Draining || row.LifecycleDraining || (row.WorkerID != "" && row.LeaseExpiresAt != nil && !row.LeaseExpiresAt.After(time.Now()))) && row.HealthCheckedAt.Unix() > 0 && !healthy
 }
 
 // 排空实例退出探活集合，已派发任务仍按账本中的地址回查。
 func (s *Store) ProbeInstances(ctx context.Context) ([]*ent.ModelInstance, error) {
-	return s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil(), modelinstance.DrainingEQ(false)).All(ctx)
+	return s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil(), modelinstance.DrainingEQ(false), modelinstance.LifecycleDrainingEQ(false)).All(ctx)
 }
 
 func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedArtifact string) error {
 	return s.serialize(ctx, func(tx *ent.Tx) error {
-		if err := deploymentFence(ctx, tx, spec.ResourceGroup); err != nil {
+		managed, err := tx.ModelInstance.Query().Where(modelinstance.ResourceGroupEQ(spec.ResourceGroup), modelinstance.WorkerIDNEQ(""), modelinstance.DeletedAtIsNil()).Exist(ctx)
+		if err != nil {
 			return err
+		}
+		if managed {
+			return ErrConflict
 		}
 		// 同一 key 的协议跨副本及历史登记保持一致，避免新实例接到旧契约请求。
 		conflict, err := tx.ModelInstance.Query().Where(modelinstance.ModelKeyEQ(spec.ModelKey), modelinstance.ProtocolNEQ(spec.Protocol)).Exist(ctx)
@@ -139,9 +146,6 @@ func (s *Store) Drain(ctx context.Context, id string, draining bool) error {
 		if err != nil {
 			return err
 		}
-		if err := deploymentFence(ctx, tx, instance.ResourceGroup); err != nil {
-			return err
-		}
 		if !draining {
 			// 同一模型和地址只能有一条接单登记，恢复旧部署时不能绕过这项限制。
 			conflict, err := tx.ModelInstance.Query().Where(
@@ -165,9 +169,6 @@ func (s *Store) ClearInstance(ctx context.Context, id string) error {
 		// 与派单争用同一实例行锁，在同一事务确认排空和槽位后才标记删除。
 		row, err := tx.ModelInstance.Query().Where(modelinstance.IDEQ(id)).ForUpdate().Only(ctx)
 		if err != nil {
-			return err
-		}
-		if err := deploymentFence(ctx, tx, row.ResourceGroup); err != nil {
 			return err
 		}
 		if row.DeletedAt != nil {

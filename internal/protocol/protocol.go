@@ -50,6 +50,8 @@ type Instance struct {
 }
 
 type InstanceTarget struct {
+	WorkerID       string `json:"worker_id,omitempty"`
+	BootID         string `json:"boot_id,omitempty"`
 	DeploymentID   string `json:"deployment_id,omitempty"`
 	ArtifactDigest string `json:"artifact_digest,omitempty"`
 	ModelKey       string `json:"model_key"`
@@ -60,6 +62,7 @@ type InstanceTarget struct {
 }
 
 type InstanceHealth struct {
+	WorkerID       string `json:"worker_id,omitempty"`
 	Region         string `json:"region,omitempty"`
 	DeploymentID   string `json:"deployment_id,omitempty"`
 	BootID         string `json:"boot_id,omitempty"`

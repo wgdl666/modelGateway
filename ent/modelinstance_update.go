@@ -57,6 +57,40 @@ func (_u *ModelInstanceUpdate) SetNillableHealthURL(v *string) *ModelInstanceUpd
 	return _u
 }
 
+// SetLeaseExpiresAt sets the "lease_expires_at" field.
+func (_u *ModelInstanceUpdate) SetLeaseExpiresAt(v time.Time) *ModelInstanceUpdate {
+	_u.mutation.SetLeaseExpiresAt(v)
+	return _u
+}
+
+// SetNillableLeaseExpiresAt sets the "lease_expires_at" field if the given value is not nil.
+func (_u *ModelInstanceUpdate) SetNillableLeaseExpiresAt(v *time.Time) *ModelInstanceUpdate {
+	if v != nil {
+		_u.SetLeaseExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearLeaseExpiresAt clears the value of the "lease_expires_at" field.
+func (_u *ModelInstanceUpdate) ClearLeaseExpiresAt() *ModelInstanceUpdate {
+	_u.mutation.ClearLeaseExpiresAt()
+	return _u
+}
+
+// SetLifecycleDraining sets the "lifecycle_draining" field.
+func (_u *ModelInstanceUpdate) SetLifecycleDraining(v bool) *ModelInstanceUpdate {
+	_u.mutation.SetLifecycleDraining(v)
+	return _u
+}
+
+// SetNillableLifecycleDraining sets the "lifecycle_draining" field if the given value is not nil.
+func (_u *ModelInstanceUpdate) SetNillableLifecycleDraining(v *bool) *ModelInstanceUpdate {
+	if v != nil {
+		_u.SetLifecycleDraining(*v)
+	}
+	return _u
+}
+
 // SetResourceGroup sets the "resource_group" field.
 func (_u *ModelInstanceUpdate) SetResourceGroup(v string) *ModelInstanceUpdate {
 	_u.mutation.SetResourceGroup(v)
@@ -287,6 +321,15 @@ func (_u *ModelInstanceUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	if value, ok := _u.mutation.HealthURL(); ok {
 		_spec.SetField(modelinstance.FieldHealthURL, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.LeaseExpiresAt(); ok {
+		_spec.SetField(modelinstance.FieldLeaseExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.LeaseExpiresAtCleared() {
+		_spec.ClearField(modelinstance.FieldLeaseExpiresAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LifecycleDraining(); ok {
+		_spec.SetField(modelinstance.FieldLifecycleDraining, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.ResourceGroup(); ok {
 		_spec.SetField(modelinstance.FieldResourceGroup, field.TypeString, value)
 	}
@@ -378,6 +421,40 @@ func (_u *ModelInstanceUpdateOne) SetHealthURL(v string) *ModelInstanceUpdateOne
 func (_u *ModelInstanceUpdateOne) SetNillableHealthURL(v *string) *ModelInstanceUpdateOne {
 	if v != nil {
 		_u.SetHealthURL(*v)
+	}
+	return _u
+}
+
+// SetLeaseExpiresAt sets the "lease_expires_at" field.
+func (_u *ModelInstanceUpdateOne) SetLeaseExpiresAt(v time.Time) *ModelInstanceUpdateOne {
+	_u.mutation.SetLeaseExpiresAt(v)
+	return _u
+}
+
+// SetNillableLeaseExpiresAt sets the "lease_expires_at" field if the given value is not nil.
+func (_u *ModelInstanceUpdateOne) SetNillableLeaseExpiresAt(v *time.Time) *ModelInstanceUpdateOne {
+	if v != nil {
+		_u.SetLeaseExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearLeaseExpiresAt clears the value of the "lease_expires_at" field.
+func (_u *ModelInstanceUpdateOne) ClearLeaseExpiresAt() *ModelInstanceUpdateOne {
+	_u.mutation.ClearLeaseExpiresAt()
+	return _u
+}
+
+// SetLifecycleDraining sets the "lifecycle_draining" field.
+func (_u *ModelInstanceUpdateOne) SetLifecycleDraining(v bool) *ModelInstanceUpdateOne {
+	_u.mutation.SetLifecycleDraining(v)
+	return _u
+}
+
+// SetNillableLifecycleDraining sets the "lifecycle_draining" field if the given value is not nil.
+func (_u *ModelInstanceUpdateOne) SetNillableLifecycleDraining(v *bool) *ModelInstanceUpdateOne {
+	if v != nil {
+		_u.SetLifecycleDraining(*v)
 	}
 	return _u
 }
@@ -641,6 +718,15 @@ func (_u *ModelInstanceUpdateOne) sqlSave(ctx context.Context) (_node *ModelInst
 	}
 	if value, ok := _u.mutation.HealthURL(); ok {
 		_spec.SetField(modelinstance.FieldHealthURL, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LeaseExpiresAt(); ok {
+		_spec.SetField(modelinstance.FieldLeaseExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.LeaseExpiresAtCleared() {
+		_spec.ClearField(modelinstance.FieldLeaseExpiresAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LifecycleDraining(); ok {
+		_spec.SetField(modelinstance.FieldLifecycleDraining, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ResourceGroup(); ok {
 		_spec.SetField(modelinstance.FieldResourceGroup, field.TypeString, value)

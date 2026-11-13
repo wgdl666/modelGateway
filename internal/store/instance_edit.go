@@ -26,10 +26,15 @@ func (s *Store) EditInstance(ctx context.Context, cfg config.Config, id string, 
 		if err != nil {
 			return err
 		}
-		for _, group := range []string{row.ResourceGroup, settings.ResourceGroup} {
-			if err := deploymentFence(ctx, tx, group); err != nil {
-				return err
-			}
+		if row.WorkerID != "" {
+			return ErrInstanceNotEditable
+		}
+		managed, err := tx.ModelInstance.Query().Where(modelinstance.ResourceGroupEQ(settings.ResourceGroup), modelinstance.WorkerIDNEQ(""), modelinstance.DeletedAtIsNil()).Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if managed {
+			return ErrInstanceNotEditable
 		}
 		// 同步登记的设备列表来自实际部署，队列编辑器只能携带一个组。
 		if protocol.SynchronousKind(row.Protocol) != "" {

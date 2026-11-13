@@ -13,6 +13,7 @@ import (
 )
 
 type healthReport struct {
+	WorkerID     string          `json:"worker_id"`
 	Region       string          `json:"region"`
 	DeploymentID string          `json:"deployment_id"`
 	BootID       string          `json:"boot_id"`
@@ -22,7 +23,7 @@ type healthReport struct {
 }
 
 func (h healthReport) result(ready bool) protocol.InstanceHealth {
-	result := protocol.InstanceHealth{Ready: ready, DeploymentID: h.DeploymentID, BootID: h.BootID, Region: h.Region}
+	result := protocol.InstanceHealth{Ready: ready, DeploymentID: h.DeploymentID, BootID: h.BootID, Region: h.Region, WorkerID: h.WorkerID}
 	var digest string
 	// 摘要字段未上报或格式有误时，仍按健康字段判断服务能否接单。
 	if json.Unmarshal(h.Artifact, &digest) == nil {
@@ -83,5 +84,5 @@ func (w *Reconciler) ProbeInstance(ctx context.Context, cfg *config.Snapshot, ta
 	return h, err
 }
 func deploymentHealthMatches(h protocol.InstanceHealth, target protocol.InstanceTarget, region string) bool {
-	return h.Ready && region != "" && h.Region == region && h.DeploymentID == target.DeploymentID && h.ArtifactDigest == target.ArtifactDigest && h.BootID != ""
+	return h.Ready && region != "" && h.Region == region && h.DeploymentID == target.DeploymentID && h.ArtifactDigest == target.ArtifactDigest && h.BootID != "" && (target.BootID == "" || h.BootID == target.BootID) && (target.WorkerID == "" || h.WorkerID == target.WorkerID)
 }

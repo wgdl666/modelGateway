@@ -31,3 +31,18 @@ func TestDeploymentFenceOnRequestsAndResponses(t *testing.T) {
 		t.Fatal("legacy changed")
 	}
 }
+
+func TestWorkerBootMustMatchAssignmentAndResult(t *testing.T) {
+	task := &ent.Request{DeploymentID: "d", BootID: "boot-2", ModelKey: "body", ArtifactDigest: "sha256-" + strings.Repeat("a", 64)}
+	headers := make(http.Header)
+	setDeploymentHeaders(headers, task)
+	if headers.Get("X-Expected-Boot-ID") != task.BootID {
+		t.Fatal("missing boot fence")
+	}
+	for _, boot := range []string{"", "boot-1", "boot-2"} {
+		raw, _ := json.Marshal(map[string]string{"deployment_id": task.DeploymentID, "artifact_digest": task.ArtifactDigest, "boot_id": boot})
+		if deploymentResponseMatches(raw, task) != (boot == task.BootID) {
+			t.Fatal("incorrect boot accepted", boot)
+		}
+	}
+}

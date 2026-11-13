@@ -16,7 +16,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/wgdl666/modelGateway/ent/apitoken"
 	"github.com/wgdl666/modelGateway/ent/deploymentdomain"
-	"github.com/wgdl666/modelGateway/ent/deploymentlease"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/ent/resourcegroup"
@@ -31,8 +30,6 @@ type Client struct {
 	APIToken *APITokenClient
 	// DeploymentDomain is the client for interacting with the DeploymentDomain builders.
 	DeploymentDomain *DeploymentDomainClient
-	// DeploymentLease is the client for interacting with the DeploymentLease builders.
-	DeploymentLease *DeploymentLeaseClient
 	// ModelInstance is the client for interacting with the ModelInstance builders.
 	ModelInstance *ModelInstanceClient
 	// Request is the client for interacting with the Request builders.
@@ -52,7 +49,6 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.APIToken = NewAPITokenClient(c.config)
 	c.DeploymentDomain = NewDeploymentDomainClient(c.config)
-	c.DeploymentLease = NewDeploymentLeaseClient(c.config)
 	c.ModelInstance = NewModelInstanceClient(c.config)
 	c.Request = NewRequestClient(c.config)
 	c.ResourceGroup = NewResourceGroupClient(c.config)
@@ -150,7 +146,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:           cfg,
 		APIToken:         NewAPITokenClient(cfg),
 		DeploymentDomain: NewDeploymentDomainClient(cfg),
-		DeploymentLease:  NewDeploymentLeaseClient(cfg),
 		ModelInstance:    NewModelInstanceClient(cfg),
 		Request:          NewRequestClient(cfg),
 		ResourceGroup:    NewResourceGroupClient(cfg),
@@ -175,7 +170,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:           cfg,
 		APIToken:         NewAPITokenClient(cfg),
 		DeploymentDomain: NewDeploymentDomainClient(cfg),
-		DeploymentLease:  NewDeploymentLeaseClient(cfg),
 		ModelInstance:    NewModelInstanceClient(cfg),
 		Request:          NewRequestClient(cfg),
 		ResourceGroup:    NewResourceGroupClient(cfg),
@@ -207,23 +201,21 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
-	for _, n := range []interface{ Use(...Hook) }{
-		c.APIToken, c.DeploymentDomain, c.DeploymentLease, c.ModelInstance, c.Request,
-		c.ResourceGroup,
-	} {
-		n.Use(hooks...)
-	}
+	c.APIToken.Use(hooks...)
+	c.DeploymentDomain.Use(hooks...)
+	c.ModelInstance.Use(hooks...)
+	c.Request.Use(hooks...)
+	c.ResourceGroup.Use(hooks...)
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
-	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.APIToken, c.DeploymentDomain, c.DeploymentLease, c.ModelInstance, c.Request,
-		c.ResourceGroup,
-	} {
-		n.Intercept(interceptors...)
-	}
+	c.APIToken.Intercept(interceptors...)
+	c.DeploymentDomain.Intercept(interceptors...)
+	c.ModelInstance.Intercept(interceptors...)
+	c.Request.Intercept(interceptors...)
+	c.ResourceGroup.Intercept(interceptors...)
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -233,8 +225,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.APIToken.mutate(ctx, m)
 	case *DeploymentDomainMutation:
 		return c.DeploymentDomain.mutate(ctx, m)
-	case *DeploymentLeaseMutation:
-		return c.DeploymentLease.mutate(ctx, m)
 	case *ModelInstanceMutation:
 		return c.ModelInstance.mutate(ctx, m)
 	case *RequestMutation:
@@ -509,139 +499,6 @@ func (c *DeploymentDomainClient) mutate(ctx context.Context, m *DeploymentDomain
 		return (&DeploymentDomainDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown DeploymentDomain mutation op: %q", m.Op())
-	}
-}
-
-// DeploymentLeaseClient is a client for the DeploymentLease schema.
-type DeploymentLeaseClient struct {
-	config
-}
-
-// NewDeploymentLeaseClient returns a client for the DeploymentLease from the given config.
-func NewDeploymentLeaseClient(c config) *DeploymentLeaseClient {
-	return &DeploymentLeaseClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `deploymentlease.Hooks(f(g(h())))`.
-func (c *DeploymentLeaseClient) Use(hooks ...Hook) {
-	c.hooks.DeploymentLease = append(c.hooks.DeploymentLease, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `deploymentlease.Intercept(f(g(h())))`.
-func (c *DeploymentLeaseClient) Intercept(interceptors ...Interceptor) {
-	c.inters.DeploymentLease = append(c.inters.DeploymentLease, interceptors...)
-}
-
-// Create returns a builder for creating a DeploymentLease entity.
-func (c *DeploymentLeaseClient) Create() *DeploymentLeaseCreate {
-	mutation := newDeploymentLeaseMutation(c.config, OpCreate)
-	return &DeploymentLeaseCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of DeploymentLease entities.
-func (c *DeploymentLeaseClient) CreateBulk(builders ...*DeploymentLeaseCreate) *DeploymentLeaseCreateBulk {
-	return &DeploymentLeaseCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *DeploymentLeaseClient) MapCreateBulk(slice any, setFunc func(*DeploymentLeaseCreate, int)) *DeploymentLeaseCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &DeploymentLeaseCreateBulk{err: fmt.Errorf("calling to DeploymentLeaseClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*DeploymentLeaseCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &DeploymentLeaseCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for DeploymentLease.
-func (c *DeploymentLeaseClient) Update() *DeploymentLeaseUpdate {
-	mutation := newDeploymentLeaseMutation(c.config, OpUpdate)
-	return &DeploymentLeaseUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *DeploymentLeaseClient) UpdateOne(_m *DeploymentLease) *DeploymentLeaseUpdateOne {
-	mutation := newDeploymentLeaseMutation(c.config, OpUpdateOne, withDeploymentLease(_m))
-	return &DeploymentLeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *DeploymentLeaseClient) UpdateOneID(id string) *DeploymentLeaseUpdateOne {
-	mutation := newDeploymentLeaseMutation(c.config, OpUpdateOne, withDeploymentLeaseID(id))
-	return &DeploymentLeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for DeploymentLease.
-func (c *DeploymentLeaseClient) Delete() *DeploymentLeaseDelete {
-	mutation := newDeploymentLeaseMutation(c.config, OpDelete)
-	return &DeploymentLeaseDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *DeploymentLeaseClient) DeleteOne(_m *DeploymentLease) *DeploymentLeaseDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *DeploymentLeaseClient) DeleteOneID(id string) *DeploymentLeaseDeleteOne {
-	builder := c.Delete().Where(deploymentlease.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &DeploymentLeaseDeleteOne{builder}
-}
-
-// Query returns a query builder for DeploymentLease.
-func (c *DeploymentLeaseClient) Query() *DeploymentLeaseQuery {
-	return &DeploymentLeaseQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeDeploymentLease},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a DeploymentLease entity by its id.
-func (c *DeploymentLeaseClient) Get(ctx context.Context, id string) (*DeploymentLease, error) {
-	return c.Query().Where(deploymentlease.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *DeploymentLeaseClient) GetX(ctx context.Context, id string) *DeploymentLease {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// Hooks returns the client hooks.
-func (c *DeploymentLeaseClient) Hooks() []Hook {
-	return c.hooks.DeploymentLease
-}
-
-// Interceptors returns the client interceptors.
-func (c *DeploymentLeaseClient) Interceptors() []Interceptor {
-	return c.inters.DeploymentLease
-}
-
-func (c *DeploymentLeaseClient) mutate(ctx context.Context, m *DeploymentLeaseMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&DeploymentLeaseCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&DeploymentLeaseUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&DeploymentLeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&DeploymentLeaseDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown DeploymentLease mutation op: %q", m.Op())
 	}
 }
 
@@ -1047,11 +904,10 @@ func (c *ResourceGroupClient) mutate(ctx context.Context, m *ResourceGroupMutati
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		APIToken, DeploymentDomain, DeploymentLease, ModelInstance, Request,
-		ResourceGroup []ent.Hook
+		APIToken, DeploymentDomain, ModelInstance, Request, ResourceGroup []ent.Hook
 	}
 	inters struct {
-		APIToken, DeploymentDomain, DeploymentLease, ModelInstance, Request,
+		APIToken, DeploymentDomain, ModelInstance, Request,
 		ResourceGroup []ent.Interceptor
 	}
 )

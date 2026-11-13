@@ -1,112 +1,86 @@
-# 区域模型部署生命周期 v1
+# 模型服务自注册生命周期
 
-每个区域有独立的 PostgreSQL、请求队列和网关逻辑地址。网关副本共享区域内登记，部署端只向逻辑地址登记一次。发布控制器使用同一数据库中的操作账本和物理资源组租约；深圳、美东分别执行和恢复，不做跨区域事务或自动流量转移。
+模型进程完成加载和自检后，主动向所属区域的逻辑网关地址登记；运行时续约；退出时排空并注销。模型如何启动、更新 checkpoint 或重启由现有部署系统负责。无需额外控制器、SSH 发布程序或宿主机 agent。
 
-## 身份和兼容性
+深圳和美东使用独立 PostgreSQL、队列、网关入口和 worker 凭据。区域内多个网关副本共享同一账本，注册、心跳和退出可以落在不同副本上。一个物理 worker 只归属一个区域，不能跨区域重复计算容量。
 
-- `model_key`：现有接口契约，升级权重不改调用名称。
-- `artifact_digest`：规范化不可变 release JSON 的 SHA-256（`sha256-...`）。内容包含实际 LoRA SHA、底模/推理参数、模型绑定、源码和模型文件哈希。文件使用稳定逻辑名，区域本地路径不进入摘要，因此两地部署同一内容可以复用 release 身份。
-- `deployment_id`：本区域本 worker 的一次部署。换 release 创建新 ID；普通进程重启保留 ID。
-- `boot_id`：模型进程每次加载生成的新 ID。只作实际执行证据，不进入幂等请求指纹。
-- `instance_id`：一个模型契约的一条登记。同 worker 的业务接口、通用接口使用各自 ID，共享同一物理 GPU 资源组。
+## 身份和调度
 
-`deployment_id` 为空的历史登记保持兼容。设置该字段后，网关探活必须收到本区域、相同 deployment、artifact 和非空 boot；派发发送 `X-Expected-Deployment-ID`、`X-Expected-Artifact-Digest`、`X-Expected-Model-Key`。worker 在执行锁内核验，响应回传身份，网关在发布结果前再次比较。仅 `ready:true` 不能放行受管理部署。不要给未支持该契约的 worker 填写 deployment_id。
+- `model_key` 保持调用契约，换 checkpoint 不必改名。
+- `artifact_digest` 绑定实际权重、底模、推理参数和源码；稳定逻辑文件名参与摘要，本地路径不参与。
+- `deployment_id` 标识加载的部署；`boot_id` 每次进程启动重新生成。
+- 网关从 worker、deployment、boot、model 派生实例 ID。同一进程重试登记幂等，新进程不会复活旧实例。
+- 同一 worker 的所有业务/通用模型绑定在一个事务中登记，共享预先配置的物理资源组。v1 支持单 GPU worker；其他同步/多卡引擎接入前需要对应实现。
 
-VMind-Image 的 Qwen worker 是首个实现：既有 BodyModel/VTON、通用接口均支持；其他执行器必须实现同一契约并通过验收后才能启用。网关本身不加载模型。
+网关验证实际健康响应的 region、worker、deployment、boot 和 artifact 后才登记。派发携带 `X-Expected-Deployment-ID`、`X-Expected-Boot-ID`、`X-Expected-Artifact-Digest`、`X-Expected-Model-Key`；模型在执行锁内核对，网关发布结果前再次核对。回查也沿用原进程身份。
 
-## 区域初始化
+## 区域初始化与权限
 
-先应用 `deploy/migrations/deployment-lifecycle.sql`，再发布网关。迁移只增加列和生命周期表，不修改历史身份、请求或容量。为该环境**显式**写入唯一归属：
+依次执行 `deploy/migrations/deployment-lifecycle.sql` 和 `deploy/migrations/worker-registration.sql`，然后发布新版网关。显式建立区域单例：
 
 ```sql
 INSERT INTO model_gateway.deployment_domain(id,region) VALUES(1,'cn-shenzhen/dev');
--- 美东数据库使用另一个值，例如 us-east/exhibition；不能对同一库改名冒充另一个区域。
 ```
 
-网关管理接口 `GET /v1/deployments/domain` 返回区域和协议版本。控制器同时核对该接口与数据库单例，错误配置、缺表、区域不符均停止。管理接口仍需管理凭据。
+美东使用自己的区域名称和数据库，不能覆盖已有区域归属。深圳已于 2026-11-13 执行第一份迁移；自注册新增列仍需第二份迁移。早期方案的 deployment_operations/deployment_leases 表不再使用，保留即可，不自动删除。
 
-控制器数据库账号仅需访问 `deployment_domain`、`deployment_operations`、`deployment_leases`；已有网关运行账号额外需要读 `deployment_domain`、`deployment_leases`。迁移与权限由数据库发布账号执行。凭据通过区域 Secret / mode-600 环境文件注入，不写入清单、命令行、worker 或源码。
-
-## 发布入口
-
-安装 `deployment_controller/requirements.txt`，在仓库根目录执行。`regions.example.json` 中的地址和 SSH argv 需要用环境绑定替换；确认 SSH 身份、known_hosts 和 Python 安装，不复制跨主机凭据。
-
-```sh
-python -m deployment_controller --config /etc/model-deployment/regions.json \
-  apply /releases/body-v2/plan.json --operation body-v2-gpu1
-python -m deployment_controller --config /etc/model-deployment/regions.json \
-  status --region cn-shenzhen/dev --operation body-v2-gpu1
-python -m deployment_controller --config /etc/model-deployment/regions.json \
-  watch --region cn-shenzhen/dev
-```
-
-`watch` 只接管已经提交、无有效持有者的未完成操作，失败重试有退避，不创建新的发布意图。允许多个控制器运行；同一 worker 同时只能有一个有效持有者。`apply` 网络失败后使用原 operation 和原 plan 重试。变更原 plan 会被拒绝。
-
-单 worker 清单：
+运维使用现有管理 API 预建物理资源组。通过网关 Secret 环境变量 `MODEL_GATEWAY_WORKER_REGISTRATIONS` 注入每个 worker 的授权。该字段不从 Nacos/AppConfig 正文读取。例：
 
 ```json
 {
-  "schema_version": 1,
-  "region": "cn-shenzhen/dev",
-  "worker_id": "5090-2-gpu1",
-  "action": "upgrade",
-  "resource_groups": ["cn-dev/qwen-image21/gpu1"],
-  "instances": [{
-    "instance_id": "body-v2-gpu1-business",
-    "model_key": "Vmind_bodymodel_v1.0",
-    "protocol": "body_model",
-    "deployment_id": "body-v2-gpu1",
-    "artifact_digest": "sha256-<release JSON SHA-256>",
-    "endpoint": "https://HOST/vworld/gpu1",
-    "health_url": "https://HOST/vworld/gpu1/v1/images/models/Vmind_bodymodel_v1.0/health",
-    "resource_group": "cn-dev/qwen-image21/gpu1",
-    "machine_id": "seetacloud/HOST",
-    "gpu_devices": [1],
-    "capacity_units": 1
-  }]
+  "5090-2-gpu1": {
+    "token": "<独立随机 worker 凭据，至少 32 字符>",
+    "region": "cn-shenzhen/dev",
+    "bindings": [{
+      "model_key": "Vmind_bodymodel_v1.0",
+      "protocol": "body_model",
+      "endpoint": "https://HOST/vworld/gpu1",
+      "health_url": "https://HOST/vworld/gpu1/v1/images/models/Vmind_bodymodel_v1.0/health",
+      "resource_group": "cn-dev/qwen-image21/gpu1",
+      "machine_id": "seetacloud/HOST",
+      "gpu_devices": [1],
+      "capacity_units": 1
+    }]
+  }
 }
 ```
 
-这是结构示例，digest/host 必须换为实际值；共享 worker 的其他已有绑定（例如 VTON、通用接口）必须全部列出。遗漏会在排空前失败。物理组必须已存在且属于实际 GPU；发布不自动改容量或迁移硬件归属。
+共享进程的 VTON、通用接口等必须完整列入 bindings；它们仍只共享一份 GPU 容量。授权固定模型键、协议、地址、物理归属和容量，worker 请求只能报告加载的版本。worker 凭据不能调用管理接口、读取业务请求或操作其他 worker；不要向模型机器发放管理 Token 或数据库凭据。
 
-`action` 支持 online、upgrade、rollback、offline。回滚以旧 release 创建新的部署/实例 ID，不复活已软删除的登记。offline 的 instances 必须为空。`serve` 可以显式指定新登记是否接单；未指定时继承同模型/端点原来的暂停状态，新能力默认为开放。
+## 服务协议
 
-多区域/多 worker 使用 `{"targets":[plan1,plan2]}`。每个目标有稳定派生操作 ID；`--region` 只选目标，不改变其操作 ID。某区域失败时其他目标可以继续；输出明确列出部分完成状态。
+使用 worker 专用 Bearer 凭据调用 `POST /v1/workers/{worker_id}/{action}`。
 
-## 操作阶段与失败语义
+register 请求：
 
-`planned → prepared → draining → drained → applied → verified → registered → serving → complete`。
+```json
+{
+  "region":"cn-shenzhen/dev",
+  "deployment_id":"body-step1446-gpu1",
+  "boot_id":"<进程启动时生成>",
+  "bindings":[{"model_key":"Vmind_bodymodel_v1.0","artifact_digest":"sha256-<实际 release 摘要>"}]
+}
+```
 
-1. 校验已安装制品和原配置，冻结受影响的全部登记。
-2. 按物理组排空全部能力，等待网关 reserved requests/units 为零。
-3. 部署 agent 另外确认实际 worker 空闲、没有不确定的执行或 pending 幂等记录。
-4. 使用 host-installed hook 激活或停止；未知执行结果禁止自动重做。
-5. 验证实际加载的每个绑定和 boot，真实功能 smoke 必须通过。
-6. 新登记 initially_draining=true；网关验证实际身份后才恢复允许接单的绑定。
-7. 旧登记确认无占槽、已暂停且不可接单后软删除，保留请求历史。
+`heartbeat`、`drain`、`unregister` 使用相同 region/deployment_id/boot_id，不需要 bindings。
 
-未完成操作始终持有逻辑所有权。租约过期只允许**原操作**被新控制器接管；不会自动恢复流量或允许另一份发布覆盖。PostgreSQL 中的递增 epoch 同时保护网关管理写入和宿主机 agent；旧控制器迟到的 resume/register/delete 会被拒绝。agent 用持久文件锁序列化本机动作，并记录动作开始和完成回执；控制器崩溃后可复用完成回执，agent 自身崩溃造成的未知动作需要人工核实，不能猜测成功或重新启动。
+- **register**：验证完整绑定和实际健康，原子登记；已有正常进程或未解决的物理组占槽阻止替换。
+- **heartbeat**：数据库时间续约 60 秒；建议每 15 秒一次。续约不能清除管理员暂停，也不能取消进程已开始的排空。
+- **drain**：整个 worker 停止新派发，返回 `reserved_requests`。原请求继续在原地址查询、取结果。
+- **unregister**：必须已排空且该进程没有占槽请求，软删除所有绑定。重复注销成功，历史记录保留。
 
-发布途中不要用旧脚本直接改服务或绕过网关发送业务流量。未统一入口的手工操作无法受发布租约保护；worker 身份校验仍会阻止旧登记执行新版。客户端断线不证明 GPU 停止，不能用超时清除占用。受管理的原生业务接口若无法确认执行结果，会记录 deployment_execution_unknown 并保留占槽，等待人工核对；通用接口沿用持久幂等和固定实例重试。上线后暂时探活失败只是停止新派发，不自动注销部署。
+租约过期后，调度事务立即停止派发，不依赖后台清理任务。过期 boot 不能通过迟到心跳或再次注册续命。模型客户端也按本地单调时钟提前关闭接单，网络失败不延长有效期；恢复需启动新进程身份。新进程只能在旧进程已排空或租约过期、且物理组无占槽后登记。
 
-同一物理 worker 只属于一个区域控制域。agent 的固定 region/worker 配置和区域数据库都校验归属，不能把同一 GPU 同时放入两套独立容量账本。跨区域请求转移不在 v1 范围；请求仍归属最初受理区域。
+超时、连接断开、进程退出都不等于 GPU 已停止。结果不确定的请求继续占槽，阻止替换；必须核对原执行终态，不能靠注销清除。正常退出时模型应先关闭生成入口、发 drain，保持结果查询和下载服务，等网关占槽及本机执行归零，再注销、退出。
 
-## Agent 与引擎适配
+## 兼容迁移与回滚
 
-agent 是 `python -m deployment_controller.agent --config ... --state ...`，通过 SSH stdin 接收受限动作。它只执行宿主机管理员预先安装、由 plan SHA 选择的 argv，不执行请求里的 shell 命令。配置不可被 group/others 写入；state、回执、日志保留在持久目录。
+历史实例没有 worker_id 时保持原行为。首次接入需暂停该物理 worker 的全部旧登记并等待原任务结束；自注册会拒绝遗漏能力或仍在接单的旧登记。管理员暂停会被继承，首次接入验收后通过管理 API 恢复需要接单的绑定。后续正常重启由模型自动登记，继续保留管理员暂停设置。
 
-每份已批准 plan 配置 prepare、idle、activate、verify、stop 五个 hook。hook 的解释器使用绝对路径，argv 中的脚本和 plan 文件必须通过 files 映射绑定 SHA-256；重放已完成动作也会核对原 hook 定义。idle 必须返回 `ok:true,idle:true,active_requests:0,uncertain_executions:0`；verify 在线时返回 `ok:true,smoke_passed:true,boot_id,bindings`，离线时返回 `ok:true,stopped:true`。bindings 的 model_key/deployment_id/artifact_digest 必须逐项等于发布清单。
+更换 checkpoint 仍使用现有启动方式：旧进程正常退出，新进程加载自检后注册。回滚以旧制品创建新的 deployment/boot，不复活历史实例。自动注册不会下载权重、修改启动配置或重启模型。
 
-VMind-Image 提供 `deploy/model_gateway/qwen_host.py` 适配现有 split supervisor。Docker/systemd 及其他引擎可以实现同样 hook，不必迁移到 Kubernetes。更换 hook 实现后需要重新安装获批 plan。
+开启自注册之后不要直接回退到不检查租约的网关。先排空并停止受管理 worker，确认无占槽，恢复兼容登记和服务后再回退。数据库只做增量迁移，不回滚请求历史。
 
 ## 验证
 
-Go 集成测试需隔离 `_test` PostgreSQL 和测试 RabbitMQ。Python ledger 测试使用同一测试库，但与 Go 集成测试顺序执行：
-
-```sh
-go generate ./ent
-TEST_LIFECYCLE_PYTHON=/path/to/python go test -race ./...
-python -m unittest discover -s deployment_controller/tests
-```
-
-覆盖多副本竞争、旧 epoch 拒绝、区域错配、阶段恢复、重复上线、共享能力遗漏、已有暂停状态、忙碌时不切换及未知 hook 不重复执行。模型端还需验证实际部署出图、跨 profile 切换、重启回放和版本变化拒绝旧幂等键。CPU 模拟测试不能代替最终 GPU 验收。
+隔离 `_test` PostgreSQL 与测试 RabbitMQ 下运行 `go test -race ./... -count=1` 和 `go vet ./...`。测试覆盖跨副本注册/续约、并发 boot、完整能力绑定、过期停派、迟到心跳、管理员暂停、正常注销以及未知执行保留。模型端测试注册/续约、断网后本地停派、启动与退出竞态、信号排空和实际 boot 校验；CPU 测试不能代替正式 GPU 出图验收。

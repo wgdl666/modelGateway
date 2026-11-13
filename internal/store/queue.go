@@ -236,6 +236,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		candidates := tx.ModelInstance.Query().Where(
 			modelinstance.DeletedAtIsNil(), modelinstance.ModelKeyEQ(next.ModelKey),
 			modelinstance.ReadyEQ(true), modelinstance.DrainingEQ(false),
+			currentWorkerLease,
 		).Order(ent.Asc(modelinstance.FieldID))
 		if protocol.GenerationProtocol(next.Protocol) && next.Endpoint != "" {
 			// Worker replay state is local to the selected instance. An ambiguous
@@ -295,7 +296,10 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 				continue
 			}
 			// 与排空串行化，提交后请求身份和物理槽位才对其他副本可见。
-			if _, err := tx.ModelInstance.Query().Where(modelinstance.IDEQ(i.ID)).ForUpdate().Only(ctx); err != nil {
+			if _, err := tx.ModelInstance.Query().Where(modelinstance.IDEQ(i.ID), currentWorkerLease).ForUpdate().Only(ctx); err != nil {
+				if ent.IsNotFound(err) {
+					continue
+				}
 				return err
 			}
 			nextPoll := next.DeadlineAt.Add(2 * time.Second)
@@ -305,7 +309,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 			}
 			// 回队后会生成新的领取标识，旧一轮的响应不能写入后续重试。
 			task, err = tx.Request.UpdateOneID(id).SetState(request.StateProcessing).SetSlotReserved(true).ClearQueuePublishAt().
-				SetInstanceID(i.ID).SetResourceGroup(i.ResourceGroup).SetResourceGroups(memberships).SetEndpoint(i.Endpoint).SetArtifactDigest(i.ArtifactDigest).SetDeploymentID(i.DeploymentID).
+				SetInstanceID(i.ID).SetResourceGroup(i.ResourceGroup).SetResourceGroups(memberships).SetEndpoint(i.Endpoint).SetArtifactDigest(i.ArtifactDigest).SetDeploymentID(i.DeploymentID).SetBootID(i.BootID).
 				AddDispatchAttempts(1).SetStartedAt(now).SetNextPollAt(nextPoll).SetPollClaim(uuid.NewString()).Save(ctx)
 			return err
 		}
@@ -354,7 +358,7 @@ func (s *Store) RequeueDispatch(ctx context.Context, id string, startedAt time.T
 	if reason != "worker_busy_before_execution" {
 		remaining.Where(request.ProtocolNotIn(protocol.ImageGenerationProtocol, protocol.VideoGenerationProtocol), request.DeploymentIDEQ(""))
 	}
-	_, err := remaining.SetInstanceID("").SetResourceGroup("").SetResourceGroups([]string{}).SetEndpoint("").SetArtifactDigest("").SetDeploymentID("").Save(ctx)
+	_, err := remaining.SetInstanceID("").SetResourceGroup("").SetResourceGroups([]string{}).SetEndpoint("").SetArtifactDigest("").SetDeploymentID("").SetBootID("").Save(ctx)
 	if err == nil {
 		s.notifyPublication()
 	}

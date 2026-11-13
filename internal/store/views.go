@@ -91,7 +91,7 @@ var requestSummaryFields = []string{
 	request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldTraceID,
 	request.FieldState, request.FieldCreatedAt, request.FieldStartedAt, request.FieldFinishedAt,
 	request.FieldInstanceID, request.FieldResourceGroup, request.FieldResourceGroups, request.FieldEndpoint, request.FieldArtifactDigest,
-	request.FieldBackendTaskID, request.FieldSlotReserved, request.FieldErrorCode,
+	request.FieldBackendTaskID, request.FieldSlotReserved, request.FieldErrorCode, request.FieldDeploymentID, request.FieldBootID,
 }
 
 func (s *Store) ListRequests(ctx context.Context, filter RequestFilter) ([]*ent.Request, int, error) {

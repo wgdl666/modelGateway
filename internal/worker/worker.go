@@ -317,7 +317,7 @@ func (w *Reconciler) probe(cfg *config.Snapshot) error {
 		probes.Go(func() {
 			var ready bool
 			if cfg.AcceptsInstanceAddress(row.ModelKey, row.Protocol, row.Endpoint, row.HealthURL) {
-				target := protocol.InstanceTarget{ModelKey: row.ModelKey, Protocol: row.Protocol, Endpoint: row.Endpoint, HealthURL: row.HealthURL, GPUDevices: row.GpuDevices, DeploymentID: row.DeploymentID, ArtifactDigest: row.ArtifactDigest}
+				target := protocol.InstanceTarget{ModelKey: row.ModelKey, Protocol: row.Protocol, Endpoint: row.Endpoint, HealthURL: row.HealthURL, GPUDevices: row.GpuDevices, DeploymentID: row.DeploymentID, ArtifactDigest: row.ArtifactDigest, BootID: row.BootID, WorkerID: row.WorkerID}
 				result, err := w.ProbeInstance(w.ctx, cfg, target)
 				ready = err == nil && result.Ready
 			}

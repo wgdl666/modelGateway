@@ -52,6 +52,8 @@ type Request struct {
 	ArtifactDigest string `json:"artifact_digest,omitempty"`
 	// DeploymentID holds the value of the "deployment_id" field.
 	DeploymentID string `json:"deployment_id,omitempty"`
+	// BootID holds the value of the "boot_id" field.
+	BootID string `json:"boot_id,omitempty"`
 	// BackendTaskID holds the value of the "backend_task_id" field.
 	BackendTaskID string `json:"backend_task_id,omitempty"`
 	// DispatchAttempts holds the value of the "dispatch_attempts" field.
@@ -94,7 +96,7 @@ func (*Request) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case request.FieldPayloadBytes, request.FieldUnits, request.FieldDispatchAttempts, request.FieldErrorStatus:
 			values[i] = new(sql.NullInt64)
-		case request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldTraceID, request.FieldAPITokenID, request.FieldState, request.FieldInstanceID, request.FieldResourceGroup, request.FieldEndpoint, request.FieldArtifactDigest, request.FieldDeploymentID, request.FieldBackendTaskID, request.FieldDispatchRetryReason, request.FieldPollClaim, request.FieldErrorCode, request.FieldErrorMessage:
+		case request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldTraceID, request.FieldAPITokenID, request.FieldState, request.FieldInstanceID, request.FieldResourceGroup, request.FieldEndpoint, request.FieldArtifactDigest, request.FieldDeploymentID, request.FieldBootID, request.FieldBackendTaskID, request.FieldDispatchRetryReason, request.FieldPollClaim, request.FieldErrorCode, request.FieldErrorMessage:
 			values[i] = new(sql.NullString)
 		case request.FieldQueuePublishAt, request.FieldDeadlineAt, request.FieldStartedAt, request.FieldFinishedAt, request.FieldNextPollAt, request.FieldCreatedAt, request.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -227,6 +229,12 @@ func (_m *Request) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field deployment_id", values[i])
 			} else if value.Valid {
 				_m.DeploymentID = value.String
+			}
+		case request.FieldBootID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field boot_id", values[i])
+			} else if value.Valid {
+				_m.BootID = value.String
 			}
 		case request.FieldBackendTaskID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -405,6 +413,9 @@ func (_m *Request) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("deployment_id=")
 	builder.WriteString(_m.DeploymentID)
+	builder.WriteString(", ")
+	builder.WriteString("boot_id=")
+	builder.WriteString(_m.BootID)
 	builder.WriteString(", ")
 	builder.WriteString("backend_task_id=")
 	builder.WriteString(_m.BackendTaskID)

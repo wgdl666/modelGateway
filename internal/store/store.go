@@ -34,7 +34,7 @@ func New(db *ent.Client) *Store {
 }
 
 func (s *Store) CheckReady(ctx context.Context) error {
-	if _, err := s.db.DeploymentLease.Query().Limit(1).All(ctx); err != nil {
+	if _, err := s.db.ModelInstance.Query().Select(modelinstance.FieldWorkerID, modelinstance.FieldBootID, modelinstance.FieldLeaseExpiresAt, modelinstance.FieldLifecycleDraining).Limit(1).All(ctx); err != nil {
 		return err
 	}
 	// 管理表和归属列必须先迁移，避免就绪后才发现凭据无法持久化。

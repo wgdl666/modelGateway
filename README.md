@@ -215,4 +215,4 @@ python -m unittest discover -s worker_adapter
 
 ## 模型发布生命周期
 
-区域内多副本控制器、发布账本、按物理 worker 排空、部署身份校验和上下线命令见 [部署生命周期](docs/DEPLOYMENT_LIFECYCLE.md)。迁移数据库后分区域启用，历史登记保持兼容。
+模型服务主动注册、续约、按物理 worker 排空、部署身份校验和注销协议见 [部署生命周期](docs/DEPLOYMENT_LIFECYCLE.md)。迁移数据库后分区域启用，历史登记保持兼容。

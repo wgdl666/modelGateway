@@ -14,7 +14,6 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/wgdl666/modelGateway/ent/apitoken"
 	"github.com/wgdl666/modelGateway/ent/deploymentdomain"
-	"github.com/wgdl666/modelGateway/ent/deploymentlease"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/ent/resourcegroup"
@@ -80,7 +79,6 @@ func checkColumn(t, c string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			apitoken.Table:         apitoken.ValidColumn,
 			deploymentdomain.Table: deploymentdomain.ValidColumn,
-			deploymentlease.Table:  deploymentlease.ValidColumn,
 			modelinstance.Table:    modelinstance.ValidColumn,
 			request.Table:          request.ValidColumn,
 			resourcegroup.Table:    resourcegroup.ValidColumn,

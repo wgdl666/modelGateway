@@ -203,6 +203,20 @@ func (_c *RequestCreate) SetNillableDeploymentID(v *string) *RequestCreate {
 	return _c
 }
 
+// SetBootID sets the "boot_id" field.
+func (_c *RequestCreate) SetBootID(v string) *RequestCreate {
+	_c.mutation.SetBootID(v)
+	return _c
+}
+
+// SetNillableBootID sets the "boot_id" field if the given value is not nil.
+func (_c *RequestCreate) SetNillableBootID(v *string) *RequestCreate {
+	if v != nil {
+		_c.SetBootID(*v)
+	}
+	return _c
+}
+
 // SetBackendTaskID sets the "backend_task_id" field.
 func (_c *RequestCreate) SetBackendTaskID(v string) *RequestCreate {
 	_c.mutation.SetBackendTaskID(v)
@@ -464,6 +478,10 @@ func (_c *RequestCreate) defaults() {
 		v := request.DefaultDeploymentID
 		_c.mutation.SetDeploymentID(v)
 	}
+	if _, ok := _c.mutation.BootID(); !ok {
+		v := request.DefaultBootID
+		_c.mutation.SetBootID(v)
+	}
 	if _, ok := _c.mutation.BackendTaskID(); !ok {
 		v := request.DefaultBackendTaskID
 		_c.mutation.SetBackendTaskID(v)
@@ -563,6 +581,9 @@ func (_c *RequestCreate) check() error {
 	}
 	if _, ok := _c.mutation.DeploymentID(); !ok {
 		return &ValidationError{Name: "deployment_id", err: errors.New(`ent: missing required field "Request.deployment_id"`)}
+	}
+	if _, ok := _c.mutation.BootID(); !ok {
+		return &ValidationError{Name: "boot_id", err: errors.New(`ent: missing required field "Request.boot_id"`)}
 	}
 	if _, ok := _c.mutation.BackendTaskID(); !ok {
 		return &ValidationError{Name: "backend_task_id", err: errors.New(`ent: missing required field "Request.backend_task_id"`)}
@@ -701,6 +722,10 @@ func (_c *RequestCreate) createSpec() (*Request, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DeploymentID(); ok {
 		_spec.SetField(request.FieldDeploymentID, field.TypeString, value)
 		_node.DeploymentID = value
+	}
+	if value, ok := _c.mutation.BootID(); ok {
+		_spec.SetField(request.FieldBootID, field.TypeString, value)
+		_node.BootID = value
 	}
 	if value, ok := _c.mutation.BackendTaskID(); ok {
 		_spec.SetField(request.FieldBackendTaskID, field.TypeString, value)

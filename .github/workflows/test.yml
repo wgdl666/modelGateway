@@ -45,17 +45,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: python -m pip install -r deployment_controller/requirements.txt
       - run: go test -race ./... -count=1
-        env:
-          TEST_LIFECYCLE_PYTHON: python
-      - run: python -m unittest discover -s deployment_controller/tests -v
       - run: go vet ./...
       - run: docker build -t model-gateway:test .
-      - run: docker build -f deployment_controller/Dockerfile -t model-deployment-controller:test .
 
   deploy-cn-dev:
     name: Deploy CN Dev (ACK)

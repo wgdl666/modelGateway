@@ -33,18 +33,6 @@ func (f DeploymentDomainFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DeploymentDomainMutation", m)
 }
 
-// The DeploymentLeaseFunc type is an adapter to allow the use of ordinary
-// function as DeploymentLease mutator.
-type DeploymentLeaseFunc func(context.Context, *ent.DeploymentLeaseMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f DeploymentLeaseFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.DeploymentLeaseMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DeploymentLeaseMutation", m)
-}
-
 // The ModelInstanceFunc type is an adapter to allow the use of ordinary
 // function as ModelInstance mutator.
 type ModelInstanceFunc func(context.Context, *ent.ModelInstanceMutation) (ent.Value, error)

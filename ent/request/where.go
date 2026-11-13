@@ -129,6 +129,11 @@ func DeploymentID(v string) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldDeploymentID, v))
 }
 
+// BootID applies equality check predicate on the "boot_id" field. It's identical to BootIDEQ.
+func BootID(v string) predicate.Request {
+	return predicate.Request(sql.FieldEQ(FieldBootID, v))
+}
+
 // BackendTaskID applies equality check predicate on the "backend_task_id" field. It's identical to BackendTaskIDEQ.
 func BackendTaskID(v string) predicate.Request {
 	return predicate.Request(sql.FieldEQ(FieldBackendTaskID, v))
@@ -947,6 +952,71 @@ func DeploymentIDEqualFold(v string) predicate.Request {
 // DeploymentIDContainsFold applies the ContainsFold predicate on the "deployment_id" field.
 func DeploymentIDContainsFold(v string) predicate.Request {
 	return predicate.Request(sql.FieldContainsFold(FieldDeploymentID, v))
+}
+
+// BootIDEQ applies the EQ predicate on the "boot_id" field.
+func BootIDEQ(v string) predicate.Request {
+	return predicate.Request(sql.FieldEQ(FieldBootID, v))
+}
+
+// BootIDNEQ applies the NEQ predicate on the "boot_id" field.
+func BootIDNEQ(v string) predicate.Request {
+	return predicate.Request(sql.FieldNEQ(FieldBootID, v))
+}
+
+// BootIDIn applies the In predicate on the "boot_id" field.
+func BootIDIn(vs ...string) predicate.Request {
+	return predicate.Request(sql.FieldIn(FieldBootID, vs...))
+}
+
+// BootIDNotIn applies the NotIn predicate on the "boot_id" field.
+func BootIDNotIn(vs ...string) predicate.Request {
+	return predicate.Request(sql.FieldNotIn(FieldBootID, vs...))
+}
+
+// BootIDGT applies the GT predicate on the "boot_id" field.
+func BootIDGT(v string) predicate.Request {
+	return predicate.Request(sql.FieldGT(FieldBootID, v))
+}
+
+// BootIDGTE applies the GTE predicate on the "boot_id" field.
+func BootIDGTE(v string) predicate.Request {
+	return predicate.Request(sql.FieldGTE(FieldBootID, v))
+}
+
+// BootIDLT applies the LT predicate on the "boot_id" field.
+func BootIDLT(v string) predicate.Request {
+	return predicate.Request(sql.FieldLT(FieldBootID, v))
+}
+
+// BootIDLTE applies the LTE predicate on the "boot_id" field.
+func BootIDLTE(v string) predicate.Request {
+	return predicate.Request(sql.FieldLTE(FieldBootID, v))
+}
+
+// BootIDContains applies the Contains predicate on the "boot_id" field.
+func BootIDContains(v string) predicate.Request {
+	return predicate.Request(sql.FieldContains(FieldBootID, v))
+}
+
+// BootIDHasPrefix applies the HasPrefix predicate on the "boot_id" field.
+func BootIDHasPrefix(v string) predicate.Request {
+	return predicate.Request(sql.FieldHasPrefix(FieldBootID, v))
+}
+
+// BootIDHasSuffix applies the HasSuffix predicate on the "boot_id" field.
+func BootIDHasSuffix(v string) predicate.Request {
+	return predicate.Request(sql.FieldHasSuffix(FieldBootID, v))
+}
+
+// BootIDEqualFold applies the EqualFold predicate on the "boot_id" field.
+func BootIDEqualFold(v string) predicate.Request {
+	return predicate.Request(sql.FieldEqualFold(FieldBootID, v))
+}
+
+// BootIDContainsFold applies the ContainsFold predicate on the "boot_id" field.
+func BootIDContainsFold(v string) predicate.Request {
+	return predicate.Request(sql.FieldContainsFold(FieldBootID, v))
 }
 
 // BackendTaskIDEQ applies the EQ predicate on the "backend_task_id" field.

@@ -94,6 +94,26 @@ func DeploymentID(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldDeploymentID, v))
 }
 
+// WorkerID applies equality check predicate on the "worker_id" field. It's identical to WorkerIDEQ.
+func WorkerID(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldWorkerID, v))
+}
+
+// BootID applies equality check predicate on the "boot_id" field. It's identical to BootIDEQ.
+func BootID(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldBootID, v))
+}
+
+// LeaseExpiresAt applies equality check predicate on the "lease_expires_at" field. It's identical to LeaseExpiresAtEQ.
+func LeaseExpiresAt(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldLeaseExpiresAt, v))
+}
+
+// LifecycleDraining applies equality check predicate on the "lifecycle_draining" field. It's identical to LifecycleDrainingEQ.
+func LifecycleDraining(v bool) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldLifecycleDraining, v))
+}
+
 // ResourceGroup applies equality check predicate on the "resource_group" field. It's identical to ResourceGroupEQ.
 func ResourceGroup(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldResourceGroup, v))
@@ -532,6 +552,196 @@ func DeploymentIDEqualFold(v string) predicate.ModelInstance {
 // DeploymentIDContainsFold applies the ContainsFold predicate on the "deployment_id" field.
 func DeploymentIDContainsFold(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldContainsFold(FieldDeploymentID, v))
+}
+
+// WorkerIDEQ applies the EQ predicate on the "worker_id" field.
+func WorkerIDEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldWorkerID, v))
+}
+
+// WorkerIDNEQ applies the NEQ predicate on the "worker_id" field.
+func WorkerIDNEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNEQ(FieldWorkerID, v))
+}
+
+// WorkerIDIn applies the In predicate on the "worker_id" field.
+func WorkerIDIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIn(FieldWorkerID, vs...))
+}
+
+// WorkerIDNotIn applies the NotIn predicate on the "worker_id" field.
+func WorkerIDNotIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotIn(FieldWorkerID, vs...))
+}
+
+// WorkerIDGT applies the GT predicate on the "worker_id" field.
+func WorkerIDGT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGT(FieldWorkerID, v))
+}
+
+// WorkerIDGTE applies the GTE predicate on the "worker_id" field.
+func WorkerIDGTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGTE(FieldWorkerID, v))
+}
+
+// WorkerIDLT applies the LT predicate on the "worker_id" field.
+func WorkerIDLT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLT(FieldWorkerID, v))
+}
+
+// WorkerIDLTE applies the LTE predicate on the "worker_id" field.
+func WorkerIDLTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLTE(FieldWorkerID, v))
+}
+
+// WorkerIDContains applies the Contains predicate on the "worker_id" field.
+func WorkerIDContains(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContains(FieldWorkerID, v))
+}
+
+// WorkerIDHasPrefix applies the HasPrefix predicate on the "worker_id" field.
+func WorkerIDHasPrefix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasPrefix(FieldWorkerID, v))
+}
+
+// WorkerIDHasSuffix applies the HasSuffix predicate on the "worker_id" field.
+func WorkerIDHasSuffix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasSuffix(FieldWorkerID, v))
+}
+
+// WorkerIDEqualFold applies the EqualFold predicate on the "worker_id" field.
+func WorkerIDEqualFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEqualFold(FieldWorkerID, v))
+}
+
+// WorkerIDContainsFold applies the ContainsFold predicate on the "worker_id" field.
+func WorkerIDContainsFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContainsFold(FieldWorkerID, v))
+}
+
+// BootIDEQ applies the EQ predicate on the "boot_id" field.
+func BootIDEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldBootID, v))
+}
+
+// BootIDNEQ applies the NEQ predicate on the "boot_id" field.
+func BootIDNEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNEQ(FieldBootID, v))
+}
+
+// BootIDIn applies the In predicate on the "boot_id" field.
+func BootIDIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIn(FieldBootID, vs...))
+}
+
+// BootIDNotIn applies the NotIn predicate on the "boot_id" field.
+func BootIDNotIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotIn(FieldBootID, vs...))
+}
+
+// BootIDGT applies the GT predicate on the "boot_id" field.
+func BootIDGT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGT(FieldBootID, v))
+}
+
+// BootIDGTE applies the GTE predicate on the "boot_id" field.
+func BootIDGTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGTE(FieldBootID, v))
+}
+
+// BootIDLT applies the LT predicate on the "boot_id" field.
+func BootIDLT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLT(FieldBootID, v))
+}
+
+// BootIDLTE applies the LTE predicate on the "boot_id" field.
+func BootIDLTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLTE(FieldBootID, v))
+}
+
+// BootIDContains applies the Contains predicate on the "boot_id" field.
+func BootIDContains(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContains(FieldBootID, v))
+}
+
+// BootIDHasPrefix applies the HasPrefix predicate on the "boot_id" field.
+func BootIDHasPrefix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasPrefix(FieldBootID, v))
+}
+
+// BootIDHasSuffix applies the HasSuffix predicate on the "boot_id" field.
+func BootIDHasSuffix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasSuffix(FieldBootID, v))
+}
+
+// BootIDEqualFold applies the EqualFold predicate on the "boot_id" field.
+func BootIDEqualFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEqualFold(FieldBootID, v))
+}
+
+// BootIDContainsFold applies the ContainsFold predicate on the "boot_id" field.
+func BootIDContainsFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContainsFold(FieldBootID, v))
+}
+
+// LeaseExpiresAtEQ applies the EQ predicate on the "lease_expires_at" field.
+func LeaseExpiresAtEQ(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldLeaseExpiresAt, v))
+}
+
+// LeaseExpiresAtNEQ applies the NEQ predicate on the "lease_expires_at" field.
+func LeaseExpiresAtNEQ(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNEQ(FieldLeaseExpiresAt, v))
+}
+
+// LeaseExpiresAtIn applies the In predicate on the "lease_expires_at" field.
+func LeaseExpiresAtIn(vs ...time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIn(FieldLeaseExpiresAt, vs...))
+}
+
+// LeaseExpiresAtNotIn applies the NotIn predicate on the "lease_expires_at" field.
+func LeaseExpiresAtNotIn(vs ...time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotIn(FieldLeaseExpiresAt, vs...))
+}
+
+// LeaseExpiresAtGT applies the GT predicate on the "lease_expires_at" field.
+func LeaseExpiresAtGT(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGT(FieldLeaseExpiresAt, v))
+}
+
+// LeaseExpiresAtGTE applies the GTE predicate on the "lease_expires_at" field.
+func LeaseExpiresAtGTE(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGTE(FieldLeaseExpiresAt, v))
+}
+
+// LeaseExpiresAtLT applies the LT predicate on the "lease_expires_at" field.
+func LeaseExpiresAtLT(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLT(FieldLeaseExpiresAt, v))
+}
+
+// LeaseExpiresAtLTE applies the LTE predicate on the "lease_expires_at" field.
+func LeaseExpiresAtLTE(v time.Time) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLTE(FieldLeaseExpiresAt, v))
+}
+
+// LeaseExpiresAtIsNil applies the IsNil predicate on the "lease_expires_at" field.
+func LeaseExpiresAtIsNil() predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIsNull(FieldLeaseExpiresAt))
+}
+
+// LeaseExpiresAtNotNil applies the NotNil predicate on the "lease_expires_at" field.
+func LeaseExpiresAtNotNil() predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotNull(FieldLeaseExpiresAt))
+}
+
+// LifecycleDrainingEQ applies the EQ predicate on the "lifecycle_draining" field.
+func LifecycleDrainingEQ(v bool) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldLifecycleDraining, v))
+}
+
+// LifecycleDrainingNEQ applies the NEQ predicate on the "lifecycle_draining" field.
+func LifecycleDrainingNEQ(v bool) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNEQ(FieldLifecycleDraining, v))
 }
 
 // ResourceGroupEQ applies the EQ predicate on the "resource_group" field.

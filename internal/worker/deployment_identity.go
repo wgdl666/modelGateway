@@ -12,6 +12,9 @@ func setDeploymentHeaders(headers http.Header, task *ent.Request) {
 	}
 	headers.Set("X-Expected-Deployment-ID", task.DeploymentID)
 	headers.Set("X-Expected-Model-Key", task.ModelKey)
+	if task.BootID != "" {
+		headers.Set("X-Expected-Boot-ID", task.BootID)
+	}
 	headers.Set("X-Expected-Artifact-Digest", task.ArtifactDigest)
 }
 func deploymentResponseMatches(raw []byte, task *ent.Request) bool {
@@ -23,5 +26,5 @@ func deploymentResponseMatches(raw []byte, task *ent.Request) bool {
 		Artifact   string `json:"artifact_digest"`
 		Boot       string `json:"boot_id"`
 	}
-	return json.Unmarshal(raw, &identity) == nil && identity.Deployment == task.DeploymentID && identity.Artifact == task.ArtifactDigest && identity.Boot != ""
+	return json.Unmarshal(raw, &identity) == nil && identity.Deployment == task.DeploymentID && identity.Artifact == task.ArtifactDigest && identity.Boot != "" && (task.BootID == "" || identity.Boot == task.BootID)
 }
