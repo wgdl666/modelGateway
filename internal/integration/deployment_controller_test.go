@@ -32,6 +32,11 @@ func TestDeploymentControllerAcrossGatewayReplicas(t *testing.T) {
 	if python == "" {
 		t.Skip("TEST_LIFECYCLE_PYTHON required")
 	}
+	resolved, lookupErr := exec.LookPath(python)
+	if lookupErr != nil {
+		t.Fatal(lookupErr)
+	}
+	python, _ = filepath.Abs(resolved)
 	a, b, db := stores(t)
 	root, err := filepath.Abs("../..")
 	if err != nil {

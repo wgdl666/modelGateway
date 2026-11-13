@@ -66,3 +66,29 @@ class AgentTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 execute(self.config, self.root, {**self.message, **changes})
         self.assertFalse(self.counter.exists())
+
+    def test_modified_hook_file_cannot_execute_or_replay(self):
+        import hashlib
+
+        script = self.root / "hook.py"
+        script.write_text("print('{\"ok\": true}')")
+        self.config["plans"]["sha"]["activate"] = {
+            "argv": [sys.executable, str(script)]
+        }
+        with self.assertRaisesRegex(ValueError, "not bound"):
+            execute(self.config, self.root, self.message)
+        definition = self.config["plans"]["sha"]["activate"]
+        definition["files"] = {
+            str(script): hashlib.sha256(script.read_bytes()).hexdigest()
+        }
+        execute(self.config, self.root, self.message)
+        script.write_text("raise SystemExit(1)")
+        with self.assertRaisesRegex(ValueError, "changed"):
+            execute(self.config, self.root, {**self.message, "epoch": 2})
+
+    def test_completed_action_is_bound_to_its_original_definition(self):
+        execute(self.config, self.root, self.message)
+        self.config["plans"]["sha"]["activate"]["timeout"] = 60
+        with self.assertRaisesRegex(ValueError, "definition changed"):
+            execute(self.config, self.root, {**self.message, "epoch": 2})
+        self.assertEqual(self.counter.read_text(), "1")

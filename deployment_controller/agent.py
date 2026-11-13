@@ -64,6 +64,27 @@ def execute(config, root, message):
         timeout = definition.get("timeout", 600)
         if not command or not all(isinstance(v, str) for v in command):
             raise ValueError("Hook requires an argv array")
+        if not Path(command[0]).is_absolute():
+            raise ValueError("Hook interpreter/executable must be an absolute path")
+        files = definition.get("files", {})
+        for argument in command[1:]:
+            if (
+                len(argument) < 4096
+                and Path(argument).is_absolute()
+                and Path(argument).is_file()
+                and argument not in files
+            ):
+                raise ValueError("Hook script or plan file is not bound by SHA-256")
+        for filename, expected in files.items():
+            with Path(filename).open("rb") as f:
+                h = hashlib.sha256()
+                for block in iter(lambda: f.read(8 * 1024 * 1024), b""):
+                    h.update(block)
+            if h.hexdigest() != expected:
+                raise ValueError("Installed hook file changed")
+        definition_sha = hashlib.sha256(
+            json.dumps(definition, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
         key = operation + ":" + message["manifest_sha256"] + ":" + action
         mutation = action in ["activate", "stop"]
         previous = state["actions"].get(key)
@@ -72,10 +93,13 @@ def execute(config, root, message):
                 raise RuntimeError(
                     "Hook outcome is unknown; inspect the host before recovery"
                 )
+            if previous.get("definition_sha256") != definition_sha:
+                raise ValueError("Installed hook definition changed after execution")
             return previous["receipt"]
         if mutation:
             state["actions"][key] = {
                 "status": "running",
+                "definition_sha256": definition_sha,
                 "command_sha256": hashlib.sha256(
                     json.dumps(command).encode()
                 ).hexdigest(),
@@ -113,7 +137,11 @@ def execute(config, root, message):
             manifest_sha256=message["manifest_sha256"],
         )
         if mutation:
-            state["actions"][key] = {"status": "completed", "receipt": result}
+            state["actions"][key] = {
+                "status": "completed",
+                "receipt": result,
+                "definition_sha256": definition_sha,
+            }
             atomic(statepath, state)
         return result
 

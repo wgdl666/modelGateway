@@ -5,7 +5,7 @@
 ## 身份和兼容性
 
 - `model_key`：现有接口契约，升级权重不改调用名称。
-- `artifact_digest`：规范化不可变 release JSON 的 SHA-256（`sha256-...`）。内容包含实际 LoRA SHA、底模/推理参数、模型绑定、源码和模型文件哈希。
+- `artifact_digest`：规范化不可变 release JSON 的 SHA-256（`sha256-...`）。内容包含实际 LoRA SHA、底模/推理参数、模型绑定、源码和模型文件哈希。文件使用稳定逻辑名，区域本地路径不进入摘要，因此两地部署同一内容可以复用 release 身份。
 - `deployment_id`：本区域本 worker 的一次部署。换 release 创建新 ID；普通进程重启保留 ID。
 - `boot_id`：模型进程每次加载生成的新 ID。只作实际执行证据，不进入幂等请求指纹。
 - `instance_id`：一个模型契约的一条登记。同 worker 的业务接口、通用接口使用各自 ID，共享同一物理 GPU 资源组。
@@ -95,7 +95,7 @@ python -m deployment_controller --config /etc/model-deployment/regions.json \
 
 agent 是 `python -m deployment_controller.agent --config ... --state ...`，通过 SSH stdin 接收受限动作。它只执行宿主机管理员预先安装、由 plan SHA 选择的 argv，不执行请求里的 shell 命令。配置不可被 group/others 写入；state、回执、日志保留在持久目录。
 
-每份已批准 plan 配置 prepare、idle、activate、verify、stop 五个 hook。idle 必须返回 `ok:true,idle:true,active_requests:0,uncertain_executions:0`；verify 在线时返回 `ok:true,smoke_passed:true,boot_id,bindings`，离线时返回 `ok:true,stopped:true`。bindings 的 model_key/deployment_id/artifact_digest 必须逐项等于发布清单。
+每份已批准 plan 配置 prepare、idle、activate、verify、stop 五个 hook。hook 的解释器使用绝对路径，argv 中的脚本和 plan 文件必须通过 files 映射绑定 SHA-256；重放已完成动作也会核对原 hook 定义。idle 必须返回 `ok:true,idle:true,active_requests:0,uncertain_executions:0`；verify 在线时返回 `ok:true,smoke_passed:true,boot_id,bindings`，离线时返回 `ok:true,stopped:true`。bindings 的 model_key/deployment_id/artifact_digest 必须逐项等于发布清单。
 
 VMind-Image 提供 `deploy/model_gateway/qwen_host.py` 适配现有 split supervisor。Docker/systemd 及其他引擎可以实现同样 hook，不必迁移到 Kubernetes。更换 hook 实现后需要重新安装获批 plan。
 
