@@ -304,7 +304,7 @@ func TestSynchronousSharesCapacityWithQueueAndAliases(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("shared execution side received %d concurrent claims", count)
 	}
-	publications, err := a.PendingPublications(ctx)
+	publications, err := a.ScheduledPublications(ctx)
 	if err != nil || len(publications) != 0 {
 		t.Fatalf("sync tasks published to MQ: %+v %v", publications, err)
 	}

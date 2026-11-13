@@ -49,7 +49,17 @@ func TestManagedProbeRequiresExactLoadedDeployment(t *testing.T) {
 				t.Fatal(err)
 			}
 			w := &Reconciler{runtime: rt, client: backend.Client()}
-			health, err := w.ProbeInstance(context.Background(), rt.Current(), protocol.InstanceTarget{ModelKey: "selected", Protocol: protocol.ImageGenerationProtocol, Endpoint: backend.URL, HealthURL: backend.URL + "/health", DeploymentID: "new", ArtifactDigest: digest})
+			health, err := w.probeInstanceRaw(context.Background(), rt.Current(), protocol.InstanceTarget{ModelKey: "selected", Protocol: protocol.ImageGenerationProtocol, Endpoint: backend.URL, HealthURL: backend.URL + "/health", DeploymentID: "new", ArtifactDigest: digest})
+			target := protocol.InstanceTarget{DeploymentID: "new", ArtifactDigest: digest}
+			// A matching version in another region must not share this region's capacity.
+			if deploymentHealthMatches(health, target, "cn/dev") {
+				t.Fatal("unbound region accepted")
+			}
+			health.Region = "cn/dev"
+			if deploymentHealthMatches(health, target, "us/prod") {
+				t.Fatal("cross-region registration accepted")
+			}
+			health.Ready = deploymentHealthMatches(health, target, "cn/dev")
 			want := strings.Contains(body, `"deployment_id":"new"`) && strings.Contains(body, digest) && strings.Contains(body, `"boot_id":"b"`)
 			if err != nil || health.Ready != want {
 				t.Fatalf("health=%+v err=%v", health, err)

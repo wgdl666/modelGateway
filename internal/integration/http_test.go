@@ -115,7 +115,7 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 		}
 		return raw
 	}
-	get("/v1/admin/requests", apiToken, 401)
+	get("/v1/admin/requests", apiToken, 200)
 	list := get("/v1/admin/requests?trace_id=trace-for-ops&state=processing&model="+spec.ModelKey, adminToken, 200)
 	type requestView struct {
 		protocol.Response
@@ -129,10 +129,11 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 	if err := json.Unmarshal(list, &page); err != nil || page.Total != 1 || len(page.Items) != 1 ||
 		page.Items[0].RequestID != id || page.Items[0].ModelKey != spec.ModelKey || !page.Items[0].SlotReserved ||
 		strings.Contains(string(list), "request_payload") || strings.Contains(string(list), `"capability"`) ||
-		strings.Contains(string(list), "mime_type") || strings.Contains(string(list), "parameters") {
+		strings.Contains(string(list), "eA==") || strings.Contains(string(list), "parameters") ||
+		!strings.Contains(string(list), `"inputs":[{"index":0,"role":"image","mime_type":"image/png"}],"outputs":[]`) {
 		t.Fatalf("invalid list %s, error %v", list, err)
 	}
-	media := get("/v1/admin/requests/"+id+"/media?kind=input&index=0", adminToken, 200)
+	media := get("/v1/admin/requests/"+id+"/media?kind=input&index=0", apiToken, 200)
 	if string(media) != "x" {
 		t.Fatalf("input media = %q", media)
 	}
@@ -142,10 +143,18 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 	if !strings.Contains(string(instances), `"reserved_units":2`) || !strings.Contains(string(instances), `"reserved_requests":1`) {
 		t.Fatalf("invalid instance capacities %s", instances)
 	}
-	if err := a.RecordResponse(t.Context(), id, "", succeeded(id), time.Second); err != nil {
+	done := succeeded(id)
+	done.Result.Files[0].Key = "outputs/" + id + "/0.png"
+	if err := a.RecordResponse(t.Context(), id, "", done, time.Second); err != nil {
 		t.Fatal(err)
 	}
-	detail := get("/v1/admin/requests/"+id, adminToken, 200)
+	// 列表只给成品清单，不带对象引用和生成参数。
+	finished := get("/v1/admin/requests?request_id="+id, adminToken, 200)
+	if !strings.Contains(string(finished), `"outputs":[{"index":0,"mime_type":"image/png"}]`) ||
+		strings.Contains(string(finished), `"files"`) || strings.Contains(string(finished), "vmind-results") {
+		t.Fatalf("invalid finished list %s", finished)
+	}
+	detail := get("/v1/admin/requests/"+id, apiToken, 200)
 	var task requestView
 	if err := json.Unmarshal(detail, &task); err != nil || task.TraceID != "trace-for-ops" ||
 		task.State != "succeeded" || task.Result == nil || len(task.Result.Files) != 1 || task.SlotReserved ||

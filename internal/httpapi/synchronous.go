@@ -17,12 +17,13 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/google/uuid"
+	"github.com/wgdl666/kangaroo/callmeta"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
+	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 	"github.com/wgdl666/modelGateway/internal/store"
 	"github.com/wgdl666/modelGateway/internal/telemetry"
-	"go.opentelemetry.io/otel/propagation"
 )
 
 // 同步协议仍由原连接返回；受理、暂停与容量和异步任务使用同一份持久账本。
@@ -38,13 +39,20 @@ func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, 
 	// 原图/文本只由当前连接持有，不在只用于追溯的同步记录里再存一份敏感正文。
 	digest := sha256.Sum256(body)
 	input, _ := json.Marshal(map[string]any{"content_type": contentType, "body_bytes": len(body), "body_sha256": hex.EncodeToString(digest[:])})
-	payload, _ := json.Marshal(protocol.Submission{Input: input})
+	metadata, err := freezeMetadata(ctx, c, protocol.Metadata{TraceID: synchronousTraceID(c)})
+	if err != nil {
+		writeError(c, 400, "invalid_metadata", err.Error(), id)
+		return
+	}
+	payload, _ := json.Marshal(protocol.Submission{Input: input, Metadata: metadata})
 	units := cfg.UnitsByModelKey[model]
 	if units == 0 {
 		units = 1
 	}
-	task, err := s.store.Admit(ctx, store.Admission{ID: id, ModelKey: model, Protocol: kind, TraceID: synchronousTraceID(c),
-		Payload: payload, Input: input, Units: units, MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout})
+	// 同步记录不存原图。extra 里明确记下没有输入，Ops 无需再读详情确认。
+	extra, _ := protocol.InputMediaExtra(nil)
+	task, err := s.store.Admit(ctx, store.Admission{ID: id, ModelKey: model, Protocol: kind, TraceID: metadata.TraceID, APITokenID: c.GetString(apiTokenID),
+		Payload: payload, Input: input, Extra: extra, Units: units, MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout})
 	if err != nil {
 		storeError(c, err, id)
 		return
@@ -83,7 +91,8 @@ func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, 
 		}
 		select {
 		case <-waitCtx.Done():
-		case <-time.After(100 * time.Millisecond):
+		// 满槽后每 500ms 重试领取；取消仍由 waitCtx 立即唤醒。
+		case <-time.After(500 * time.Millisecond):
 		}
 	}
 	s.executeSynchronous(ctx, c, client, task, path, contentType, body)
@@ -113,20 +122,16 @@ func synchronousTraceID(c *app.RequestContext) string {
 
 func (s *Server) executeSynchronous(ctx context.Context, c *app.RequestContext, client *http.Client, task *ent.Request, path, contentType string, body []byte) {
 	cfg := requestConfig(ctx)
-	endpoint := task.Endpoint + path
-	port := strings.TrimPrefix(task.Endpoint, "http://127.0.0.1:")
-	switch protocol.SynchronousKind(task.Protocol) {
-	case protocol.SyncVision:
-		endpoint = "http://" + cfg.VisionAddr + "/_dispatch/" + port + path
-	case protocol.SyncDecision:
-		endpoint = "http://" + cfg.DecisionAddr + "/v1/instances/" + port + "/predict"
-	}
+	endpoint, pool := synchronousEndpoint(cfg.Config, task, path)
 	// 客户端断开不代表 GPU 已停止。独立执行预算保证继续读完响应后才归还容量。
 	execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cfg.NativeExecutionTimeout)
+	if pool {
+		execCtx = config.WithSubjectPoolPolicy(execCtx, cfg)
+	}
 	var wrote atomic.Bool
 	execCtx = httptrace.WithClientTrace(execCtx, &httptrace.ClientTrace{WroteHeaders: func() { wrote.Store(true) }})
 	complete := func(result protocol.HTTPResult, known bool) {
-		writeCtx, end := context.WithTimeout(context.Background(), store.ExecutionWriteTimeout)
+		writeCtx, end := context.WithTimeout(context.WithoutCancel(ctx), store.SynchronousWriteTimeout)
 		defer end()
 		if err := s.store.CompleteSynchronous(writeCtx, task.ID, task.PollClaim, result, known); err != nil {
 			telemetry.LogError(execCtx, "synchronous outcome persistence failed", err, "request_id", task.ID)
@@ -139,10 +144,13 @@ func (s *Server) executeSynchronous(ctx context.Context, c *app.RequestContext, 
 		writeError(c, 502, "upstream_unavailable", "instance endpoint is invalid", task.ID)
 		return
 	}
+	if pool {
+		req.Header.Set("X-Segment-Pool-Key", cfg.SubjectPoolAPIKey)
+	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("X-Request-ID", task.ID)
 	// 网关 span 接在 ModelHub 后面；标准上下文与已有业务 Trace ID 一起传给同步执行端。
-	(propagation.TraceContext{}).Inject(execCtx, propagation.HeaderCarrier(req.Header))
+	(callmeta.Propagator{}).Inject(execCtx, callmeta.HTTPHeaders(req.Header))
 	if task.TraceID != "" {
 		req.Header.Set("X-Trace-ID", task.TraceID)
 	}
@@ -198,4 +206,19 @@ func (b *synchronousBody) Close() error {
 		go func() { _, _ = io.Copy(io.Discard, b) }()
 	})
 	return nil
+}
+
+func synchronousEndpoint(cfg config.Config, task *ent.Request, path string) (string, bool) {
+	if _, ok := cfg.SubjectPoolFor(task.ModelKey, task.Protocol, task.Endpoint); ok {
+		return task.Endpoint + "/api/segment_subject", true
+	}
+	endpoint := task.Endpoint + path
+	port := strings.TrimPrefix(task.Endpoint, "http://127.0.0.1:")
+	switch protocol.SynchronousKind(task.Protocol) {
+	case protocol.SyncVision:
+		endpoint = "http://" + cfg.VisionAddr + "/_dispatch/" + port + path
+	case protocol.SyncDecision:
+		endpoint = "http://" + cfg.DecisionAddr + "/v1/instances/" + port + "/predict"
+	}
+	return endpoint, false
 }

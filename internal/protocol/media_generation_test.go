@@ -15,7 +15,7 @@ func TestGenerationInputsAreIndependentOfBusinessAndModel(t *testing.T) {
 		{VideoGenerationProtocol, `{"prompt":"a moving landscape","seconds":4.5,"size":"1280x720","parameters":{"fps":24,"audio":true}}`},
 		{VideoGenerationProtocol, `{"images":[` + image + `,` + image + `],"prompt":"animate references"}`},
 	} {
-		if err := ValidateInput(tc.kind, json.RawMessage(tc.input)); err != nil {
+		if _, err := ValidateInput(tc.kind, json.RawMessage(tc.input)); err != nil {
 			t.Errorf("%s: %v", tc.input, err)
 		}
 		normalized, err := NormalizeMediaInput(tc.kind, json.RawMessage(tc.input))
@@ -51,9 +51,9 @@ func TestGenerationRejectsInvalidEnvelopeAndCrossMediaFields(t *testing.T) {
 
 func TestTextOnlyGenerationPreview(t *testing.T) {
 	for _, kind := range []string{ImageGenerationProtocol, VideoGenerationProtocol} {
-		params, refs, images, err := PreviewSubmission(kind, json.RawMessage(`{"input":{"prompt":"hello","parameters":{"seed":42}}}`))
-		if err != nil || len(refs) != 0 || len(images) != 0 || !strings.Contains(string(params), `"seed":42`) {
-			t.Fatalf("text-only preview: %s %v %v %v", params, refs, images, err)
+		params, refs, err := PreviewSubmission(kind, json.RawMessage(`{"input":{"prompt":"hello","parameters":{"seed":42}}}`))
+		if err != nil || len(refs) != 0 || !strings.Contains(string(params), `"seed":42`) {
+			t.Fatalf("text-only preview: %s %v %v", params, refs, err)
 		}
 	}
 }

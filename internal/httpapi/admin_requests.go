@@ -114,11 +114,50 @@ func (s *Server) listRequests(ctx context.Context, c *app.RequestContext) {
 		storeError(c, err, "")
 		return
 	}
-	items := make([]requestView, 0, len(rows))
+	items := make([]listedRequest, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, viewRequest(row))
+		items = append(items, listRequest(row))
 	}
 	writeJSON(c, 200, map[string]any{"items": items, "total": total})
+}
+
+// listedRequest 给 Ops 列表直接展示每张输入和成品。请求 extra 里没有输入清单时，
+// 仅省略 inputs，表示需要读详情；outputs 始终从结果生成，空数组表示没有成品。
+type listedRequest struct {
+	requestView
+	Inputs  *[]protocol.MediaRef `json:"inputs,omitempty"`
+	Outputs []protocol.MediaRef  `json:"outputs"`
+}
+
+// inputMedia 只认 extra.input_media。键不存在表示未记录输入清单，空数组表示确认没有输入。
+func inputMedia(extra json.RawMessage) ([]protocol.MediaRef, bool) {
+	var bag struct {
+		InputMedia json.RawMessage `json:"input_media"`
+	}
+	if len(extra) == 0 || json.Unmarshal(extra, &bag) != nil || bag.InputMedia == nil {
+		return nil, false
+	}
+	refs := []protocol.MediaRef{}
+	if json.Unmarshal(bag.InputMedia, &refs) != nil {
+		return nil, false
+	}
+	return refs, true
+}
+
+func listRequest(row *ent.Request) listedRequest {
+	listed := listedRequest{requestView: viewRequest(row)}
+	result := listed.Result
+	// 结果里有生成参数，列表只给成品清单，完整结果仍只在详情返回。
+	listed.Result = nil
+	if inputs, ok := inputMedia(row.Extra); ok {
+		listed.Inputs = &inputs
+	}
+	outputs := []protocol.MediaRef{}
+	if result != nil {
+		outputs = protocol.OutputMedia(result.Files)
+	}
+	listed.Outputs = outputs
+	return listed
 }
 
 type inspectedRequest struct {
@@ -132,9 +171,12 @@ func inspectRequest(row *ent.Request) inspectedRequest {
 	view := viewRequest(row)
 	parameters := json.RawMessage(`{}`)
 	inputs := []protocol.MediaRef{}
-	if params, refs, _, err := protocol.PreviewSubmission(row.Protocol, row.RequestPayload); err == nil {
+	if params, refs, err := protocol.PreviewSubmission(row.Protocol, row.RequestPayload); err == nil {
 		parameters = params
 		inputs = refs
+	}
+	if saved, ok := inputMedia(row.Extra); ok {
+		inputs = saved
 	}
 	outputs := []protocol.MediaRef{}
 	if view.Result != nil {
@@ -200,19 +242,23 @@ func (s *Server) requestMedia(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_media", "media kind and index are required", id)
 		return
 	}
-	row, err := s.store.RequestDetail(ctx, id)
+	var row *ent.Request
+	if kind == "output" {
+		row, err = s.store.RequestOutput(ctx, id)
+	} else {
+		row, err = s.store.RequestDetail(ctx, id)
+	}
 	if err != nil {
 		storeError(c, err, id)
 		return
 	}
 	switch kind {
 	case "input":
-		_, _, images, err := protocol.PreviewSubmission(row.Protocol, row.RequestPayload)
-		if err != nil || index >= len(images) || !allowedInputMIME(images[index].MIMEType) || int64(len(images[index].Data)) > maxImageBytes {
+		image, err := protocol.PreviewInputImage(row.RequestPayload, index)
+		if err != nil || !allowedInputMIME(image.MIMEType) || int64(len(image.Data)) > maxImageBytes {
 			writeError(c, 404, "media_unavailable", "input image is unavailable", id)
 			return
 		}
-		image := images[index]
 		writeMedia(c, image.MIMEType, bytes.NewReader(image.Data), int64(len(image.Data)))
 	default:
 		view := taskResponse(row)

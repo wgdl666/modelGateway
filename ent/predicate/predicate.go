@@ -6,6 +6,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// APIToken is the predicate function for apitoken builders.
+type APIToken func(*sql.Selector)
+
 // DeploymentDomain is the predicate function for deploymentdomain builders.
 type DeploymentDomain func(*sql.Selector)
 

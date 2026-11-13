@@ -5,6 +5,7 @@ package ent
 import (
 	"time"
 
+	"github.com/wgdl666/modelGateway/ent/apitoken"
 	"github.com/wgdl666/modelGateway/ent/deploymentlease"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
@@ -16,6 +17,26 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	apitokenFields := schema.APIToken{}.Fields()
+	_ = apitokenFields
+	// apitokenDescName is the schema descriptor for name field.
+	apitokenDescName := apitokenFields[1].Descriptor()
+	// apitoken.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	apitoken.NameValidator = apitokenDescName.Validators[0].(func(string) error)
+	// apitokenDescCreatedBy is the schema descriptor for created_by field.
+	apitokenDescCreatedBy := apitokenFields[3].Descriptor()
+	// apitoken.CreatedByValidator is a validator for the "created_by" field. It is called by the builders before save.
+	apitoken.CreatedByValidator = apitokenDescCreatedBy.Validators[0].(func(string) error)
+	// apitokenDescCreatedAt is the schema descriptor for created_at field.
+	apitokenDescCreatedAt := apitokenFields[4].Descriptor()
+	// apitoken.DefaultCreatedAt holds the default value on creation for the created_at field.
+	apitoken.DefaultCreatedAt = apitokenDescCreatedAt.Default.(func() time.Time)
+	// apitokenDescUpdatedAt is the schema descriptor for updated_at field.
+	apitokenDescUpdatedAt := apitokenFields[5].Descriptor()
+	// apitoken.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	apitoken.DefaultUpdatedAt = apitokenDescUpdatedAt.Default.(func() time.Time)
+	// apitoken.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	apitoken.UpdateDefaultUpdatedAt = apitokenDescUpdatedAt.UpdateDefault.(func() time.Time)
 	deploymentleaseFields := schema.DeploymentLease{}.Fields()
 	_ = deploymentleaseFields
 	// deploymentleaseDescOperationID is the schema descriptor for operation_id field.
@@ -80,78 +101,82 @@ func init() {
 	requestDescTraceID := requestFields[3].Descriptor()
 	// request.DefaultTraceID holds the default value on creation for the trace_id field.
 	request.DefaultTraceID = requestDescTraceID.Default.(string)
+	// requestDescAPITokenID is the schema descriptor for api_token_id field.
+	requestDescAPITokenID := requestFields[4].Descriptor()
+	// request.DefaultAPITokenID holds the default value on creation for the api_token_id field.
+	request.DefaultAPITokenID = requestDescAPITokenID.Default.(string)
 	// requestDescPayloadBytes is the schema descriptor for payload_bytes field.
-	requestDescPayloadBytes := requestFields[5].Descriptor()
+	requestDescPayloadBytes := requestFields[7].Descriptor()
 	// request.PayloadBytesValidator is a validator for the "payload_bytes" field. It is called by the builders before save.
 	request.PayloadBytesValidator = requestDescPayloadBytes.Validators[0].(func(int64) error)
 	// requestDescUnits is the schema descriptor for units field.
-	requestDescUnits := requestFields[6].Descriptor()
+	requestDescUnits := requestFields[8].Descriptor()
 	// request.UnitsValidator is a validator for the "units" field. It is called by the builders before save.
 	request.UnitsValidator = requestDescUnits.Validators[0].(func(int) error)
 	// requestDescSlotReserved is the schema descriptor for slot_reserved field.
-	requestDescSlotReserved := requestFields[9].Descriptor()
+	requestDescSlotReserved := requestFields[11].Descriptor()
 	// request.DefaultSlotReserved holds the default value on creation for the slot_reserved field.
 	request.DefaultSlotReserved = requestDescSlotReserved.Default.(bool)
 	// requestDescInstanceID is the schema descriptor for instance_id field.
-	requestDescInstanceID := requestFields[10].Descriptor()
+	requestDescInstanceID := requestFields[12].Descriptor()
 	// request.DefaultInstanceID holds the default value on creation for the instance_id field.
 	request.DefaultInstanceID = requestDescInstanceID.Default.(string)
 	// requestDescResourceGroup is the schema descriptor for resource_group field.
-	requestDescResourceGroup := requestFields[11].Descriptor()
+	requestDescResourceGroup := requestFields[13].Descriptor()
 	// request.DefaultResourceGroup holds the default value on creation for the resource_group field.
 	request.DefaultResourceGroup = requestDescResourceGroup.Default.(string)
 	// requestDescResourceGroups is the schema descriptor for resource_groups field.
-	requestDescResourceGroups := requestFields[12].Descriptor()
+	requestDescResourceGroups := requestFields[14].Descriptor()
 	// request.DefaultResourceGroups holds the default value on creation for the resource_groups field.
 	request.DefaultResourceGroups = requestDescResourceGroups.Default.([]string)
 	// requestDescEndpoint is the schema descriptor for endpoint field.
-	requestDescEndpoint := requestFields[13].Descriptor()
+	requestDescEndpoint := requestFields[15].Descriptor()
 	// request.DefaultEndpoint holds the default value on creation for the endpoint field.
 	request.DefaultEndpoint = requestDescEndpoint.Default.(string)
 	// requestDescArtifactDigest is the schema descriptor for artifact_digest field.
-	requestDescArtifactDigest := requestFields[14].Descriptor()
+	requestDescArtifactDigest := requestFields[16].Descriptor()
 	// request.DefaultArtifactDigest holds the default value on creation for the artifact_digest field.
 	request.DefaultArtifactDigest = requestDescArtifactDigest.Default.(string)
 	// requestDescDeploymentID is the schema descriptor for deployment_id field.
-	requestDescDeploymentID := requestFields[15].Descriptor()
+	requestDescDeploymentID := requestFields[17].Descriptor()
 	// request.DefaultDeploymentID holds the default value on creation for the deployment_id field.
 	request.DefaultDeploymentID = requestDescDeploymentID.Default.(string)
 	// requestDescBackendTaskID is the schema descriptor for backend_task_id field.
-	requestDescBackendTaskID := requestFields[16].Descriptor()
+	requestDescBackendTaskID := requestFields[18].Descriptor()
 	// request.DefaultBackendTaskID holds the default value on creation for the backend_task_id field.
 	request.DefaultBackendTaskID = requestDescBackendTaskID.Default.(string)
 	// requestDescDispatchAttempts is the schema descriptor for dispatch_attempts field.
-	requestDescDispatchAttempts := requestFields[17].Descriptor()
+	requestDescDispatchAttempts := requestFields[19].Descriptor()
 	// request.DefaultDispatchAttempts holds the default value on creation for the dispatch_attempts field.
 	request.DefaultDispatchAttempts = requestDescDispatchAttempts.Default.(int)
 	// request.DispatchAttemptsValidator is a validator for the "dispatch_attempts" field. It is called by the builders before save.
 	request.DispatchAttemptsValidator = requestDescDispatchAttempts.Validators[0].(func(int) error)
 	// requestDescDispatchRetryReason is the schema descriptor for dispatch_retry_reason field.
-	requestDescDispatchRetryReason := requestFields[18].Descriptor()
+	requestDescDispatchRetryReason := requestFields[20].Descriptor()
 	// request.DefaultDispatchRetryReason holds the default value on creation for the dispatch_retry_reason field.
 	request.DefaultDispatchRetryReason = requestDescDispatchRetryReason.Default.(string)
 	// requestDescPollClaim is the schema descriptor for poll_claim field.
-	requestDescPollClaim := requestFields[23].Descriptor()
+	requestDescPollClaim := requestFields[25].Descriptor()
 	// request.DefaultPollClaim holds the default value on creation for the poll_claim field.
 	request.DefaultPollClaim = requestDescPollClaim.Default.(string)
 	// requestDescErrorCode is the schema descriptor for error_code field.
-	requestDescErrorCode := requestFields[25].Descriptor()
+	requestDescErrorCode := requestFields[27].Descriptor()
 	// request.DefaultErrorCode holds the default value on creation for the error_code field.
 	request.DefaultErrorCode = requestDescErrorCode.Default.(string)
 	// requestDescErrorMessage is the schema descriptor for error_message field.
-	requestDescErrorMessage := requestFields[26].Descriptor()
+	requestDescErrorMessage := requestFields[28].Descriptor()
 	// request.DefaultErrorMessage holds the default value on creation for the error_message field.
 	request.DefaultErrorMessage = requestDescErrorMessage.Default.(string)
 	// requestDescErrorStatus is the schema descriptor for error_status field.
-	requestDescErrorStatus := requestFields[27].Descriptor()
+	requestDescErrorStatus := requestFields[29].Descriptor()
 	// request.DefaultErrorStatus holds the default value on creation for the error_status field.
 	request.DefaultErrorStatus = requestDescErrorStatus.Default.(int)
 	// requestDescCreatedAt is the schema descriptor for created_at field.
-	requestDescCreatedAt := requestFields[28].Descriptor()
+	requestDescCreatedAt := requestFields[30].Descriptor()
 	// request.DefaultCreatedAt holds the default value on creation for the created_at field.
 	request.DefaultCreatedAt = requestDescCreatedAt.Default.(func() time.Time)
 	// requestDescUpdatedAt is the schema descriptor for updated_at field.
-	requestDescUpdatedAt := requestFields[29].Descriptor()
+	requestDescUpdatedAt := requestFields[31].Descriptor()
 	// request.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	request.DefaultUpdatedAt = requestDescUpdatedAt.Default.(func() time.Time)
 	// request.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

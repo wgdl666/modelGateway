@@ -24,8 +24,12 @@ type Request struct {
 	Protocol string `json:"protocol,omitempty"`
 	// TraceID holds the value of the "trace_id" field.
 	TraceID string `json:"trace_id,omitempty"`
+	// APITokenID holds the value of the "api_token_id" field.
+	APITokenID string `json:"api_token_id,omitempty"`
 	// RequestPayload holds the value of the "request_payload" field.
 	RequestPayload json.RawMessage `json:"request_payload,omitempty"`
+	// Extra holds the value of the "extra" field.
+	Extra json.RawMessage `json:"extra,omitempty"`
 	// PayloadBytes holds the value of the "payload_bytes" field.
 	PayloadBytes int64 `json:"payload_bytes,omitempty"`
 	// Units holds the value of the "units" field.
@@ -84,13 +88,13 @@ func (*Request) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case request.FieldRequestPayload, request.FieldResourceGroups, request.FieldResult:
+		case request.FieldRequestPayload, request.FieldExtra, request.FieldResourceGroups, request.FieldResult:
 			values[i] = new([]byte)
 		case request.FieldSlotReserved:
 			values[i] = new(sql.NullBool)
 		case request.FieldPayloadBytes, request.FieldUnits, request.FieldDispatchAttempts, request.FieldErrorStatus:
 			values[i] = new(sql.NullInt64)
-		case request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldTraceID, request.FieldState, request.FieldInstanceID, request.FieldResourceGroup, request.FieldEndpoint, request.FieldArtifactDigest, request.FieldDeploymentID, request.FieldBackendTaskID, request.FieldDispatchRetryReason, request.FieldPollClaim, request.FieldErrorCode, request.FieldErrorMessage:
+		case request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldTraceID, request.FieldAPITokenID, request.FieldState, request.FieldInstanceID, request.FieldResourceGroup, request.FieldEndpoint, request.FieldArtifactDigest, request.FieldDeploymentID, request.FieldBackendTaskID, request.FieldDispatchRetryReason, request.FieldPollClaim, request.FieldErrorCode, request.FieldErrorMessage:
 			values[i] = new(sql.NullString)
 		case request.FieldQueuePublishAt, request.FieldDeadlineAt, request.FieldStartedAt, request.FieldFinishedAt, request.FieldNextPollAt, request.FieldCreatedAt, request.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -133,12 +137,26 @@ func (_m *Request) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.TraceID = value.String
 			}
+		case request.FieldAPITokenID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field api_token_id", values[i])
+			} else if value.Valid {
+				_m.APITokenID = value.String
+			}
 		case request.FieldRequestPayload:
 			if value, ok := values[i].(*[]byte); !ok {
 				return fmt.Errorf("unexpected type %T for field request_payload", values[i])
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &_m.RequestPayload); err != nil {
 					return fmt.Errorf("unmarshal field request_payload: %w", err)
+				}
+			}
+		case request.FieldExtra:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field extra", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Extra); err != nil {
+					return fmt.Errorf("unmarshal field extra: %w", err)
 				}
 			}
 		case request.FieldPayloadBytes:
@@ -344,8 +362,14 @@ func (_m *Request) String() string {
 	builder.WriteString("trace_id=")
 	builder.WriteString(_m.TraceID)
 	builder.WriteString(", ")
+	builder.WriteString("api_token_id=")
+	builder.WriteString(_m.APITokenID)
+	builder.WriteString(", ")
 	builder.WriteString("request_payload=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RequestPayload))
+	builder.WriteString(", ")
+	builder.WriteString("extra=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Extra))
 	builder.WriteString(", ")
 	builder.WriteString("payload_bytes=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PayloadBytes))

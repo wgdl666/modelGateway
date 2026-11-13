@@ -66,14 +66,20 @@ func (w *Reconciler) publishQueued(ch *amqp091.Channel, queue string) error {
 	}
 	returned := ch.NotifyReturn(make(chan amqp091.Return, 1))
 	closed := ch.NotifyClose(make(chan *amqp091.Error, 1))
-	ticker := time.NewTicker(80 * time.Millisecond)
-	defer ticker.Stop()
+	// 提交通知负责即时投递；10 秒补偿进程重启、跨副本写入或通知丢失。
+	timer := time.NewTimer(0)
+	defer timer.Stop()
 	for w.ctx.Err() == nil {
-		pending, err := w.store.PendingPublications(w.ctx)
+		pending, err := w.store.ScheduledPublications(w.ctx)
 		if err != nil {
 			return err
 		}
+		wait := 10 * time.Second
 		for _, task := range pending {
+			if until := time.Until(*task.QueuePublishAt); until > 0 {
+				wait = min(wait, until)
+				break
+			}
 			ttl := time.Until(task.DeadlineAt)
 			if ttl <= 0 {
 				continue
@@ -85,12 +91,18 @@ func (w *Reconciler) publishQueued(ch *amqp091.Channel, queue string) error {
 				return err
 			}
 		}
+		// 一批已到期记录发布完后立即继续，避免批量上限把积压拖到补偿周期。
+		if len(pending) == 32 && !pending[len(pending)-1].QueuePublishAt.After(time.Now()) {
+			wait = 0
+		}
+		timer.Reset(wait)
 		select {
 		case <-w.ctx.Done():
 			return nil
 		case <-closed:
 			return amqp091.ErrClosed
-		case <-ticker.C:
+		case <-w.store.PublicationWake():
+		case <-timer.C:
 		}
 	}
 	return nil

@@ -13,6 +13,7 @@ import (
 )
 
 type healthReport struct {
+	Region       string          `json:"region"`
 	DeploymentID string          `json:"deployment_id"`
 	BootID       string          `json:"boot_id"`
 	Ready        *bool           `json:"ready"`
@@ -21,7 +22,7 @@ type healthReport struct {
 }
 
 func (h healthReport) result(ready bool) protocol.InstanceHealth {
-	result := protocol.InstanceHealth{Ready: ready, DeploymentID: h.DeploymentID, BootID: h.BootID}
+	result := protocol.InstanceHealth{Ready: ready, DeploymentID: h.DeploymentID, BootID: h.BootID, Region: h.Region}
 	var digest string
 	// 摘要字段未上报或格式有误时，仍按健康字段判断服务能否接单。
 	if json.Unmarshal(h.Artifact, &digest) == nil {
@@ -35,6 +36,9 @@ func (h healthReport) result(ready bool) protocol.InstanceHealth {
 
 // ProbeInstance 供后台探活和手动测试共用执行端协议及凭据。调用方先核对登记地址。
 func (w *Reconciler) probeInstanceRaw(ctx context.Context, cfg *config.Snapshot, target protocol.InstanceTarget) (protocol.InstanceHealth, error) {
+	if p, ok := cfg.SubjectPoolFor(target.ModelKey, target.Protocol, target.Endpoint); ok && target.HealthURL == p.HealthURL {
+		return protocol.InstanceHealth{Ready: w.readSubjectPoolHealth(ctx, cfg, p)}, nil
+	}
 	if kind := protocol.SynchronousKind(target.Protocol); kind != "" {
 		health := w.readSynchronousHealth(ctx, kind, cfg.SynchronousHealthURL(target.Protocol))
 		return protocol.InstanceHealth{Ready: health.ready(target.Protocol, target.Endpoint, 1)}, nil
@@ -69,7 +73,15 @@ func (w *Reconciler) probeInstanceRaw(ctx context.Context, cfg *config.Snapshot,
 func (w *Reconciler) ProbeInstance(ctx context.Context, cfg *config.Snapshot, target protocol.InstanceTarget) (protocol.InstanceHealth, error) {
 	h, err := w.probeInstanceRaw(ctx, cfg, target)
 	if target.DeploymentID != "" {
-		h.Ready = h.Ready && h.DeploymentID == target.DeploymentID && h.ArtifactDigest == target.ArtifactDigest && h.BootID != ""
+		region, domainErr := w.store.DeploymentDomain(ctx)
+		if domainErr != nil {
+			h.Ready = false
+			return h, domainErr
+		}
+		h.Ready = deploymentHealthMatches(h, target, region)
 	}
 	return h, err
+}
+func deploymentHealthMatches(h protocol.InstanceHealth, target protocol.InstanceTarget, region string) bool {
+	return h.Ready && region != "" && h.Region == region && h.DeploymentID == target.DeploymentID && h.ArtifactDigest == target.ArtifactDigest && h.BootID != ""
 }

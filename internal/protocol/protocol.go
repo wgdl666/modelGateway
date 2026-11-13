@@ -31,6 +31,7 @@ var (
 // Instance 记录部署身份和同卡分组。是否可派由主动探针及排空状态决定。
 // 原生视频用地址中的单卡路径绑定 GPU。
 type Instance struct {
+	// InitiallyDraining applies only to creation; registration retries never change live drain state.
 	ID       string `json:"instance_id"`
 	ModelKey string `json:"model_key"`
 	// 协议由登记显式指定，模型名称只作为身份与路由标识。
@@ -59,6 +60,7 @@ type InstanceTarget struct {
 }
 
 type InstanceHealth struct {
+	Region         string `json:"region,omitempty"`
 	DeploymentID   string `json:"deployment_id,omitempty"`
 	BootID         string `json:"boot_id,omitempty"`
 	Ready          bool   `json:"ready"`
@@ -84,8 +86,11 @@ func ValidInstanceID(id string) bool {
 }
 
 type Metadata struct {
-	UserID  string `json:"user_id,omitempty"`
-	TraceID string `json:"trace_id,omitempty"`
+	DeviceID    string `json:"device_id,omitempty"`
+	TraceParent string `json:"traceparent,omitempty"`
+	TraceState  string `json:"tracestate,omitempty"`
+	UserID      string `json:"user_id,omitempty"`
+	TraceID     string `json:"trace_id,omitempty"`
 }
 
 type Submission struct {
@@ -233,26 +238,36 @@ var experimentalFields = map[string][]string{
 	VideoProtocol:    {"model", "duration", "resolution", "fps", "audio"},
 }
 
-// ValidateInput 按登记协议校验业务字段。缺少拆衣输入时不能转成商品图请求。
-func ValidateInput(kind string, input json.RawMessage) error {
+// ValidateInput 按登记协议校验业务字段，返回已解码图片供受理阶段生成清单，避免重复解码。
+// 缺少拆衣输入时不能转成商品图请求。
+func ValidateInput(kind string, input json.RawMessage) ([]InputImage, error) {
 	return validateInput(kind, input, false)
 }
 
 // ValidateExperimentalInput 在业务字段之外放行该协议的实验参数，仅用于实验凭据。
-func ValidateExperimentalInput(kind string, input json.RawMessage) error {
+func ValidateExperimentalInput(kind string, input json.RawMessage) ([]InputImage, error) {
 	return validateInput(kind, input, true)
 }
 
-func validateInput(kind string, input json.RawMessage, experimental bool) error {
+func validateInput(kind string, input json.RawMessage, experimental bool) ([]InputImage, error) {
 	if GenerationProtocol(kind) {
-		return ValidateGenerationInput(kind, input)
+		if err := ValidateGenerationInput(kind, input); err != nil {
+			return nil, err
+		}
+		var parsed struct {
+			Images []InputImage `json:"images"`
+		}
+		if err := json.Unmarshal(input, &parsed); err != nil {
+			return nil, err
+		}
+		return parsed.Images, nil
 	}
 	if !MediaProtocol(kind) {
-		return errors.New("unsupported media protocol")
+		return nil, errors.New("unsupported media protocol")
 	}
 	fields, images, err := DecodeInput(input)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	minImages, maxImages := 1, 1
 	var allowed []string
@@ -261,7 +276,7 @@ func validateInput(kind string, input json.RawMessage, experimental bool) error 
 		allowed = []string{"garment_name", "garment_role"}
 	case WardrobeProtocol:
 		if len(images) == 1 && fields["bbox"] == nil && fields["parse_labels"] == nil {
-			return errors.New("garment extraction requires bbox or parser input")
+			return nil, errors.New("garment extraction requires bbox or parser input")
 		}
 		maxImages = 2
 		allowed = []string{"garment_name", "garment_role", "bbox", "bbox_format", "parse_labels"}
@@ -277,18 +292,18 @@ func validateInput(kind string, input json.RawMessage, experimental bool) error 
 		allowed = append(allowed, experimentalFields[kind]...)
 	}
 	if len(images) < minImages || len(images) > maxImages {
-		return errors.New("wrong number of input images")
+		return nil, errors.New("wrong number of input images")
 	}
 	for key, raw := range fields {
 		if !slices.Contains(allowed, key) || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-			return errors.New("unsupported business field")
+			return nil, errors.New("unsupported business field")
 		}
 		var target any
 		switch key {
 		case "bbox":
 			var coordinates []float64
 			if json.Unmarshal(raw, &coordinates) != nil || len(coordinates) != 4 {
-				return errors.New("bbox must contain four coordinates")
+				return nil, errors.New("bbox must contain four coordinates")
 			}
 			continue
 		case "parse_labels":
@@ -297,8 +312,8 @@ func validateInput(kind string, input json.RawMessage, experimental bool) error 
 			target = new(string)
 		}
 		if json.Unmarshal(raw, target) != nil {
-			return errors.New("invalid business field")
+			return nil, errors.New("invalid business field")
 		}
 	}
-	return nil
+	return images, nil
 }

@@ -14,10 +14,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wgdl666/kangaroo/bizerr"
 	"github.com/wgdl666/modelGateway/internal/protocol"
+	"github.com/wgdl666/modelGateway/internal/token"
 )
 
 type Config struct {
+	// 仅由 Secret 注入；留空时关闭独立 Token，不影响已有固定凭据。
+	TokenEncryptionKey string                 `json:"-"`
+	SubjectPools       map[string]SubjectPool `json:"subject_pools,omitempty"`
+	SubjectPoolAPIKey  string                 `json:"-"`
+
 	Logfire         LogfireConfig  `json:"logfire"`
 	DatabaseURL     string         `json:"database_url"`
 	RabbitMQURL     string         `json:"-"`
@@ -78,12 +85,14 @@ func Parse(raw []byte) (Config, error) {
 	}
 	// 数据库和 MQ 凭据由 Secret 注入，配置中心只保存队列名等非密钥设置。
 	for key, field := range map[string]*string{
-		"MODEL_GATEWAY_DATABASE_URL":       &c.DatabaseURL,
-		"MODEL_GATEWAY_RABBITMQ_URL":       &c.RabbitMQURL,
-		"MODEL_GATEWAY_API_TOKEN":          &c.APIToken,
-		"MODEL_GATEWAY_ADMIN_TOKEN":        &c.AdminToken,
-		"MODEL_GATEWAY_EXPERIMENTAL_TOKEN": &c.ExperimentalToken,
-		"MODEL_GATEWAY_BACKEND_TOKEN":      &c.BackendToken,
+		"MODEL_GATEWAY_SUBJECT_POOL_API_KEY": &c.SubjectPoolAPIKey,
+		"MODEL_GATEWAY_DATABASE_URL":         &c.DatabaseURL,
+		"MODEL_GATEWAY_RABBITMQ_URL":         &c.RabbitMQURL,
+		"MODEL_GATEWAY_TOKEN_ENCRYPTION_KEY": &c.TokenEncryptionKey,
+		"MODEL_GATEWAY_API_TOKEN":            &c.APIToken,
+		"MODEL_GATEWAY_ADMIN_TOKEN":          &c.AdminToken,
+		"MODEL_GATEWAY_EXPERIMENTAL_TOKEN":   &c.ExperimentalToken,
+		"MODEL_GATEWAY_BACKEND_TOKEN":        &c.BackendToken,
 	} {
 		if value, ok := os.LookupEnv(key); ok {
 			*field = value
@@ -117,6 +126,11 @@ type Snapshot struct {
 }
 
 func prepareConfig(c Config) (*Snapshot, error) {
+	if c.TokenEncryptionKey != "" {
+		if _, err := token.Cipher(c.TokenEncryptionKey); err != nil {
+			return nil, err
+		}
+	}
 	// 业务调用方与管理员使用独立凭据，避免业务凭据具备实例管理权限。
 	if len(c.APIToken) < 24 || len(c.AdminToken) < 24 || c.APIToken == c.AdminToken {
 		return nil, errors.New("distinct API and admin tokens of at least 24 characters required")
@@ -158,6 +172,7 @@ func prepareConfig(c Config) (*Snapshot, error) {
 			return nil, errors.New("invalid capacity units by model key")
 		}
 	}
+	c.SubjectPools = maps.Clone(c.SubjectPools)
 	state := &Snapshot{Config: c, ports: map[string]bool{}}
 	for _, cidr := range c.AllowedNetworks {
 		_, network, err := net.ParseCIDR(cidr)
@@ -190,6 +205,9 @@ func prepareConfig(c Config) (*Snapshot, error) {
 		if err != nil || !addr.Addr().IsPrivate() || addr.Port() == 0 {
 			return nil, fmt.Errorf("%s must be a private IP with an explicit port", upstream.key)
 		}
+	}
+	if err := state.validateSubjectPools(); err != nil {
+		return nil, err
 	}
 	if err := state.validateNative(); err != nil {
 		return nil, err
@@ -225,6 +243,9 @@ func (r *Runtime) Reload(c Config) error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if next.TokenEncryptionKey != r.current.TokenEncryptionKey {
+		return bizerr.New(token.Unavailable, "changing Token encryption key requires restarting with a migrated key")
+	}
 	if next.DatabaseURL != r.current.DatabaseURL {
 		return errors.New("changing database_url requires draining and restarting the gateway")
 	}
@@ -240,6 +261,9 @@ func (r *Runtime) Reload(c Config) error {
 	if !maps.Equal(next.NativeBackends, r.current.NativeBackends) ||
 		!maps.Equal(next.NativeModels, r.current.NativeModels) || next.NativeResults != r.current.NativeResults {
 		return errors.New("changing native backends or result storage requires draining and restarting the gateway")
+	}
+	if !maps.Equal(next.SubjectPools, r.current.SubjectPools) || next.SubjectPoolAPIKey != r.current.SubjectPoolAPIKey {
+		return errors.New("changing subject pools requires draining and restarting the gateway")
 	}
 	r.current = next
 	return nil
@@ -257,7 +281,7 @@ func (s *Snapshot) ValidateEndpoint(endpoint string, health bool) error {
 	}
 	if u.Path != "" && u.Path != "/" {
 		if path.Clean(u.Path) != strings.TrimSuffix(u.Path, "/") ||
-			(!health && len(s.NativeModels) == 0 && !gpuEndpointPath.MatchString(u.Path)) {
+			(!health && !s.subjectPoolURL(endpoint) && len(s.NativeModels) == 0 && !gpuEndpointPath.MatchString(u.Path)) {
 			return errors.New("invalid endpoint path")
 		}
 	}
@@ -270,6 +294,19 @@ func (s *Snapshot) ValidateEndpoint(endpoint string, health bool) error {
 	}
 	if !s.ports[port] {
 		return errors.New("endpoint is outside the backend allowlist")
+	}
+	if s.subjectPoolURL(endpoint) {
+		if ip != nil {
+			addr, ok := netip.AddrFromSlice(ip)
+			if !ok || !s.privateBackendIP(addr.Unmap()) {
+				return errors.New("subject pool requires an allowed private address")
+			}
+			return nil
+		}
+		if !dnsName.MatchString(u.Hostname()) || len(u.Hostname()) > 253 {
+			return errors.New("invalid subject pool hostname")
+		}
+		return nil
 	}
 	if s.publicHostAllowed(u.Hostname()) {
 		if u.Scheme != "https" || (ip != nil && !publicIP(ip)) {

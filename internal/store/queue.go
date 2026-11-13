@@ -21,9 +21,11 @@ import (
 // Admission 携带本次受理的队列限制，任务入库后沿用当时计算的截止时间。
 type Admission struct {
 	ID, ModelKey, Protocol string
+	APITokenID             string
 	TraceID                string
 	Payload                json.RawMessage
 	Input                  json.RawMessage
+	Extra                  json.RawMessage
 	Units                  int
 	MaxWaiting             int
 	BackendTimeout         time.Duration
@@ -102,7 +104,7 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 			if protocol.SynchronousKind(in.Protocol) != "" {
 				return ErrConflict
 			}
-			if old.ModelKey != in.ModelKey || old.Protocol != in.Protocol || !sameInput(old.RequestPayload, in.Input) {
+			if old.APITokenID != in.APITokenID || old.ModelKey != in.ModelKey || old.Protocol != in.Protocol || !sameInput(old.RequestPayload, in.Input) {
 				return ErrConflict
 			}
 			task = old
@@ -138,8 +140,11 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 			return ErrFull
 		}
 		create := tx.Request.Create().SetID(in.ID).SetModelKey(in.ModelKey).SetProtocol(in.Protocol).
-			SetTraceID(in.TraceID).SetRequestPayload(in.Payload).SetPayloadBytes(int64(len(in.Payload))).SetUnits(in.Units).
+			SetAPITokenID(in.APITokenID).SetTraceID(in.TraceID).SetRequestPayload(in.Payload).SetPayloadBytes(int64(len(in.Payload))).SetUnits(in.Units).
 			SetCreatedAt(now).SetDeadlineAt(now.Add(in.BackendTimeout))
+		if in.Extra != nil {
+			create.SetExtra(in.Extra)
+		}
 		// 同步响应由原连接读取，容量仍在 PG 竞争；不能再投 MQ 产生第二次模型执行。
 		if protocol.SynchronousKind(in.Protocol) == "" {
 			create.SetQueuePublishAt(now)
@@ -147,12 +152,25 @@ func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
 		task, err = create.Save(ctx)
 		return err
 	})
+	if err == nil && task.QueuePublishAt != nil && task.State == request.StateQueued {
+		s.notifyPublication()
+	}
 	return task, err
 }
 
-func (s *Store) PendingPublications(ctx context.Context) ([]*ent.Request, error) {
+// PublicationWake 合并本副本提交后的唤醒；持久投递事实仍以 PG 为准。
+func (s *Store) PublicationWake() <-chan struct{} { return s.publicationWake }
+
+func (s *Store) notifyPublication() {
+	select {
+	case s.publicationWake <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Store) ScheduledPublications(ctx context.Context) ([]*ent.Request, error) {
 	now := time.Now().UTC()
-	return s.db.Request.Query().Where(request.StateEQ(request.StateQueued), request.QueuePublishAtLTE(now), request.DeadlineAtGT(now)).
+	return s.db.Request.Query().Where(request.StateEQ(request.StateQueued), request.QueuePublishAtNotNil(), request.DeadlineAtGT(now)).
 		Order(ent.Asc(request.FieldQueuePublishAt, request.FieldID)).Limit(32).
 		Select(request.FieldID, request.FieldQueuePublishAt, request.FieldDeadlineAt).All(ctx)
 }
@@ -194,8 +212,10 @@ func reserved(ctx context.Context, client *ent.RequestClient) ([]reservation, er
 
 func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.Request, error) {
 	var task *ent.Request
+	var deferred bool
 	err := s.serialize(ctx, func(tx *ent.Tx) error {
 		task = nil
+		deferred = false
 		now := time.Now().UTC()
 		// 同一消息可能重投。按 ID 等待行锁，锁竞争不能被误当成已处理而确认消息。
 		next, err := tx.Request.Query().Where(request.IDEQ(id), request.StateEQ(request.StateQueued), request.DeadlineAtGT(now)).
@@ -209,6 +229,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		}
 		// 旧消息可能在回队后重投。沿用延期写入新的时间标记，防止迟到的发布确认清掉下次投递。
 		if next.QueuePublishAt != nil && next.QueuePublishAt.After(now) {
+			deferred = true
 			return deferPublication(ctx, tx, next)
 		}
 		// 同键不同业务的旧登记在迁移时已归档，派发直接按请求的模型键选实例。
@@ -229,6 +250,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 			if protocol.SynchronousKind(next.Protocol) != "" {
 				return nil
 			}
+			deferred = true
 			return deferPublication(ctx, tx, next)
 		}
 		// 同一事务锁定物理卡的容量，多卡实例必须一次拿齐全部额度。
@@ -290,8 +312,12 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		if protocol.SynchronousKind(next.Protocol) != "" {
 			return nil
 		}
+		deferred = true
 		return deferPublication(ctx, tx, next)
 	})
+	if err == nil && deferred {
+		s.notifyPublication()
+	}
 	return task, err
 }
 
@@ -329,6 +355,9 @@ func (s *Store) RequeueDispatch(ctx context.Context, id string, startedAt time.T
 		remaining.Where(request.ProtocolNotIn(protocol.ImageGenerationProtocol, protocol.VideoGenerationProtocol), request.DeploymentIDEQ(""))
 	}
 	_, err := remaining.SetInstanceID("").SetResourceGroup("").SetResourceGroups([]string{}).SetEndpoint("").SetArtifactDigest("").SetDeploymentID("").Save(ctx)
+	if err == nil {
+		s.notifyPublication()
+	}
 	return err
 }
 

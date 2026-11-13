@@ -58,7 +58,7 @@ func TestDeploymentControllerAcrossGatewayReplicas(t *testing.T) {
 	})
 	digest := "sha256-" + strings.Repeat("a", 64)
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{"ready": true, "models": []string{"lifecycle-image"}, "deployment_id": "new-deployment", "artifact_digest": digest, "boot_id": "boot"})
+		json.NewEncoder(w).Encode(map[string]any{"ready": true, "models": []string{"lifecycle-image"}, "deployment_id": "new-deployment", "artifact_digest": digest, "boot_id": "boot", "region": "test/region"})
 	}))
 	defer backend.Close()
 	u, _ := url.Parse(backend.URL)
@@ -116,7 +116,7 @@ func TestDeploymentControllerAcrossGatewayReplicas(t *testing.T) {
 	hooks := map[string]any{}
 	count := filepath.Join(tmp, "activated")
 	for _, action := range []string{"prepare", "idle", "activate", "verify", "stop"} {
-		receipt := map[string]any{"ok": true, "idle": true, "active_requests": 0, "uncertain_executions": 0, "smoke_passed": true, "boot_id": "boot", "bindings": []any{item}}
+		receipt := map[string]any{"ok": true, "idle": true, "active_requests": 0, "uncertain_executions": 0, "smoke_passed": true, "boot_id": "boot", "region": "test/region", "bindings": []any{item}}
 		raw, _ := json.Marshal(receipt)
 		script := "import json;print(" + strconvQuote(string(raw)) + ")"
 		if action == "activate" {

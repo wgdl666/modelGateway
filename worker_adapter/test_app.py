@@ -18,10 +18,12 @@ class ModelKeyWorkerTests(unittest.IsolatedAsyncioTestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.calls = []
+        self.headers = []
         self.native_response = httpx.Response(422)
 
         async def native(request):
             self.calls.append((request.method, request.url.path))
+            self.headers.append(request.headers)
             if request.url.path == "/health":
                 return httpx.Response(200, json={"status": "ok", "instances": [{"name": "ltx-gpu0"}]})
             if request.method == "GET":
@@ -51,6 +53,29 @@ class ModelKeyWorkerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.addAsyncCleanup(self.client.aclose)
         self.input = {"images": [{"data": "eA==", "mime_type": "image/png"}]}
+
+    async def test_identity_survives_worker_reload_and_video_poll(self):
+        request_id = str(uuid4())
+        traceparent = "00-" + "1" * 32 + "-" + "2" * 16 + "-01"
+        metadata = {"device_id": "device-a", "user_id": "user-a", "trace_id": "1" * 32, "traceparent": traceparent}
+        self.native_response = httpx.Response(200, json={"job_id": "old-job"})
+        body = {"request_id": request_id, "model_key": VIDEO_MODEL, "input": self.input, "metadata": metadata}
+        response = await self.client.post("/requests", json=body)
+        self.assertEqual(response.status_code, 202, response.text)
+        persisted = await self.worker.load(request_id)
+        self.assertEqual(persisted["metadata"], metadata)
+        first = self.headers[-1]
+        self.assertEqual(first["X-WG-Device-ID"], "device-a")
+        self.assertEqual(first["X-WG-User-ID"], "user-a")
+        self.assertEqual(first["traceparent"], traceparent)
+        # 从文件账本重读后回查，不依赖原请求、内存闭包或当前查询头。
+        await self.worker.refresh_video(persisted)
+        poll = self.headers[-1]
+        self.assertEqual(poll["X-WG-User-ID"], "user-a")
+        self.assertEqual(poll["traceparent"], traceparent)
+        body["metadata"] = {"user_id": "user-b"}
+        await self.client.post("/requests", json=body)
+        self.assertEqual((await self.worker.load(request_id))["metadata"], metadata)
 
     async def test_compact_metadata_saved_replayed_and_unknowns_excluded(self):
         generation = {"effective_prompt":"最终生成指令", "pe_status":"fallback",

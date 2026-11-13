@@ -10,7 +10,7 @@
 - `boot_id`：模型进程每次加载生成的新 ID。只作实际执行证据，不进入幂等请求指纹。
 - `instance_id`：一个模型契约的一条登记。同 worker 的业务接口、通用接口使用各自 ID，共享同一物理 GPU 资源组。
 
-`deployment_id` 为空的历史登记保持兼容。设置该字段后，网关探活必须收到相同 deployment、artifact 和非空 boot；派发发送 `X-Expected-Deployment-ID`、`X-Expected-Artifact-Digest`、`X-Expected-Model-Key`。worker 在执行锁内核验，响应回传身份，网关在发布结果前再次比较。仅 `ready:true` 不能放行受管理部署。不要给未支持该契约的 worker 填写 deployment_id。
+`deployment_id` 为空的历史登记保持兼容。设置该字段后，网关探活必须收到本区域、相同 deployment、artifact 和非空 boot；派发发送 `X-Expected-Deployment-ID`、`X-Expected-Artifact-Digest`、`X-Expected-Model-Key`。worker 在执行锁内核验，响应回传身份，网关在发布结果前再次比较。仅 `ready:true` 不能放行受管理部署。不要给未支持该契约的 worker 填写 deployment_id。
 
 VMind-Image 的 Qwen worker 是首个实现：既有 BodyModel/VTON、通用接口均支持；其他执行器必须实现同一契约并通过验收后才能启用。网关本身不加载模型。
 
@@ -105,7 +105,7 @@ Go 集成测试需隔离 `_test` PostgreSQL 和测试 RabbitMQ。Python ledger �
 
 ```sh
 go generate ./ent
-go test -race ./...
+TEST_LIFECYCLE_PYTHON=/path/to/python go test -race ./...
 python -m unittest discover -s deployment_controller/tests
 ```
 

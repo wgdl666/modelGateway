@@ -1,7 +1,10 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/json"
+	"image"
+	"image/png"
 	"strings"
 	"testing"
 )
@@ -9,9 +12,9 @@ import (
 func TestPreviewKeepsBusinessFieldsAndImageRoles(t *testing.T) {
 	id := "d36fa74f-14db-4a32-9315-8307dcfc0bcd"
 	payload := json.RawMessage(`{"input":{"prompt":"try on","images":[{"mime_type":"image/png","data":"eA=="},{"mime_type":"image/jpeg","data":"eA=="}]},"metadata":{"trace_id":"trace"}}`)
-	parameters, refs, images, err := PreviewSubmission(OutfitProtocol, payload)
-	if err != nil || len(images) != 2 || string(images[0].Data) != "x" {
-		t.Fatalf("preview images: %v %v", images, err)
+	parameters, refs, err := PreviewSubmission(OutfitProtocol, payload)
+	if err != nil {
+		t.Fatalf("preview: %v", err)
 	}
 	if strings.Contains(string(parameters), "eA==") || strings.Contains(string(parameters), "images") {
 		t.Fatalf("parameters contain image bytes: %s", parameters)
@@ -33,6 +36,32 @@ func TestPreviewKeepsBusinessFieldsAndImageRoles(t *testing.T) {
 	}
 }
 
+func TestInputMediaExtraOmitsNothingWhenEmpty(t *testing.T) {
+	raw, err := InputMediaExtra(nil)
+	if err != nil || string(raw) != `{"input_media":[]}` {
+		t.Fatalf("empty extra %s %v", raw, err)
+	}
+}
+
+func TestInputMediaRecordsReadableImageSize(t *testing.T) {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 1536, 2048))); err != nil {
+		t.Fatal(err)
+	}
+	refs := InputMedia(OutfitProtocol, []InputImage{{MIMEType: "image/png", Data: buf.Bytes()}, {MIMEType: "image/png", Data: []byte("x")}})
+	if refs[0].Width != 1536 || refs[0].Height != 2048 || refs[0].Role != "person_image" {
+		t.Fatalf("person ref = %+v", refs[0])
+	}
+	// 受理不校验图片内容，读不出尺寸的图仍要列出，只是不带宽高。
+	if refs[1].Width != 0 || refs[1].Height != 0 || refs[1].Role != "garment_image" {
+		t.Fatalf("garment ref = %+v", refs[1])
+	}
+	raw, _ := json.Marshal(refs[1])
+	if strings.Contains(string(raw), "width") {
+		t.Fatalf("unknown size must be omitted: %s", raw)
+	}
+}
+
 func TestWardrobeRoutesAreSelectedByProtocol(t *testing.T) {
 	const product = `{"images":[{"mime_type":"image/png","data":"eA=="}],"garment_name":"shirt"}`
 	const extraction = `{"images":[{"mime_type":"image/png","data":"eA=="}],"garment_name":"shirt","bbox":[0,0,1,1]}`
@@ -45,7 +74,7 @@ func TestWardrobeRoutesAreSelectedByProtocol(t *testing.T) {
 		{WardrobeProtocol, product, false},
 		{ClothGenProtocol, extraction, false},
 	} {
-		if err := ValidateInput(test.model, json.RawMessage(test.input)); (err == nil) != test.valid {
+		if _, err := ValidateInput(test.model, json.RawMessage(test.input)); (err == nil) != test.valid {
 			t.Errorf("ValidateInput(%s, %s) = %v, want valid=%v", test.model, test.input, err, test.valid)
 		}
 	}
@@ -63,10 +92,10 @@ func TestExperimentalFieldsRequireExperimentalCredential(t *testing.T) {
 		{VideoProtocol, `{"images":[` + image + `],"prompt":"walk","model":"ltx","duration":"4","resolution":"720p","fps":"24","audio":"false"}`, true},
 		{WardrobeProtocol, `{"images":[` + image + `],"garment_name":"shirt","bbox":[0,0,1,1]}`, false},
 	} {
-		if err := ValidateExperimentalInput(test.kind, json.RawMessage(test.input)); err != nil {
+		if _, err := ValidateExperimentalInput(test.kind, json.RawMessage(test.input)); err != nil {
 			t.Errorf("experimental %s rejected %s: %v", test.kind, test.input, err)
 		}
-		if err := ValidateInput(test.kind, json.RawMessage(test.input)); (err == nil) == test.experimental {
+		if _, err := ValidateInput(test.kind, json.RawMessage(test.input)); (err == nil) == test.experimental {
 			t.Errorf("production %s: %s accepted=%v, want %v", test.kind, test.input, err == nil, !test.experimental)
 		}
 	}
@@ -76,11 +105,11 @@ func TestExperimentalFieldsRequireExperimentalCredential(t *testing.T) {
 		`{"images":[` + image + `],"gender":"female","prompt":{"text":"x"}}`,
 		`{"images":[` + image + `],"gender":"female","prompt":null}`,
 	} {
-		if err := ValidateExperimentalInput(BodyProtocol, json.RawMessage(input)); err == nil {
+		if _, err := ValidateExperimentalInput(BodyProtocol, json.RawMessage(input)); err == nil {
 			t.Errorf("experimental body accepted %s", input)
 		}
 	}
-	if err := ValidateExperimentalInput(ClothGenProtocol, json.RawMessage(`{"images":[`+image+`],"garment_name":"shirt","prompt":"x"}`)); err == nil {
+	if _, err := ValidateExperimentalInput(ClothGenProtocol, json.RawMessage(`{"images":[`+image+`],"garment_name":"shirt","prompt":"x"}`)); err == nil {
 		t.Error("product generation has no experimental fields")
 	}
 }

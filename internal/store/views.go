@@ -125,8 +125,10 @@ func (s *Store) ListRequests(ctx context.Context, filter RequestFilter) ([]*ent.
 	if err != nil {
 		return nil, 0, err
 	}
+	// 列表带出输入清单与结果引用供 Ops 展示，二者都不含图片字节。
+	fields := append(append([]string(nil), requestSummaryFields...), request.FieldExtra, request.FieldResult)
 	rows, err := query.Order(request.ByCreatedAt(entsql.OrderDesc()), request.ByID(entsql.OrderDesc())).
-		Offset(filter.Offset).Limit(filter.Limit).Select(requestSummaryFields...).All(ctx)
+		Offset(filter.Offset).Limit(filter.Limit).Select(fields...).All(ctx)
 	return rows, total, err
 }
 
@@ -135,4 +137,9 @@ func (s *Store) RequestDetail(ctx context.Context, id string) (*ent.Request, err
 	fields := append(append([]string(nil), requestSummaryFields...),
 		request.FieldRequestPayload, request.FieldResult, request.FieldErrorMessage, request.FieldDispatchAttempts, request.FieldDispatchRetryReason)
 	return s.db.Request.Query().Where(request.IDEQ(id)).Select(fields...).Only(ctx)
+}
+
+// RequestOutput 仅加载成品引用，避免输出预览读取完整 Base64 入参。
+func (s *Store) RequestOutput(ctx context.Context, id string) (*ent.Request, error) {
+	return s.db.Request.Query().Where(request.IDEQ(id)).Select(request.FieldID, request.FieldResult).Only(ctx)
 }

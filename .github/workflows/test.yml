@@ -1,5 +1,14 @@
 name: Go tests
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: 部署环境（none 仅测试）
+        type: choice
+        default: none
+        options: [none, cn-dev, ppe_exhibition, both]
 permissions:
   contents: read
 jobs:
@@ -36,14 +45,22 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r deployment_controller/requirements.txt
       - run: go test -race ./... -count=1
+        env:
+          TEST_LIFECYCLE_PYTHON: python
+      - run: python -m unittest discover -s deployment_controller/tests -v
       - run: go vet ./...
       - run: docker build -t model-gateway:test .
+      - run: docker build -f deployment_controller/Dockerfile -t model-deployment-controller:test .
 
   deploy-cn-dev:
     name: Deploy CN Dev (ACK)
     needs: test
-    if: github.repository == 'wgdl666/modelGateway' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.repository == 'wgdl666/modelGateway' && github.ref == 'refs/heads/dev' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && contains(fromJSON('["cn-dev","both"]'), inputs.deploy_target)))
     # 公开仓的发布任务需要专用 runner group，避免 PR 任务接触 ACK 发布身份。
     runs-on:
       group: modelgateway-cn-dev-release
@@ -63,7 +80,7 @@ jobs:
   deploy-aws-exhibition:
     name: Deploy US East Exhibition (ECS)
     needs: test
-    if: github.repository == 'wgdl666/modelGateway' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.repository == 'wgdl666/modelGateway' && github.ref == 'refs/heads/dev' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && contains(fromJSON('["ppe_exhibition","both"]'), inputs.deploy_target)))
     runs-on: ubuntu-latest
     timeout-minutes: 45
     concurrency:

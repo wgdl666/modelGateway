@@ -66,8 +66,24 @@ var nativeRoutes = map[string]struct {
 	protocol.VideoProtocol:    {"/vton", []string{"image"}},
 }
 
+// nativeMultipartBody 按顺序读取小型表单头和已有图片字节，不复制整包媒体。
+type nativeMultipartBody struct {
+	io.Reader
+	length int64
+	chunks [][]byte
+}
+
+// replay 为 HTTP 重放重建读取游标，仍共享不可变的图片切片。
+func (b *nativeMultipartBody) replay() io.ReadCloser {
+	readers := make([]io.Reader, len(b.chunks))
+	for i, chunk := range b.chunks {
+		readers[i] = bytes.NewReader(chunk)
+	}
+	return io.NopCloser(io.MultiReader(readers...))
+}
+
 // 视频 worker 由执行地址的单卡路径选定，表单只转发业务输入。
-func nativeMultipart(task *ent.Request, input protocol.Submission, backend config.NativeBackend) (string, *bytes.Buffer, http.Header, error) {
+func nativeMultipart(task *ent.Request, input protocol.Submission, backend config.NativeBackend) (string, *nativeMultipartBody, http.Header, error) {
 	route, ok := nativeRoutes[task.Protocol]
 	if !ok || !backend.Matches(task.Protocol) {
 		return "", nil, nil, errors.New("registered protocol does not match native backend")
@@ -85,6 +101,8 @@ func nativeMultipart(task *ent.Request, input protocol.Submission, backend confi
 	}
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
+	var chunks [][]byte
+	var length int64
 	form := make(map[string]string, len(fields))
 	for key, raw := range fields {
 		var value string
@@ -130,19 +148,25 @@ func nativeMultipart(task *ent.Request, input protocol.Submission, backend confi
 		header := make(textproto.MIMEHeader)
 		header.Set("Content-Disposition", mime.FormatMediaType("form-data", map[string]string{"name": name, "filename": filename}))
 		header.Set("Content-Type", image.MIMEType)
-		part, err := writer.CreatePart(header)
+		_, err := writer.CreatePart(header)
 		if err != nil {
 			return "", nil, nil, err
 		}
-		if _, err := part.Write(image.Data); err != nil {
-			return "", nil, nil, err
-		}
+		// 只复制小型边界和字段；图片直接从解码后的切片读取。
+		headerBytes := bytes.Clone(body.Bytes())
+		chunks = append(chunks, headerBytes, image.Data)
+		length += int64(len(headerBytes) + len(image.Data))
+		body.Reset()
 	}
 	if err := writer.Close(); err != nil {
 		return "", nil, nil, err
 	}
 	headers.Set("Content-Type", writer.FormDataContentType())
-	return route.path, body, headers, nil
+	chunks = append(chunks, body.Bytes())
+	length += int64(body.Len())
+	stream := &nativeMultipartBody{length: length, chunks: chunks}
+	stream.Reader = stream.replay()
+	return route.path, stream, headers, nil
 }
 
 // 调用方先校验地址；原生请求只带该模型的凭据，复用已有的禁代理和禁重定向客户端。
@@ -150,6 +174,10 @@ func (w *Reconciler) nativeHTTP(ctx context.Context, auth nativeAuth, method, ur
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return nil, err
+	}
+	if multipartBody, ok := body.(*nativeMultipartBody); ok {
+		req.ContentLength = multipartBody.length
+		req.GetBody = func() (io.ReadCloser, error) { return multipartBody.replay(), nil }
 	}
 	if headers != nil {
 		req.Header = headers
@@ -359,7 +387,7 @@ func (w *Reconciler) pollNative(cfg *config.Snapshot, task *ent.Request, backend
 	}
 	auth := w.nativeAuth(backend)
 	jobURL := task.Endpoint + "/jobs/" + task.BackendTaskID
-	ctx, cancel := context.WithTimeout(w.ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(w.taskContext(w.ctx, task), 3*time.Second)
 	var job nativeJob
 	err := w.nativeJSON(ctx, auth, jobURL, &job)
 	cancel()
@@ -384,7 +412,7 @@ func (w *Reconciler) pollNative(cfg *config.Snapshot, task *ent.Request, backend
 }
 
 func (w *Reconciler) completeNativeVideo(cfg *config.Snapshot, task *ent.Request, auth nativeAuth, url string, generation *protocol.Generation) error {
-	ctx, cancel := context.WithTimeout(w.ctx, cfg.BackendTimeout)
+	ctx, cancel := context.WithTimeout(w.taskContext(w.ctx, task), cfg.BackendTimeout)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
 	// 领取仍有效才开始传输，并给发布后的终态写入留足时间。

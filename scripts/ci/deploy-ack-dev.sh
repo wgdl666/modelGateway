@@ -42,7 +42,8 @@ if [[ "$(jq -r '.Code' <<<"$tag_info")" == IMAGE_NOT_EXIST ]]; then
   jq -er '.AuthorizationToken | select(length > 0)' <<<"$auth" \
     | docker login "$registry" --username "$user" --password-stdin >/dev/null
   unset auth
-  docker build --platform linux/amd64 --provenance=false \
+  # 复用构建机的国内 DNS，避免容器公网 DNS 将模块下载解析到境外慢节点。
+  docker build --network host --platform linux/amd64 --provenance=false \
     --build-arg "GO_BUILDER_IMAGE=$registry/wg/base-images@$builder" \
     --build-arg "GO_RUNTIME_IMAGE=$registry/wg/base-images@$runtime" \
     --build-arg GOPROXY=https://goproxy.cn,direct --build-arg "SOURCE_REVISION=$sha" \

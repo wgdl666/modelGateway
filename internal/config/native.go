@@ -63,6 +63,12 @@ func (s *Snapshot) ValidateInstanceTarget(target protocol.InstanceTarget) error 
 		return errors.New("generation protocols require native_results object storage")
 	}
 	if protocol.SynchronousKind(target.Protocol) != "" {
+		if p, ok := s.SubjectPoolFor(target.ModelKey, target.Protocol, target.Endpoint); ok && target.HealthURL == p.HealthURL {
+			if err := s.ValidateEndpoint(target.Endpoint, false); err != nil {
+				return err
+			}
+			return s.ValidateEndpoint(target.HealthURL, true)
+		}
 		if s.acceptsSynchronousTarget(target.Protocol, target.Endpoint, target.HealthURL) {
 			return nil
 		}
@@ -88,6 +94,9 @@ func (c Config) AcceptsInstanceAddress(model, kind, endpoint, healthURL string) 
 		return !strings.HasSuffix(endpoint, "/") && (healthURL == endpoint || strings.HasPrefix(healthURL, endpoint+"/"))
 	}
 	if protocol.SynchronousKind(kind) != "" {
+		if p, ok := c.SubjectPoolFor(model, kind, endpoint); ok {
+			return p.HealthURL == healthURL
+		}
 		return c.acceptsSynchronousTarget(kind, endpoint, healthURL)
 	}
 	backend, direct := c.NativeBackendFor(model, endpoint)

@@ -13,11 +13,13 @@ import (
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
+	"github.com/wgdl666/kangaroo/callmeta"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 	"github.com/wgdl666/modelGateway/internal/store"
 	"github.com/wgdl666/modelGateway/internal/telemetry"
+	"go.opentelemetry.io/otel"
 )
 
 const (
@@ -74,7 +76,7 @@ func New(tasks *store.Store, runtime *config.Runtime) (*Reconciler, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
-	transport.DialContext = backendDialer(net.DefaultResolver.LookupNetIP, dialer.DialContext)
+	transport.DialContext = config.SubjectPoolDialer(backendDialer(net.DefaultResolver.LookupNetIP, dialer.DialContext))
 	w.client = &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return w, nil
 }
@@ -126,6 +128,8 @@ func (w *Reconciler) modelHTTP(req *http.Request, nativeSubmission bool) (*http.
 		return nil, err
 	}
 	req = req.WithContext(context.WithValue(req.Context(), backendPolicyKey{}, cfg))
+	// 所有模型执行/回查 HTTP 共用来源传播；探活没有任务身份。
+	callmeta.Propagator{}.Inject(req.Context(), callmeta.HTTPHeaders(req.Header))
 	resp, err := w.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -195,8 +199,11 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 		// 上游先等超时也要继续接原生响应，拿到真实终态后才能释放 GPU。
 		deadline = task.StartedAt.Add(cfg.NativeExecutionTimeout)
 	}
-	ctx, cancel := context.WithDeadline(w.ctx, deadline)
+	ctx, cancel := context.WithDeadline(payload.Metadata.Restore(w.ctx), deadline)
 	defer cancel()
+	ctx, span := otel.Tracer("modelGateway.worker").Start(ctx, "gateway.dispatch")
+	defer span.End()
+	callmeta.AnnotateSpan(ctx)
 	if generic {
 		return w.executeGeneration(ctx, cfg, task, payload)
 	}
@@ -240,14 +247,14 @@ func (w *Reconciler) dispatchError(task *ent.Request, err error) error {
 }
 
 func (w *Reconciler) requeueDispatch(task *ent.Request, reasons ...string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), store.ExecutionWriteTimeout)
+	ctx, cancel := context.WithTimeout(w.taskContext(context.Background(), task), store.ExecutionWriteTimeout)
 	defer cancel()
 	// 待投递记录与释放同次写入，成功后消费者才 ACK；MQ 短暂不可用也不会丢掉重试。
 	return w.store.RequeueDispatch(ctx, task.ID, *task.StartedAt, task.PollClaim, reasons...)
 }
 
 func (w *Reconciler) failDispatch(task *ent.Request, status int, code, message string, hold bool) error {
-	ctx, cancel := context.WithTimeout(context.Background(), store.ExecutionWriteTimeout)
+	ctx, cancel := context.WithTimeout(w.taskContext(context.Background(), task), store.ExecutionWriteTimeout)
 	defer cancel()
 	return w.store.DispatchFailure(ctx, task.ID, task.PollClaim, status, code, message, hold)
 }
@@ -261,7 +268,7 @@ func (w *Reconciler) recordModelResponse(cfg *config.Snapshot, task *ent.Request
 }
 
 func (w *Reconciler) saveModelResponse(cfg *config.Snapshot, task *ent.Request, response protocol.ModelResponse, polling bool) error {
-	ctx, cancel := context.WithTimeout(context.Background(), store.ExecutionWriteTimeout)
+	ctx, cancel := context.WithTimeout(w.taskContext(context.Background(), task), store.ExecutionWriteTimeout)
 	defer cancel()
 	if response.Validate(task.ID) != nil {
 		if polling {
@@ -279,7 +286,7 @@ func (w *Reconciler) pollModel(cfg *config.Snapshot, task *ent.Request) error {
 	if backend, direct := cfg.NativeBackendFor(task.ModelKey, task.Endpoint); direct {
 		return w.pollNative(cfg, task, backend)
 	}
-	ctx, cancel := context.WithTimeout(w.ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(w.taskContext(w.ctx, task), 3*time.Second)
 	defer cancel()
 	raw, err := w.modelCall(ctx, cfg, http.MethodGet, task.Endpoint, "/requests/"+task.ID, nil)
 	if err == nil {
@@ -289,7 +296,7 @@ func (w *Reconciler) pollModel(cfg *config.Snapshot, task *ent.Request) error {
 }
 
 func (w *Reconciler) pollUnavailable(cfg *config.Snapshot, task *ent.Request) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(w.taskContext(context.Background(), task), 3*time.Second)
 	defer cancel()
 	return w.store.PollUnavailable(ctx, task.ID, task.PollClaim, cfg.PollInterval)
 }
@@ -358,7 +365,8 @@ func (w *Reconciler) Start() {
 	w.runWorker("model health probe failed", probeInterval, func() error { return w.probe(w.runtime.Current()) })
 	// 同步上游有独立探活预算，不阻塞图像和视频派单使用的探针。
 	w.runWorker("synchronous model health probe failed", 5*time.Second, func() error { return w.probeSynchronous(w.runtime.Current()) })
-	w.runWorker("queue expiry failed", 200*time.Millisecond, func() error { return w.store.Expire(w.ctx) })
+	// 截止时间仍由账本保存；后台每 2 秒收敛过期状态，避免空闲高频更新。
+	w.runWorker("queue expiry failed", 2*time.Second, func() error { return w.store.Expire(w.ctx) })
 	w.runRabbit("queue publication failed", w.publishQueued)
 	for range 2 {
 		w.runRabbit("queue dispatch failed", w.consumeQueued)
@@ -366,13 +374,28 @@ func (w *Reconciler) Start() {
 	for range nativeVideoPublishWorkers {
 		w.wg.Go(w.runVideoPublisher)
 	}
-	for range 4 {
-		w.runWorker("model reconciliation failed", 125*time.Millisecond, func() error {
-			task, err := w.store.ClaimPoll(w.ctx)
-			if err != nil || task == nil {
-				return err
+	// 单条回查管线有任务时沿用 500ms 节奏，空闲时等待 2 秒，取消可立即唤醒。
+	w.runWorker("model reconciliation failed", 500*time.Millisecond, func() error {
+		task, err := w.store.ClaimPoll(w.ctx)
+		if err != nil {
+			return err
+		}
+		if task == nil {
+			select {
+			case <-w.ctx.Done():
+			case <-time.After(2 * time.Second):
 			}
-			return w.pollModel(w.runtime.Current(), task)
-		})
+			return nil
+		}
+		return w.pollModel(w.runtime.Current(), task)
+	})
+}
+
+// taskContext 供轮询、重新发布和终态写入恢复受理快照；不读取当前查询者身份。
+func (w *Reconciler) taskContext(parent context.Context, task *ent.Request) context.Context {
+	var saved protocol.Submission
+	if err := json.Unmarshal(task.RequestPayload, &saved); err != nil {
+		telemetry.LogError(parent, "saved request metadata unavailable", err, "request_id", task.ID)
 	}
+	return saved.Metadata.Restore(parent)
 }

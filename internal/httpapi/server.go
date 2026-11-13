@@ -24,6 +24,7 @@ import (
 	"github.com/wgdl666/modelGateway/internal/protocol"
 	"github.com/wgdl666/modelGateway/internal/store"
 	"github.com/wgdl666/modelGateway/internal/telemetry"
+	"github.com/wgdl666/modelGateway/internal/token"
 )
 
 // Server 固定每次入站请求的配置快照，让鉴权、地址校验和受理使用同一份配置。
@@ -47,6 +48,7 @@ func New(tasks *store.Store, runtime *config.Runtime, probe func(context.Context
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	// 同步推理可包含原图，只允许直连配置中的私网模型地址。
 	transport.Proxy = nil
+	transport.DialContext = config.SubjectPoolDialer(transport.DialContext)
 	return &Server{
 		store: tasks, runtime: runtime, uploads: make(chan struct{}, 2), probe: probe,
 		direct: &http.Client{
@@ -89,10 +91,14 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.POST("/v1/resource-groups", s.auth("admin", s.createResourceGroup))
 	h.PATCH("/v1/resource-groups", s.auth("admin", s.updateResourceGroup))
 	h.PATCH("/v1/resource-groups/machine", s.auth("admin", s.renameResourceGroupMachine))
-	h.GET("/v1/admin/requests", s.auth("admin", s.listRequests))
+	h.GET("/v1/admin/api-tokens", s.auth("admin", s.apiTokens))
+	h.POST("/v1/admin/api-tokens", s.auth("admin", s.apiTokens))
+	h.GET("/v1/admin/api-tokens/:id", s.auth("admin", s.apiToken))
+	h.DELETE("/v1/admin/api-tokens/:id", s.auth("admin", s.apiToken))
+	h.GET("/v1/admin/requests", s.auth("request_read", s.listRequests))
 	h.GET("/v1/admin/request-stats", s.auth("admin", s.requestStats))
-	h.GET("/v1/admin/requests/:id/media", s.auth("admin", s.requestMedia))
-	h.GET("/v1/admin/requests/:id", s.auth("admin", s.requestDetail))
+	h.GET("/v1/admin/requests/:id/media", s.auth("request_read", s.requestMedia))
+	h.GET("/v1/admin/requests/:id", s.auth("request_read", s.requestDetail))
 	h.POST("/v1/images/generations", s.auth("api", s.openAIGenerations))
 	h.POST("/v1/images/edits", s.auth("api", s.openAIEdits))
 	h.POST("/v1/videos", s.auth("api", s.openAIVideos))
@@ -124,11 +130,27 @@ func (s *Server) auth(role string, next app.HandlerFunc) app.HandlerFunc {
 		switch role {
 		case "admin":
 			allowed = match(cfg.AdminToken)
-		case "api":
-			allowed = match(cfg.APIToken)
+		case "api", "request_read":
+			// 历史输入输出允许 API 凭据读取，同时保留 Ops 的管理凭据访问。
+			allowed = match(cfg.APIToken) || (role == "request_read" && match(cfg.AdminToken))
 			if !allowed && cfg.ExperimentalToken != "" && match(cfg.ExperimentalToken) {
 				allowed = true
 				c.Set(experimentalCredential, true)
+			}
+			if !allowed && cfg.TokenEncryptionKey != "" && token.ID(strings.TrimPrefix(string(header), "Bearer ")) != "" && strings.HasPrefix(string(header), "Bearer ") {
+				aead := tokenCipher(ctx, c)
+				if aead == nil {
+					return
+				}
+				id, err := s.store.AuthenticateAPIToken(ctx, aead, strings.TrimPrefix(string(header), "Bearer "))
+				if err != nil {
+					tokenError(c, err)
+					return
+				}
+				allowed = id != ""
+				if allowed {
+					c.Set(apiTokenID, id)
+				}
 			}
 		}
 		if !allowed {
@@ -400,6 +422,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_protocol", "model protocol does not match the requested output", id)
 		return
 	}
+	var extra []byte
 	normalized, err := protocol.NormalizeMediaInput(kind, input.Input)
 	if err == nil {
 		input.Input = normalized
@@ -407,18 +430,25 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		if c.GetBool(experimentalCredential) {
 			validate = protocol.ValidateExperimentalInput
 		}
-		err = validate(kind, input.Input)
-	}
-	for _, value := range []string{input.Metadata.TraceID, input.Metadata.UserID} {
-		if len(value) > 256 || strings.ContainsFunc(value, func(r rune) bool { return r < 32 || r == 127 }) {
-			err = errors.New("invalid metadata")
+		var images []protocol.InputImage
+		images, err = validate(kind, input.Input)
+		if err == nil {
+			// 清单复用校验时的解码结果；图片字节只在该块内使用，不带入终态等待。
+			extra, err = protocol.InputMediaExtra(protocol.InputMedia(kind, images))
+			if err == nil {
+				input.Metadata, err = freezeMetadata(ctx, c, input.Metadata)
+			}
 		}
+	}
+	if err == nil {
+		input.Metadata, err = freezeMetadata(ctx, c, input.Metadata)
 	}
 	if err != nil {
 		<-s.uploads
 		writeError(c, 400, "invalid_input", err.Error(), id)
 		return
 	}
+	c.Set("admission_input_extra", json.RawMessage(extra))
 	s.finishAdmission(ctx, c, id, model, kind, input)
 }
 
@@ -441,6 +471,23 @@ func (s *Server) finishAdmission(ctx context.Context, c *app.RequestContext, id,
 }
 
 func (s *Server) admitMedia(ctx context.Context, c *app.RequestContext, id, model, kind string, input protocol.Submission) (*ent.Request, bool) {
+	value, found := c.Get("admission_input_extra")
+	extra, _ := value.(json.RawMessage)
+	if !found {
+		images, err := protocol.ValidateInput(kind, input.Input)
+		if err != nil {
+			<-s.uploads
+			writeError(c, 400, "invalid_input", err.Error(), id)
+			return nil, false
+		}
+		extra, err = protocol.InputMediaExtra(protocol.InputMedia(kind, images))
+		if err != nil {
+			<-s.uploads
+			writeError(c, 400, "invalid_input", err.Error(), id)
+			return nil, false
+		}
+	}
+
 	raw, err := json.Marshal(input)
 	if err != nil {
 		<-s.uploads
@@ -449,9 +496,9 @@ func (s *Server) admitMedia(ctx context.Context, c *app.RequestContext, id, mode
 	}
 	cfg := requestConfig(ctx)
 	task, err := s.store.Admit(ctx, store.Admission{
-		ID: id, ModelKey: model, Protocol: kind, Payload: raw, Input: input.Input,
+		ID: id, ModelKey: model, Protocol: kind, Payload: raw, Input: input.Input, Extra: extra,
 		// 占用单位随受理落库，后续配置更新不会改变已排队请求的重量。
-		TraceID: input.Metadata.TraceID, Units: max(1, cfg.UnitsByModelKey[model]),
+		APITokenID: c.GetString(apiTokenID), TraceID: input.Metadata.TraceID, Units: max(1, cfg.UnitsByModelKey[model]),
 		MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout,
 	})
 	<-s.uploads
@@ -493,7 +540,7 @@ func (s *Server) waitImage(ctx context.Context, c *app.RequestContext, id string
 }
 
 func (s *Server) awaitTask(ctx context.Context, c *app.RequestContext, id string) (*ent.Request, bool) {
-	ticker := time.NewTicker(45 * time.Millisecond)
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
 		task, err := s.store.Get(ctx, id)

@@ -190,8 +190,19 @@ func TestRabbitMQDispatchRetriesUnavailableModelAndDeduplicates(t *testing.T) {
 	defer model.Close()
 	endpoint, _ := url.Parse(model.URL)
 	cfg.AllowedPorts = append(cfg.AllowedPorts, endpoint.Port())
-	waiting := testInstance(protocol.VideoModel, model.URL, 1)
-	waiting.HealthURL = model.URL + "/waiting-health"
+	// 未就绪模型使用独立探针，避免后台健康检查把测试中的等待状态提前放行。
+	var waitingAvailable atomic.Bool
+	waitingModel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" && !waitingAvailable.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		model.Config.Handler.ServeHTTP(w, r)
+	}))
+	defer waitingModel.Close()
+	waitingEndpoint, _ := url.Parse(waitingModel.URL)
+	cfg.AllowedPorts = append(cfg.AllowedPorts, waitingEndpoint.Port())
+	waiting := testInstance(protocol.VideoModel, waitingModel.URL, 1)
 	ready := testInstance(protocol.OutfitModel, model.URL, 1)
 	registerReady(t, ledger, ready)
 	// 未登记的模型不能受理。实例已登记但探针未通过时可以排队，且不能挡住另一个模型。
@@ -237,7 +248,7 @@ func TestRabbitMQDispatchRetriesUnavailableModelAndDeduplicates(t *testing.T) {
 	if err := ch.PublishWithContext(t.Context(), "", cfg.RabbitMQQueue, true, false, amqp091.Publishing{Body: []byte(readyID)}); err != nil {
 		t.Fatal(err)
 	}
-	waitingHealthy.Store(true)
+	waitingAvailable.Store(true)
 	registerReady(t, ledger, waiting)
 	waitSucceeded(waitingID)
 	queue, err := ch.QueueInspect(cfg.RabbitMQQueue)

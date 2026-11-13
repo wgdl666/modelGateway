@@ -27,7 +27,7 @@
 | `Vmind_bodymodel_v1.0` | 体模 | 人物图与性别。 |
 | `Vmind_outfit_video_v1.0` | 试衣视频 | 首帧、提示词和可选动作参数。 |
 
-实验凭据 `MODEL_GATEWAY_EXPERIMENTAL_TOKEN` 可选，未设置时关闭。它具备 API 凭据的全部权限，不能访问管理接口；受理时在上表业务字段之外，额外放行以下生成参数，原样转发给模型服务。生产凭据仍按服务端默认值执行，传入这些字段返回 400。
+实验凭据 `MODEL_GATEWAY_EXPERIMENTAL_TOKEN` 可选，未设置时关闭。它具备 API 凭据的全部权限（含历史请求及输入输出读取），不能访问其他管理接口；受理时在上表业务字段之外，额外放行以下生成参数，原样转发给模型服务。生产凭据仍按服务端默认值执行，传入这些字段返回 400。
 
 | 模型键 | 实验参数 |
 |---|---|
@@ -92,7 +92,7 @@
 
 ## 处理和恢复
 
-Ops 使用管理凭据访问 `GET /v1/admin/requests` 和 `GET /v1/admin/requests/{request_id}`。列表的 `model` 参数精确匹配 `model_key`。列表也支持请求 ID、Trace ID、实例、制品摘要、状态和时间过滤，`limit` 最大 100。详情返回对象引用、终态错误，以及去掉图片字节后的业务参数和媒体清单。单张输入或成品通过 `GET /v1/admin/requests/{request_id}/media?kind=input|output&index=0` 读取。列表省略原始输入图片。`GET /v1/admin/request-stats?from=&to=` 按 `model_key` 汇总时间窗内的请求量、成功与失败数、成功请求总耗时和排队耗时的 P50/P95，以及 24 个等宽时间桶的请求量和失败量。`queued`、`processing` 是当前积压，不受时间窗限制。同一响应按错误码、模型和实例分组返回最多 20 组失败，每组附带最近一次的请求 ID 和错误信息。时间窗默认最近 24 小时，可在 1 小时到 7 天之间。实例查询分别返回 `reserved_requests` 和 `reserved_units`，健康与排空独立展示。
+API 凭据（含独立 Token 和实验凭据）与管理凭据均可访问 `GET /v1/admin/requests`、`GET /v1/admin/requests/{request_id}` 及其媒体读取接口，可读取当前环境全部调用方的历史输入输出；接口路径保持不变。统计及其他管理接口仍只接受管理凭据。列表的 `model` 参数精确匹配 `model_key`。列表也支持请求 ID、Trace ID、实例、制品摘要、状态和时间过滤，`limit` 最大 100。详情返回对象引用、终态错误，以及去掉图片字节后的业务参数和媒体清单。单张输入或成品通过 `GET /v1/admin/requests/{request_id}/media?kind=input|output&index=0` 读取。列表省略原始输入图片和完整结果，但带出受理时记在 `extra.input_media` 的 `inputs` 与按结果对象列出的 `outputs`，每项含 `index`、`role`、`mime_type`，输入图另含读得出的 `width`、`height`。上线前执行 [extra 迁移](deploy/migrations/request-extra.sql)，仅新增可空的 `extra jsonb`，不回填历史数据。没有 `extra.input_media` 的请求在列表里省略 `inputs`，调用方需读详情获取输入清单；这也包括加列后仍由旧副本受理的请求。`outputs` 始终从结果生成，没有成品时返回空数组。`GET /v1/admin/request-stats?from=&to=` 按 `model_key` 汇总时间窗内的请求量、成功与失败数、成功请求总耗时和排队耗时的 P50/P95，以及 24 个等宽时间桶的请求量和失败量。`queued`、`processing` 是当前积压，不受时间窗限制。同一响应按错误码、模型和实例分组返回最多 20 组失败，每组附带最近一次的请求 ID 和错误信息。时间窗默认最近 24 小时，可在 1 小时到 7 天之间。实例查询分别返回 `reserved_requests` 和 `reserved_units`，健康与排空独立展示。
 
 `requests` 保存原始业务 JSON、四态、截止时间、实际派发实例和制品、容量预留、后端任务及对象结果。受理时同一事务记录待投递时间，RabbitMQ 确认持久消息后才清除。消息只包含请求 ID，Broker 暂时不可用时由网关继续补投。消费者按 ID 加锁检查状态，提交归属和容量后再调用模型。已领取、已取消或已过期的任务收到重复消息时会直接确认。每个消费者预取一条，GPU 容量仍从已预留请求汇总。
 

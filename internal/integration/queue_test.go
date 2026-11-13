@@ -271,17 +271,31 @@ func TestQueuedUntilMatchingInstanceHasFreshProbe(t *testing.T) {
 	if task, err := a.Admit(t.Context(), in); err != nil || task.State != request.StateQueued {
 		t.Fatalf("admit without a healthy instance: task=%v err=%v", task, err)
 	}
+	select {
+	case <-a.PublicationWake():
+	default:
+		t.Fatal("committed admission did not wake publisher")
+	}
 	product := testInstance(protocol.ClothGenModel, "http://127.0.0.1:8002", 1)
 	registerReady(t, a, product)
 	if err := a.RecordProbe(t.Context(), matching.ID, time.Now().Add(-time.Minute), true); err != nil {
 		t.Fatal(err)
 	}
-	pending, err := a.PendingPublications(t.Context())
+	pending, err := a.ScheduledPublications(t.Context())
 	if err != nil || len(pending) != 1 || pending[0].ID != in.ID {
 		t.Fatalf("admitted request missing durable publication: %v %v", pending, err)
 	}
 	if task, err := b.Claim(t.Context(), testConfig(), in.ID); err != nil || task != nil {
 		t.Fatalf("claimed with wrong model key or stale probe: task=%v err=%v", task, err)
+	}
+	select {
+	case <-b.PublicationWake():
+	default:
+		t.Fatal("deferred dispatch did not wake publisher")
+	}
+	scheduled, err := b.ScheduledPublications(t.Context())
+	if err != nil || len(scheduled) != 1 || scheduled[0].ID != in.ID || !scheduled[0].QueuePublishAt.After(*pending[0].QueuePublishAt) {
+		t.Fatalf("publisher cannot schedule deferred retry: %v %v", scheduled, err)
 	}
 	// 模拟消费先延期、发布确认后写回，防止旧确认清掉新投递时间。
 	if err := a.MarkPublished(t.Context(), in.ID, *pending[0].QueuePublishAt); err != nil {
