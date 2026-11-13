@@ -1,0 +1,39 @@
+{
+  "region": "cn-shenzhen/dev",
+  "date": "2026-11-13",
+  "gateway_revision": "8b7483d5ff0ecaf54023a3dacd494784a31c5761",
+  "image_digest": "sha256:4021d363dcba6711272a971eb8a3b65b1052b822d5a9280678c84edb9b12530e",
+  "ready_replicas": 2,
+  "previous_revision": "6ccbacbdba2e46bcb33e69e5f1ce380961c10517",
+  "previous_generic_revision": "729cfed63bb0080d618467875ea58e1e02be043a",
+  "regression_history": {
+    "generic_deployed_at": "2026-11-13T11:49:25+08:00",
+    "overwritten_at": "2026-11-13T17:33:41+08:00"
+  },
+  "migrations": [
+    "deployment-lifecycle.sql",
+    "worker-registration.sql"
+  ],
+  "historical_requests_preserved": 1220,
+  "instances_eligible": 20,
+  "worker_self_registration_enabled": false,
+  "other_regions_changed": false,
+  "acceptance": {
+    "client": "L20-3 TechDemo",
+    "model_key": "Vmind_outfit_generic_v1.0",
+    "request_id": "f4c839a0-6e1e-499e-a9f0-6428ab04899b",
+    "instance_id": "5090-2-outfit-generic-gpu1",
+    "state": "succeeded",
+    "slot_reserved": false,
+    "duration_ms": 8218.5,
+    "output_bytes": 770752,
+    "url": "https://tech-demo.model3.wgdl.tech/gen.html#run=3f207fd0636c4369"
+  },
+  "body_generic_instances": [
+    "5090-2-bodymodel-generic-step1446-gpu1",
+    "5090-2-bodymodel-generic-step1446-gpu3"
+  ],
+  "body_weights_sha256": "7af4773e7ebb5f73a2f484bfb22f87c7234cb834300130b99bac9293e7e91d3a",
+  "release_branch": "feat/model-deployment-lifecycle",
+  "follow_up": "Merge the reviewed feature into the release branch with region-specific migration ordering before another dev deployment; an older dev release would remove the generic routes again."
+}

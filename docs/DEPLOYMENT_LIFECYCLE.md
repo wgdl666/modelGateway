@@ -22,7 +22,7 @@
 INSERT INTO model_gateway.deployment_domain(id,region) VALUES(1,'cn-shenzhen/dev');
 ```
 
-美东使用自己的区域名称和数据库，不能覆盖已有区域归属。深圳已于 2026-11-13 执行第一份迁移；自注册新增列仍需第二份迁移。早期方案的 deployment_operations/deployment_leases 表不再使用，保留即可，不自动删除。
+美东使用自己的区域名称和数据库，不能覆盖已有区域归属。深圳已于 2026-11-13 执行两份迁移，并发布网关 `8b7483d`。模型进程目前仍使用历史兼容登记，尚未启用进程内自注册；现场证据见 `deploy/releases/20261113-cn-generic.json`。早期方案的 deployment_operations/deployment_leases 表不再使用，保留即可，不自动删除。
 
 运维使用现有管理 API 预建物理资源组。通过网关 Secret 环境变量 `MODEL_GATEWAY_WORKER_REGISTRATIONS` 注入每个 worker 的授权。该字段不从 Nacos/AppConfig 正文读取。例：
 
