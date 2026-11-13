@@ -111,9 +111,19 @@ func TestAPITokensLifecycle(t *testing.T) {
 		t.Fatal("callers share credential")
 	}
 
+	// 独立 API Token 可跨调用方读取历史与媒体，撤销仍即时阻止后续读取。
+	for _, credential := range []string{revealed.Token, secondSecret.Token} {
+		call(replica, "GET", "/v1/admin/requests?request_id="+id, credential, "", 200)
+		call(replica, "GET", "/v1/admin/requests/"+id, credential, "", 200)
+		call(replica, "GET", "/v1/admin/requests/"+id+"/media?kind=input&index=0", credential, "", 200)
+		call(replica, "GET", "/v1/admin/requests/"+id+"/media?kind=output&index=0", credential, "", 404)
+		call(replica, "GET", "/v1/admin/request-stats", credential, "", 401)
+	}
+
 	call(base, "DELETE", path+"/"+created.ID, adminToken, "", 200)
 	call(base, "DELETE", path+"/"+created.ID, adminToken, "", 200)
 	call(replica, "GET", "/v1/models/"+spec.ModelKey, revealed.Token, "", 401)
+	call(replica, "GET", "/v1/admin/requests/"+id, revealed.Token, "", 401)
 	call(base, "GET", path+"/"+created.ID, adminToken, "", 404)
 	task, _ = db.Request.Get(t.Context(), id)
 	if string(task.State) != "queued" {
