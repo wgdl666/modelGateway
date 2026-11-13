@@ -46,8 +46,8 @@ func (s *Store) CheckReady(ctx context.Context) error {
 		return err
 	}
 	// 就绪检查覆盖软删除及协议字段，迁移完成后才允许新副本接流量。
-	if _, err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).Select(modelinstance.FieldProtocol).Limit(1).All(ctx); err != nil {
-		telemetry.LogError(ctx, "gateway readiness failed", err, "check", "model_instances.protocol/deleted_at")
+	if _, err := s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil()).Select(modelinstance.FieldProtocol, modelinstance.FieldInputSchema).Limit(1).All(ctx); err != nil {
+		telemetry.LogError(ctx, "gateway readiness failed", err, "check", "model_instances.protocol/input_schema/deleted_at")
 		return err
 	}
 	// 同步、多卡请求都依赖这份占用快照，迁移缺失时不能接流量。受理会写入 extra，缺列时同样无法接单。

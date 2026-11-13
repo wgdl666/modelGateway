@@ -4,9 +4,21 @@
 
 ## 调用协议
 
-生成接口为 `POST /v1/gateway/requests/{model_key}`。请求使用 `Authorization: Bearer <api_token>`、`Content-Type: application/json` 和 UUID `Idempotency-Key`。UUID 同时是请求表主键和模型端查询 ID。
+统一调用入口为 `POST /v1/gateway/requests/{model_key}`，承接图片、视频、对话和视觉模型。请求使用 `Authorization: Bearer <api_token>`、`Content-Type: application/json` 和 UUID `Idempotency-Key`。UUID 同时是请求表主键和模型端查询 ID。
 
 请求体包含 `input` 和可选的 `metadata`。图片按顺序放入 `input.images`，每项为 `mime_type` 和 base64 `data`。同一键和相同业务输入复用原任务，改模型或业务输入返回 409。追踪字段变化不改变任务身份。
+
+### 模型目录和 JSON Schema
+
+调用前用 API 凭据读取 `GET /v1/models?category=image_generation`（category 可省略），目录按模型键去重，不返回实例数量。`GET /v1/models/{model_key}` 返回 `model_key`、`protocol`、`category`、`description`、`response_mode` 和完整 `input_schema`。
+
+`model_instances.input_schema` 是 JSONB，保存完整 JSON Schema 2020-12。定义包含字段、类型、必填项、图片顺序和数量；运行时由 JSON Schema 库校验，再由已有适配器编码并派发。`protocol` 继续选择内部编码与执行方式，实例 `endpoint` 继续决定执行地址，调用方不选择内部路径。
+
+同模型多个实例保留重复 schema。管理凭据调用 `PUT /v1/admin/models/{model_key}/schema`，请求 `{"input_schema":{...}}`，在一个事务里更新该模型全部登记；新副本继承已有定义，不按协议重置。首次登记可提交 input_schema，省略时使用协议种子。定义只允许文档内部 `$ref`，不加载远程或本机文件。
+
+**发布前先执行 [input_schema 迁移](deploy/migrations/model-input-schema.sql)**，回填已有 13 种协议的初始契约；已有自定义定义不会被覆盖。种子用于迁移和首次登记，运行时缺少定义返回 503。`x-category` 提供目录类别；`x-experimental-properties` 只对实验凭据展开，对外 schema 与当前凭据实际校验规则一致。
+
+对话 input 使用 OpenAI-compatible JSON（模型由路径指定），响应仍是原生 JSON/SSE；视觉 input 使用 JSON 和 Base64 内联图片，由 Gateway 编码成上游 multipart/JSON，响应保持原生 JSON/图片。OpenAI-compatible 种子保留扩展字段，具体模型的参数支持范围可由管理员在模型定义中收紧；schema 通过不替代上游模型的语义校验。媒体生成仍使用下面的任务结果格式。旧 `/v1/chat/completions`、`/v1/vision/...` 和决策入口保留，供已有调用方迁移。
 
 每个 `model_key` 固定对应一种业务。输入校验、实例匹配和后端路由使用同一个键。业务含义变化时使用新键。
 

@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "face_compare",
+  "description": "人脸相似度比较，两张人脸图片",
+  "x-category": "face_compare",
+  "type": "object",
+  "properties": {
+    "image_a": {
+      "type": "string",
+      "description": "图片 Base64，不含 data URL 前缀",
+      "minLength": 1,
+      "contentEncoding": "base64"
+    },
+    "image_b": {
+      "type": "string",
+      "description": "图片 Base64，不含 data URL 前缀",
+      "minLength": 1,
+      "contentEncoding": "base64"
+    },
+    "file_a": {
+      "type": "string",
+      "description": "图片 Base64，不含 data URL 前缀",
+      "minLength": 1,
+      "contentEncoding": "base64"
+    },
+    "file_b": {
+      "type": "string",
+      "description": "图片 Base64，不含 data URL 前缀",
+      "minLength": 1,
+      "contentEncoding": "base64"
+    },
+    "face_index_a": {
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "face_index_b": {
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "required": [],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "anyOf": [
+        {
+          "required": [
+            "image_a"
+          ]
+        },
+        {
+          "required": [
+            "file_a"
+          ]
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "required": [
+            "image_b"
+          ]
+        },
+        {
+          "required": [
+            "file_b"
+          ]
+        }
+      ]
+    }
+  ]
+}

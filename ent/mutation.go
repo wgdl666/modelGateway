@@ -666,6 +666,8 @@ type ModelInstanceMutation struct {
 	id                      *string
 	model_key               *string
 	protocol                *string
+	input_schema            *json.RawMessage
+	appendinput_schema      json.RawMessage
 	endpoint                *string
 	health_url              *string
 	artifact_digest         *string
@@ -863,6 +865,71 @@ func (m *ModelInstanceMutation) OldProtocol(ctx context.Context) (v string, err 
 // ResetProtocol resets all changes to the "protocol" field.
 func (m *ModelInstanceMutation) ResetProtocol() {
 	m.protocol = nil
+}
+
+// SetInputSchema sets the "input_schema" field.
+func (m *ModelInstanceMutation) SetInputSchema(jm json.RawMessage) {
+	m.input_schema = &jm
+	m.appendinput_schema = nil
+}
+
+// InputSchema returns the value of the "input_schema" field in the mutation.
+func (m *ModelInstanceMutation) InputSchema() (r json.RawMessage, exists bool) {
+	v := m.input_schema
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInputSchema returns the old "input_schema" field's value of the ModelInstance entity.
+// If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelInstanceMutation) OldInputSchema(ctx context.Context) (v json.RawMessage, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInputSchema is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInputSchema requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInputSchema: %w", err)
+	}
+	return oldValue.InputSchema, nil
+}
+
+// AppendInputSchema adds jm to the "input_schema" field.
+func (m *ModelInstanceMutation) AppendInputSchema(jm json.RawMessage) {
+	m.appendinput_schema = append(m.appendinput_schema, jm...)
+}
+
+// AppendedInputSchema returns the list of values that were appended to the "input_schema" field in this mutation.
+func (m *ModelInstanceMutation) AppendedInputSchema() (json.RawMessage, bool) {
+	if len(m.appendinput_schema) == 0 {
+		return nil, false
+	}
+	return m.appendinput_schema, true
+}
+
+// ClearInputSchema clears the value of the "input_schema" field.
+func (m *ModelInstanceMutation) ClearInputSchema() {
+	m.input_schema = nil
+	m.appendinput_schema = nil
+	m.clearedFields[modelinstance.FieldInputSchema] = struct{}{}
+}
+
+// InputSchemaCleared returns if the "input_schema" field was cleared in this mutation.
+func (m *ModelInstanceMutation) InputSchemaCleared() bool {
+	_, ok := m.clearedFields[modelinstance.FieldInputSchema]
+	return ok
+}
+
+// ResetInputSchema resets all changes to the "input_schema" field.
+func (m *ModelInstanceMutation) ResetInputSchema() {
+	m.input_schema = nil
+	m.appendinput_schema = nil
+	delete(m.clearedFields, modelinstance.FieldInputSchema)
 }
 
 // SetEndpoint sets the "endpoint" field.
@@ -1485,12 +1552,15 @@ func (m *ModelInstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelInstanceMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.model_key != nil {
 		fields = append(fields, modelinstance.FieldModelKey)
 	}
 	if m.protocol != nil {
 		fields = append(fields, modelinstance.FieldProtocol)
+	}
+	if m.input_schema != nil {
+		fields = append(fields, modelinstance.FieldInputSchema)
 	}
 	if m.endpoint != nil {
 		fields = append(fields, modelinstance.FieldEndpoint)
@@ -1546,6 +1616,8 @@ func (m *ModelInstanceMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelKey()
 	case modelinstance.FieldProtocol:
 		return m.Protocol()
+	case modelinstance.FieldInputSchema:
+		return m.InputSchema()
 	case modelinstance.FieldEndpoint:
 		return m.Endpoint()
 	case modelinstance.FieldHealthURL:
@@ -1587,6 +1659,8 @@ func (m *ModelInstanceMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldModelKey(ctx)
 	case modelinstance.FieldProtocol:
 		return m.OldProtocol(ctx)
+	case modelinstance.FieldInputSchema:
+		return m.OldInputSchema(ctx)
 	case modelinstance.FieldEndpoint:
 		return m.OldEndpoint(ctx)
 	case modelinstance.FieldHealthURL:
@@ -1637,6 +1711,13 @@ func (m *ModelInstanceMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetProtocol(v)
+		return nil
+	case modelinstance.FieldInputSchema:
+		v, ok := value.(json.RawMessage)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInputSchema(v)
 		return nil
 	case modelinstance.FieldEndpoint:
 		v, ok := value.(string)
@@ -1793,6 +1874,9 @@ func (m *ModelInstanceMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *ModelInstanceMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(modelinstance.FieldInputSchema) {
+		fields = append(fields, modelinstance.FieldInputSchema)
+	}
 	if m.FieldCleared(modelinstance.FieldGpuDevices) {
 		fields = append(fields, modelinstance.FieldGpuDevices)
 	}
@@ -1813,6 +1897,9 @@ func (m *ModelInstanceMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *ModelInstanceMutation) ClearField(name string) error {
 	switch name {
+	case modelinstance.FieldInputSchema:
+		m.ClearInputSchema()
+		return nil
 	case modelinstance.FieldGpuDevices:
 		m.ClearGpuDevices()
 		return nil
@@ -1832,6 +1919,9 @@ func (m *ModelInstanceMutation) ResetField(name string) error {
 		return nil
 	case modelinstance.FieldProtocol:
 		m.ResetProtocol()
+		return nil
+	case modelinstance.FieldInputSchema:
+		m.ResetInputSchema()
 		return nil
 	case modelinstance.FieldEndpoint:
 		m.ResetEndpoint()

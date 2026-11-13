@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "human_parse",
+  "description": "人体和衣物解析",
+  "x-category": "human_parser",
+  "type": "object",
+  "properties": {
+    "image": {
+      "type": "string",
+      "description": "图片 Base64，不含 data URL 前缀",
+      "minLength": 1,
+      "contentEncoding": "base64"
+    }
+  },
+  "required": [
+    "image"
+  ],
+  "additionalProperties": false
+}

@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"reflect"
 	"slices"
 	"time"
 
@@ -9,6 +11,7 @@ import (
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/ent/resourcegroup"
+	"github.com/wgdl666/modelGateway/internal/inputschema"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 )
 
@@ -42,6 +45,31 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 		}
 		if conflict {
 			return ErrConflict
+		}
+		// 契约属于模型；新增实例沿用已登记定义，只有首次登记使用内置初始值。
+		existing, err := tx.ModelInstance.Query().Where(modelinstance.ModelKeyEQ(spec.ModelKey)).Select(modelinstance.FieldInputSchema).First(ctx)
+		if err != nil && !ent.IsNotFound(err) {
+			return err
+		}
+		if existing != nil {
+			if len(existing.InputSchema) == 0 {
+				return ErrInputSchemaMissing
+			}
+			if len(spec.InputSchema) > 0 {
+				var left, right any
+				if json.Unmarshal(spec.InputSchema, &left) != nil || json.Unmarshal(existing.InputSchema, &right) != nil || !reflect.DeepEqual(left, right) {
+					return ErrConflict
+				}
+			}
+			spec.InputSchema = existing.InputSchema
+		} else if len(spec.InputSchema) == 0 {
+			spec.InputSchema, err = inputschema.Seed(spec.Protocol)
+			if err != nil {
+				return err
+			}
+		}
+		if err := inputschema.CheckDefinition(spec.InputSchema); err != nil {
+			return err
 		}
 		group, err := tx.ResourceGroup.Get(ctx, spec.ResourceGroup)
 		if ent.IsNotFound(err) {
@@ -123,7 +151,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 			artifact = reportedArtifact
 		}
 		return tx.ModelInstance.Create().
-			SetID(spec.ID).SetModelKey(spec.ModelKey).SetProtocol(spec.Protocol).
+			SetID(spec.ID).SetModelKey(spec.ModelKey).SetProtocol(spec.Protocol).SetInputSchema(spec.InputSchema).
 			SetEndpoint(spec.Endpoint).SetHealthURL(spec.HealthURL).SetArtifactDigest(artifact).
 			SetResourceGroup(spec.ResourceGroup).SetGroupCapacityUnits(group.CapacityUnits).
 			SetCapacityUnits(spec.Capacity).SetMachineID(spec.MachineID).SetGpuDevices(spec.GPUDevices).SetDraining(spec.InitiallyDraining).Exec(ctx)

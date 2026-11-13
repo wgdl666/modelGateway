@@ -19,6 +19,7 @@ import (
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/internal/config"
+	"github.com/wgdl666/modelGateway/internal/inputschema"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 	"github.com/wgdl666/modelGateway/internal/store"
 	"github.com/wgdl666/modelGateway/internal/telemetry"
@@ -76,6 +77,8 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.GET("/_gateway/live", func(_ context.Context, c *app.RequestContext) { writeJSON(c, 200, map[string]bool{"live": true}) })
 	h.GET("/_gateway/ready", s.ready)
 	// 实例登记决定网关可以向哪些执行地址派单，因此使用管理凭据。
+	h.GET("/v1/models", s.auth("api", s.models))
+	h.PUT("/v1/admin/models/:model_key/schema", s.auth("admin", s.setModelSchema))
 	h.GET("/v1/models/:model_key", s.auth("api", s.modelProtocol))
 	h.POST("/v1/instances/register", s.auth("admin", s.register))
 	h.POST("/v1/instances/probe", s.auth("admin", s.probeInstance))
@@ -246,8 +249,14 @@ func (s *Server) ready(ctx context.Context, c *app.RequestContext) {
 func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 	cfg := requestConfig(ctx)
 	var spec protocol.Instance
-	if _, ok := readBody(c, 16<<10, &spec, ""); !ok {
+	if _, ok := readBody(c, 256<<10, &spec, ""); !ok {
 		return
+	}
+	if len(spec.InputSchema) > 0 {
+		if err := inputschema.CheckDefinition(spec.InputSchema); err != nil {
+			writeError(c, 400, "invalid_schema", err.Error(), "")
+			return
+		}
 	}
 	spec.Endpoint = strings.TrimRight(spec.Endpoint, "/")
 	if !spec.Valid() {
@@ -359,12 +368,13 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	model := c.Param("model_key")
-	kind, ok := s.resolveModelProtocol(ctx, c, model)
+	definition, ok := s.resolveModelDefinition(ctx, c, model)
 	if !ok {
 		return
 	}
-	if !protocol.MediaProtocol(kind) {
-		writeError(c, 400, "invalid_protocol", "model does not use the media task protocol", id)
+	kind := definition.Protocol
+	if !protocol.MediaProtocol(kind) && protocol.SynchronousKind(kind) == "" {
+		writeError(c, 400, "invalid_protocol", "model has no supported executor", id)
 		return
 	}
 	// 同时解码的大图受限，连接等待响应时不占上传名额。
@@ -381,23 +391,23 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	// 模型存在性、输出能力和具体字段在同一次受理内校验，不依赖调用方预查询。
-	if input.Output != "" && ((input.Output != "image" && input.Output != "video") || (input.Output == "video") != (kind == protocol.VideoProtocol)) {
+	if input.Output != "" && (!protocol.MediaProtocol(kind) || ((input.Output != "image" && input.Output != "video") || (input.Output == "video") != (kind == protocol.VideoProtocol))) {
 		<-s.uploads
 		writeError(c, 400, "invalid_protocol", "model protocol does not match the requested output", id)
 		return
 	}
 	var extra []byte
-	normalized, err := protocol.NormalizeMediaInput(kind, input.Input)
+	var err error
+	if protocol.MediaProtocol(kind) {
+		input.Input, err = protocol.NormalizeMediaInput(kind, input.Input)
+	}
 	if err == nil {
-		input.Input = normalized
-		validate := protocol.ValidateInput
-		if c.GetBool(experimentalCredential) {
-			validate = protocol.ValidateExperimentalInput
-		}
+		err = inputschema.Validate(definition.InputSchema, input.Input, c.GetBool(experimentalCredential))
+	}
+	if err == nil && protocol.MediaProtocol(kind) {
 		var images []protocol.InputImage
-		images, err = validate(kind, input.Input)
+		_, images, err = protocol.DecodeInput(input.Input)
 		if err == nil {
-			// 清单复用校验时的解码结果；图片字节只在该块内使用，不带入终态等待。
 			extra, err = protocol.InputMediaExtra(protocol.InputMedia(kind, images))
 		}
 	}
@@ -407,6 +417,12 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 	if err != nil {
 		<-s.uploads
 		writeError(c, 400, "invalid_input", err.Error(), id)
+		return
+	}
+	if !protocol.MediaProtocol(kind) {
+		<-s.uploads
+		c.Set(submissionMetadataKey, input.Metadata)
+		s.submitSynchronousInput(ctx, c, model, kind, input.Input)
 		return
 	}
 	raw, err = json.Marshal(input)

@@ -28,8 +28,15 @@ func (s *Server) resolveModelProtocol(ctx context.Context, c *app.RequestContext
 }
 
 func (s *Server) modelProtocol(ctx context.Context, c *app.RequestContext) {
-	model := c.Param("model_key")
-	if kind, ok := s.resolveModelProtocol(ctx, c, model); ok {
-		writeJSON(c, 200, map[string]string{"model_key": model, "protocol": kind})
+	definition, ok := s.resolveModelDefinition(ctx, c, c.Param("model_key"))
+	if !ok {
+		return
 	}
+	view, err := modelView(definition, c.GetBool(experimentalCredential), true)
+	if err != nil {
+		writeError(c, 503, "model_schema_invalid", "invalid model definition", "")
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	writeJSON(c, 200, view)
 }

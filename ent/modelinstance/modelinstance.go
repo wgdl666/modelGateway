@@ -17,6 +17,8 @@ const (
 	FieldModelKey = "model_key"
 	// FieldProtocol holds the string denoting the protocol field in the database.
 	FieldProtocol = "protocol"
+	// FieldInputSchema holds the string denoting the input_schema field in the database.
+	FieldInputSchema = "input_schema"
 	// FieldEndpoint holds the string denoting the endpoint field in the database.
 	FieldEndpoint = "endpoint"
 	// FieldHealthURL holds the string denoting the health_url field in the database.
@@ -54,6 +56,7 @@ var Columns = []string{
 	FieldID,
 	FieldModelKey,
 	FieldProtocol,
+	FieldInputSchema,
 	FieldEndpoint,
 	FieldHealthURL,
 	FieldArtifactDigest,
