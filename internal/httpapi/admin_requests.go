@@ -171,9 +171,12 @@ func inspectRequest(row *ent.Request) inspectedRequest {
 	view := viewRequest(row)
 	parameters := json.RawMessage(`{}`)
 	inputs := []protocol.MediaRef{}
-	if params, refs, _, err := protocol.PreviewSubmission(row.Protocol, row.RequestPayload); err == nil {
+	if params, refs, err := protocol.PreviewSubmission(row.Protocol, row.RequestPayload); err == nil {
 		parameters = params
 		inputs = refs
+	}
+	if saved, ok := inputMedia(row.Extra); ok {
+		inputs = saved
 	}
 	outputs := []protocol.MediaRef{}
 	if view.Result != nil {
@@ -239,19 +242,23 @@ func (s *Server) requestMedia(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_media", "media kind and index are required", id)
 		return
 	}
-	row, err := s.store.RequestDetail(ctx, id)
+	var row *ent.Request
+	if kind == "output" {
+		row, err = s.store.RequestOutput(ctx, id)
+	} else {
+		row, err = s.store.RequestDetail(ctx, id)
+	}
 	if err != nil {
 		storeError(c, err, id)
 		return
 	}
 	switch kind {
 	case "input":
-		_, _, images, err := protocol.PreviewSubmission(row.Protocol, row.RequestPayload)
-		if err != nil || index >= len(images) || !allowedInputMIME(images[index].MIMEType) || int64(len(images[index].Data)) > maxImageBytes {
+		image, err := protocol.PreviewInputImage(row.RequestPayload, index)
+		if err != nil || !allowedInputMIME(image.MIMEType) || int64(len(image.Data)) > maxImageBytes {
 			writeError(c, 404, "media_unavailable", "input image is unavailable", id)
 			return
 		}
-		image := images[index]
 		writeMedia(c, image.MIMEType, bytes.NewReader(image.Data), int64(len(image.Data)))
 	default:
 		view := taskResponse(row)

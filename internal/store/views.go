@@ -138,3 +138,8 @@ func (s *Store) RequestDetail(ctx context.Context, id string) (*ent.Request, err
 		request.FieldRequestPayload, request.FieldResult, request.FieldErrorMessage, request.FieldDispatchAttempts, request.FieldDispatchRetryReason)
 	return s.db.Request.Query().Where(request.IDEQ(id)).Select(fields...).Only(ctx)
 }
+
+// RequestOutput 仅加载成品引用，避免输出预览读取完整 Base64 入参。
+func (s *Store) RequestOutput(ctx context.Context, id string) (*ent.Request, error) {
+	return s.db.Request.Query().Where(request.IDEQ(id)).Select(request.FieldID, request.FieldResult).Only(ctx)
+}

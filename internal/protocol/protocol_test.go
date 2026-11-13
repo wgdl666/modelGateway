@@ -12,9 +12,9 @@ import (
 func TestPreviewKeepsBusinessFieldsAndImageRoles(t *testing.T) {
 	id := "d36fa74f-14db-4a32-9315-8307dcfc0bcd"
 	payload := json.RawMessage(`{"input":{"prompt":"try on","images":[{"mime_type":"image/png","data":"eA=="},{"mime_type":"image/jpeg","data":"eA=="}]},"metadata":{"trace_id":"trace"}}`)
-	parameters, refs, images, err := PreviewSubmission(OutfitProtocol, payload)
-	if err != nil || len(images) != 2 || string(images[0].Data) != "x" {
-		t.Fatalf("preview images: %v %v", images, err)
+	parameters, refs, err := PreviewSubmission(OutfitProtocol, payload)
+	if err != nil {
+		t.Fatalf("preview: %v", err)
 	}
 	if strings.Contains(string(parameters), "eA==") || strings.Contains(string(parameters), "images") {
 		t.Fatalf("parameters contain image bytes: %s", parameters)
