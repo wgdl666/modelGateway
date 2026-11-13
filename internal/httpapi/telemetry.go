@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/wgdl666/kangaroo/callmeta"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -24,14 +25,16 @@ func observeRequest(ctx context.Context, c *app.RequestContext) {
 	if route == "" {
 		route = "unmatched"
 	}
-	// 只接收标准 Trace 上下文，不收集请求头、查询参数、正文或用户提供的 baggage。
-	ctx = (propagation.TraceContext{}).Extract(ctx, propagation.MapCarrier{
+	// 只接收标准 Trace 与固定来源字段，不复制任意请求头或 baggage。
+	ctx = (callmeta.Propagator{}).Extract(ctx, propagation.MapCarrier{
 		"traceparent": string(c.GetHeader("traceparent")), "tracestate": string(c.GetHeader("tracestate")),
+		callmeta.DeviceID: string(c.GetHeader(callmeta.DeviceID)), callmeta.UserID: string(c.GetHeader(callmeta.UserID)),
 	})
 	ctx, span := otel.Tracer("github.com/wgdl666/modelGateway").Start(ctx, "gateway.http_handler",
 		trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(
 			attribute.String("http.request.method", string(c.Method())), attribute.String("http.route", route)))
 	defer span.End()
+	callmeta.AnnotateSpan(ctx)
 	started := time.Now()
 	c.Next(ctx)
 	status := c.Response.StatusCode()

@@ -17,13 +17,13 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/google/uuid"
+	"github.com/wgdl666/kangaroo/callmeta"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/internal/config"
 	"github.com/wgdl666/modelGateway/internal/protocol"
 	"github.com/wgdl666/modelGateway/internal/store"
 	"github.com/wgdl666/modelGateway/internal/telemetry"
-	"go.opentelemetry.io/otel/propagation"
 )
 
 // 同步协议仍由原连接返回；受理、暂停与容量和异步任务使用同一份持久账本。
@@ -39,14 +39,19 @@ func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, 
 	// 原图/文本只由当前连接持有，不在只用于追溯的同步记录里再存一份敏感正文。
 	digest := sha256.Sum256(body)
 	input, _ := json.Marshal(map[string]any{"content_type": contentType, "body_bytes": len(body), "body_sha256": hex.EncodeToString(digest[:])})
-	payload, _ := json.Marshal(protocol.Submission{Input: input})
+	metadata, err := freezeMetadata(ctx, c, protocol.Metadata{TraceID: synchronousTraceID(c)})
+	if err != nil {
+		writeError(c, 400, "invalid_metadata", err.Error(), id)
+		return
+	}
+	payload, _ := json.Marshal(protocol.Submission{Input: input, Metadata: metadata})
 	units := cfg.UnitsByModelKey[model]
 	if units == 0 {
 		units = 1
 	}
 	// 同步记录不存原图。extra 里明确记下没有输入，Ops 无需再读详情确认。
 	extra, _ := protocol.InputMediaExtra(nil)
-	task, err := s.store.Admit(ctx, store.Admission{ID: id, ModelKey: model, Protocol: kind, TraceID: synchronousTraceID(c), APITokenID: c.GetString(apiTokenID),
+	task, err := s.store.Admit(ctx, store.Admission{ID: id, ModelKey: model, Protocol: kind, TraceID: metadata.TraceID, APITokenID: c.GetString(apiTokenID),
 		Payload: payload, Input: input, Extra: extra, Units: units, MaxWaiting: cfg.MaxWaiting, BackendTimeout: cfg.BackendTimeout})
 	if err != nil {
 		storeError(c, err, id)
@@ -145,7 +150,7 @@ func (s *Server) executeSynchronous(ctx context.Context, c *app.RequestContext, 
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("X-Request-ID", task.ID)
 	// 网关 span 接在 ModelHub 后面；标准上下文与已有业务 Trace ID 一起传给同步执行端。
-	(propagation.TraceContext{}).Inject(execCtx, propagation.HeaderCarrier(req.Header))
+	(callmeta.Propagator{}).Inject(execCtx, callmeta.HTTPHeaders(req.Header))
 	if task.TraceID != "" {
 		req.Header.Set("X-Trace-ID", task.TraceID)
 	}

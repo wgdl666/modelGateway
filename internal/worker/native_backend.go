@@ -377,7 +377,7 @@ func (w *Reconciler) pollNative(cfg *config.Snapshot, task *ent.Request, backend
 	}
 	auth := w.nativeAuth(backend)
 	jobURL := task.Endpoint + "/jobs/" + task.BackendTaskID
-	ctx, cancel := context.WithTimeout(w.ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(w.taskContext(w.ctx, task), 3*time.Second)
 	var job nativeJob
 	err := w.nativeJSON(ctx, auth, jobURL, &job)
 	cancel()
@@ -402,7 +402,7 @@ func (w *Reconciler) pollNative(cfg *config.Snapshot, task *ent.Request, backend
 }
 
 func (w *Reconciler) completeNativeVideo(cfg *config.Snapshot, task *ent.Request, auth nativeAuth, url string, generation *protocol.Generation) error {
-	ctx, cancel := context.WithTimeout(w.ctx, cfg.BackendTimeout)
+	ctx, cancel := context.WithTimeout(w.taskContext(w.ctx, task), cfg.BackendTimeout)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
 	// 领取仍有效才开始传输，并给发布后的终态写入留足时间。

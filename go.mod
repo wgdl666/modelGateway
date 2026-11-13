@@ -11,10 +11,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.1
 	github.com/cloudwego/hertz v0.10.6
 	github.com/google/uuid v1.6.0
-	github.com/wgdl666/kangaroo/bizerr v0.0.0-20260805125009-85ddf2d025e0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/nacos-group/nacos-sdk-go/v2 v2.3.5
 	github.com/rabbitmq/amqp091-go v1.10.0
+	github.com/wgdl666/kangaroo/bizerr v0.0.0-20260805125009-85ddf2d025e0
 	go.opentelemetry.io/otel v1.39.0
 	go.opentelemetry.io/otel/log v0.15.0
 	go.opentelemetry.io/otel/sdk v1.39.0
@@ -68,6 +68,7 @@ require (
 	github.com/prometheus/procfs v0.7.3 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.64.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.15.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.39.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.39.0 // indirect
@@ -124,6 +125,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
+	github.com/wgdl666/kangaroo/callmeta v0.2.0
 	github.com/wgdl666/kangaroo/logs v0.0.0-20260730111800-d175a47582e4
 	github.com/zclconf/go-cty v1.14.4 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect

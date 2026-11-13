@@ -400,10 +400,8 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 			extra, err = protocol.InputMediaExtra(protocol.InputMedia(kind, images))
 		}
 	}
-	for _, value := range []string{input.Metadata.TraceID, input.Metadata.UserID} {
-		if len(value) > 256 || strings.ContainsFunc(value, func(r rune) bool { return r < 32 || r == 127 }) {
-			err = errors.New("invalid metadata")
-		}
+	if err == nil {
+		input.Metadata, err = freezeMetadata(ctx, c, input.Metadata)
 	}
 	if err != nil {
 		<-s.uploads

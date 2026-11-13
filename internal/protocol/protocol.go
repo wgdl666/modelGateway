@@ -79,8 +79,11 @@ func ValidInstanceID(id string) bool {
 }
 
 type Metadata struct {
-	UserID  string `json:"user_id,omitempty"`
-	TraceID string `json:"trace_id,omitempty"`
+	DeviceID    string `json:"device_id,omitempty"`
+	TraceParent string `json:"traceparent,omitempty"`
+	TraceState  string `json:"tracestate,omitempty"`
+	UserID      string `json:"user_id,omitempty"`
+	TraceID     string `json:"trace_id,omitempty"`
 }
 
 type Submission struct {

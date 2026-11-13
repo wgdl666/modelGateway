@@ -248,7 +248,7 @@ class Adapter:
             # 原生视频服务包含多个实例，固定本部署的目标以兑现网关登记的 GPU 分组。
             form["target_instance"] = self.video_target
         metadata = value.get("metadata") or {}
-        headers = {"X-Gateway-Request-ID": value["request_id"], "X-Gateway-Dispatch": "immediate"}
+        headers = {**source_headers(metadata), "X-Gateway-Request-ID": value["request_id"], "X-Gateway-Dispatch": "immediate"}
         if trace := metadata.get("trace_id"):
             form["trace_id"] = trace
             headers["X-Trace-ID"] = trace
@@ -334,7 +334,7 @@ class Adapter:
         try:
             # 先流式落临时文件，再由 SDK 上传，避免在适配器内存保留整个视频。
             with tempfile.TemporaryFile() as body:
-                async with self.http.stream("GET", self.native + f"/jobs/{job_id}/video", headers=self.native_headers) as response:
+                async with self.http.stream("GET", self.native + f"/jobs/{job_id}/video", headers={**self.native_headers, **source_headers(row.get("metadata") or {})}) as response:
                     response.raise_for_status()
                     size = 0
                     async for chunk in response.aiter_bytes(1 << 20):
@@ -371,7 +371,7 @@ class Adapter:
             path = "/_gateway/tasks/" + native_id
         try:
             response = await self.http.get(
-                self.native + path, headers=self.native_headers, timeout=2.0
+                self.native + path, headers={**self.native_headers, **source_headers(row.get("metadata") or {})}, timeout=2.0
             )
             if not response.is_success:
                 return
@@ -390,6 +390,21 @@ class Adapter:
         elif native.get("status") in ("error", "cancelled", "interrupted"):
             await self.fail(latest, "model_failed", "native video execution failed")
 
+
+def source_headers(metadata):
+    # 只复制任务受理时的固定来源字段，不能把客户端任意头或凭据带给模型。
+    result = {}
+    for field, header in (("device_id", "X-WG-Device-ID"), ("user_id", "X-WG-User-ID"),
+                          ("trace_id", "X-Trace-ID"), ("traceparent", "traceparent"), ("tracestate", "tracestate")):
+        value = metadata.get(field, "")
+        limit = 512 if field == "tracestate" else 256
+        if not isinstance(value, str) or len(value) > limit or any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise ValueError("invalid source metadata")
+        if value:
+            result[header] = value
+    if user := metadata.get("user_id"):
+        result["X-User-ID"] = user
+    return result
 
 def compact_generation(value):
     if not isinstance(value, dict):
@@ -496,11 +511,23 @@ async def submit(request: Request):
             raise ValueError("unexpected model key")
         path, fields = ROUTES[model_key]
         fingerprint = request_fingerprint([model_key, value["input"]])
+        # JSON 保留受理身份，HTTP traceparent 是当前派发 Span；恢复后仍从持久 row 取值。
+        metadata = dict(value.get("metadata") or {})
+        for field, header in (("device_id", "X-WG-Device-ID"), ("user_id", "X-WG-User-ID")):
+            incoming = request.headers.get(header, "")
+            if incoming and metadata.get(field) and incoming != metadata[field]:
+                raise ValueError("conflicting source identity")
+            if incoming:
+                metadata[field] = incoming
+        for field in ("traceparent", "tracestate"):
+            if trace_value := request.headers.get(field):
+                metadata[field] = trace_value
+        value["metadata"] = metadata
         path, form, files, headers = worker.multipart(value, path, fields)
     except (ValueError, KeyError, TypeError, AttributeError) as exc:
         raise HTTPException(400, "invalid model request") from exc
     row = {"request_id": request_id, "fingerprint": fingerprint, "model_key": model_key,
-           "state": "processing", "sent": False}
+           "state": "processing", "sent": False, "metadata": metadata}
     if not await worker.claim(row):
         existing = await worker.load(request_id)
         if existing is None:
