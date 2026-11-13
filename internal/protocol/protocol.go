@@ -34,11 +34,13 @@ type Instance struct {
 	ID       string `json:"instance_id"`
 	ModelKey string `json:"model_key"`
 	// 协议由登记显式指定，模型名称只作为身份与路由标识。
-	Protocol      string `json:"protocol"`
-	Endpoint      string `json:"endpoint"`
-	HealthURL     string `json:"health_url"`
-	Artifact      string `json:"artifact_digest"`
-	ResourceGroup string `json:"resource_group"`
+	Protocol          string `json:"protocol"`
+	Endpoint          string `json:"endpoint"`
+	HealthURL         string `json:"health_url"`
+	Artifact          string `json:"artifact_digest"`
+	DeploymentID      string `json:"deployment_id,omitempty"`
+	InitiallyDraining bool   `json:"initially_draining,omitempty"`
+	ResourceGroup     string `json:"resource_group"`
 	// 现有部署程序可能仍传旧字段，只有资源组管理接口可以设置组上限。
 	GroupCapacity int    `json:"group_capacity_units,omitempty"`
 	Capacity      int    `json:"capacity_units"`
@@ -47,14 +49,18 @@ type Instance struct {
 }
 
 type InstanceTarget struct {
-	ModelKey   string `json:"model_key"`
-	Protocol   string `json:"protocol"`
-	Endpoint   string `json:"endpoint"`
-	HealthURL  string `json:"health_url"`
-	GPUDevices []int  `json:"gpu_devices,omitempty"`
+	DeploymentID   string `json:"deployment_id,omitempty"`
+	ArtifactDigest string `json:"artifact_digest,omitempty"`
+	ModelKey       string `json:"model_key"`
+	Protocol       string `json:"protocol"`
+	Endpoint       string `json:"endpoint"`
+	HealthURL      string `json:"health_url"`
+	GPUDevices     []int  `json:"gpu_devices,omitempty"`
 }
 
 type InstanceHealth struct {
+	DeploymentID   string `json:"deployment_id,omitempty"`
+	BootID         string `json:"boot_id,omitempty"`
 	Ready          bool   `json:"ready"`
 	ArtifactDigest string `json:"artifact_digest,omitempty"`
 }
@@ -64,6 +70,7 @@ func (i Instance) Valid() bool {
 	// 服务未上报摘要时留空，避免把未知部署记成某个真实版本。
 	return ValidInstanceID(i.ID) && ValidModelKey(i.ModelKey) && ValidProtocol(i.Protocol) &&
 		ValidResourceGroupID(i.ResourceGroup) && (i.Artifact == "" || ValidArtifact(i.Artifact)) &&
+		(i.DeploymentID == "" || (ValidInstanceID(i.DeploymentID) && ValidArtifact(i.Artifact))) &&
 		i.Capacity >= 1 && i.Capacity <= MaxCapacityUnits
 }
 
@@ -89,8 +96,10 @@ type Submission struct {
 }
 
 type ModelRequest struct {
-	RequestID string `json:"request_id"`
-	ModelKey  string `json:"model_key"`
+	DeploymentID   string `json:"deployment_id,omitempty"`
+	ArtifactDigest string `json:"artifact_digest,omitempty"`
+	RequestID      string `json:"request_id"`
+	ModelKey       string `json:"model_key"`
 	Submission
 }
 

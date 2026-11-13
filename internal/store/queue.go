@@ -199,7 +199,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		now := time.Now().UTC()
 		// 同一消息可能重投。按 ID 等待行锁，锁竞争不能被误当成已处理而确认消息。
 		next, err := tx.Request.Query().Where(request.IDEQ(id), request.StateEQ(request.StateQueued), request.DeadlineAtGT(now)).
-			Select(request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldUnits, request.FieldDeadlineAt, request.FieldQueuePublishAt, request.FieldEndpoint, request.FieldInstanceID, request.FieldArtifactDigest).
+			Select(request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldUnits, request.FieldDeadlineAt, request.FieldQueuePublishAt, request.FieldEndpoint, request.FieldInstanceID, request.FieldArtifactDigest, request.FieldDeploymentID).
 			ForUpdate().Only(ctx)
 		if ent.IsNotFound(err) {
 			return nil
@@ -283,7 +283,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 			}
 			// 回队后会生成新的领取标识，旧一轮的响应不能写入后续重试。
 			task, err = tx.Request.UpdateOneID(id).SetState(request.StateProcessing).SetSlotReserved(true).ClearQueuePublishAt().
-				SetInstanceID(i.ID).SetResourceGroup(i.ResourceGroup).SetResourceGroups(memberships).SetEndpoint(i.Endpoint).SetArtifactDigest(i.ArtifactDigest).
+				SetInstanceID(i.ID).SetResourceGroup(i.ResourceGroup).SetResourceGroups(memberships).SetEndpoint(i.Endpoint).SetArtifactDigest(i.ArtifactDigest).SetDeploymentID(i.DeploymentID).
 				AddDispatchAttempts(1).SetStartedAt(now).SetNextPollAt(nextPoll).SetPollClaim(uuid.NewString()).Save(ctx)
 			return err
 		}
@@ -320,15 +320,15 @@ func (s *Store) RequeueDispatch(ctx context.Context, id string, startedAt time.T
 			ClearStartedAt().ClearNextPollAt().SetPollClaim("")
 	}
 	if reason != "worker_busy_before_execution" {
-		if _, err := update().Where(request.ProtocolIn(protocol.ImageGenerationProtocol, protocol.VideoGenerationProtocol)).Save(ctx); err != nil {
+		if _, err := update().Where(request.Or(request.ProtocolIn(protocol.ImageGenerationProtocol, protocol.VideoGenerationProtocol), request.DeploymentIDNEQ(""))).Save(ctx); err != nil {
 			return err
 		}
 	}
 	remaining := update()
 	if reason != "worker_busy_before_execution" {
-		remaining.Where(request.ProtocolNotIn(protocol.ImageGenerationProtocol, protocol.VideoGenerationProtocol))
+		remaining.Where(request.ProtocolNotIn(protocol.ImageGenerationProtocol, protocol.VideoGenerationProtocol), request.DeploymentIDEQ(""))
 	}
-	_, err := remaining.SetInstanceID("").SetResourceGroup("").SetResourceGroups([]string{}).SetEndpoint("").SetArtifactDigest("").Save(ctx)
+	_, err := remaining.SetInstanceID("").SetResourceGroup("").SetResourceGroups([]string{}).SetEndpoint("").SetArtifactDigest("").SetDeploymentID("").Save(ctx)
 	return err
 }
 

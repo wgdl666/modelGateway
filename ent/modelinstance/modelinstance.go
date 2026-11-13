@@ -23,6 +23,8 @@ const (
 	FieldHealthURL = "health_url"
 	// FieldArtifactDigest holds the string denoting the artifact_digest field in the database.
 	FieldArtifactDigest = "artifact_digest"
+	// FieldDeploymentID holds the string denoting the deployment_id field in the database.
+	FieldDeploymentID = "deployment_id"
 	// FieldResourceGroup holds the string denoting the resource_group field in the database.
 	FieldResourceGroup = "resource_group"
 	// FieldGroupCapacityUnits holds the string denoting the group_capacity_units field in the database.
@@ -57,6 +59,7 @@ var Columns = []string{
 	FieldEndpoint,
 	FieldHealthURL,
 	FieldArtifactDigest,
+	FieldDeploymentID,
 	FieldResourceGroup,
 	FieldGroupCapacityUnits,
 	FieldCapacityUnits,
@@ -81,6 +84,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultDeploymentID holds the default value on creation for the "deployment_id" field.
+	DefaultDeploymentID string
 	// GroupCapacityUnitsValidator is a validator for the "group_capacity_units" field. It is called by the builders before save.
 	GroupCapacityUnitsValidator func(int) error
 	// CapacityUnitsValidator is a validator for the "capacity_units" field. It is called by the builders before save.
@@ -132,6 +137,11 @@ func ByHealthURL(opts ...sql.OrderTermOption) OrderOption {
 // ByArtifactDigest orders the results by the artifact_digest field.
 func ByArtifactDigest(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldArtifactDigest, opts...).ToFunc()
+}
+
+// ByDeploymentID orders the results by the deployment_id field.
+func ByDeploymentID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeploymentID, opts...).ToFunc()
 }
 
 // ByResourceGroup orders the results by the resource_group field.

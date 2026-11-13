@@ -12,6 +12,8 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/wgdl666/modelGateway/ent/deploymentdomain"
+	"github.com/wgdl666/modelGateway/ent/deploymentlease"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/predicate"
 	"github.com/wgdl666/modelGateway/ent/request"
@@ -27,10 +29,982 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeModelInstance = "ModelInstance"
-	TypeRequest       = "Request"
-	TypeResourceGroup = "ResourceGroup"
+	TypeDeploymentDomain = "DeploymentDomain"
+	TypeDeploymentLease  = "DeploymentLease"
+	TypeModelInstance    = "ModelInstance"
+	TypeRequest          = "Request"
+	TypeResourceGroup    = "ResourceGroup"
 )
+
+// DeploymentDomainMutation represents an operation that mutates the DeploymentDomain nodes in the graph.
+type DeploymentDomainMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int
+	region        *string
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*DeploymentDomain, error)
+	predicates    []predicate.DeploymentDomain
+}
+
+var _ ent.Mutation = (*DeploymentDomainMutation)(nil)
+
+// deploymentdomainOption allows management of the mutation configuration using functional options.
+type deploymentdomainOption func(*DeploymentDomainMutation)
+
+// newDeploymentDomainMutation creates new mutation for the DeploymentDomain entity.
+func newDeploymentDomainMutation(c config, op Op, opts ...deploymentdomainOption) *DeploymentDomainMutation {
+	m := &DeploymentDomainMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeDeploymentDomain,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withDeploymentDomainID sets the ID field of the mutation.
+func withDeploymentDomainID(id int) deploymentdomainOption {
+	return func(m *DeploymentDomainMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *DeploymentDomain
+		)
+		m.oldValue = func(ctx context.Context) (*DeploymentDomain, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().DeploymentDomain.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withDeploymentDomain sets the old DeploymentDomain of the mutation.
+func withDeploymentDomain(node *DeploymentDomain) deploymentdomainOption {
+	return func(m *DeploymentDomainMutation) {
+		m.oldValue = func(context.Context) (*DeploymentDomain, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m DeploymentDomainMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m DeploymentDomainMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of DeploymentDomain entities.
+func (m *DeploymentDomainMutation) SetID(id int) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *DeploymentDomainMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *DeploymentDomainMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().DeploymentDomain.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetRegion sets the "region" field.
+func (m *DeploymentDomainMutation) SetRegion(s string) {
+	m.region = &s
+}
+
+// Region returns the value of the "region" field in the mutation.
+func (m *DeploymentDomainMutation) Region() (r string, exists bool) {
+	v := m.region
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRegion returns the old "region" field's value of the DeploymentDomain entity.
+// If the DeploymentDomain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentDomainMutation) OldRegion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRegion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRegion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRegion: %w", err)
+	}
+	return oldValue.Region, nil
+}
+
+// ResetRegion resets all changes to the "region" field.
+func (m *DeploymentDomainMutation) ResetRegion() {
+	m.region = nil
+}
+
+// Where appends a list predicates to the DeploymentDomainMutation builder.
+func (m *DeploymentDomainMutation) Where(ps ...predicate.DeploymentDomain) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the DeploymentDomainMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *DeploymentDomainMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.DeploymentDomain, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *DeploymentDomainMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *DeploymentDomainMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (DeploymentDomain).
+func (m *DeploymentDomainMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *DeploymentDomainMutation) Fields() []string {
+	fields := make([]string, 0, 1)
+	if m.region != nil {
+		fields = append(fields, deploymentdomain.FieldRegion)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *DeploymentDomainMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case deploymentdomain.FieldRegion:
+		return m.Region()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *DeploymentDomainMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case deploymentdomain.FieldRegion:
+		return m.OldRegion(ctx)
+	}
+	return nil, fmt.Errorf("unknown DeploymentDomain field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DeploymentDomainMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case deploymentdomain.FieldRegion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRegion(v)
+		return nil
+	}
+	return fmt.Errorf("unknown DeploymentDomain field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *DeploymentDomainMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *DeploymentDomainMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DeploymentDomainMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown DeploymentDomain numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *DeploymentDomainMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *DeploymentDomainMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *DeploymentDomainMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown DeploymentDomain nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *DeploymentDomainMutation) ResetField(name string) error {
+	switch name {
+	case deploymentdomain.FieldRegion:
+		m.ResetRegion()
+		return nil
+	}
+	return fmt.Errorf("unknown DeploymentDomain field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *DeploymentDomainMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *DeploymentDomainMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *DeploymentDomainMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *DeploymentDomainMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *DeploymentDomainMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *DeploymentDomainMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *DeploymentDomainMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown DeploymentDomain unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *DeploymentDomainMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown DeploymentDomain edge %s", name)
+}
+
+// DeploymentLeaseMutation represents an operation that mutates the DeploymentLease nodes in the graph.
+type DeploymentLeaseMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	region        *string
+	worker_id     *string
+	operation_id  *string
+	owner         *string
+	epoch         *int64
+	addepoch      *int64
+	lease_until   *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*DeploymentLease, error)
+	predicates    []predicate.DeploymentLease
+}
+
+var _ ent.Mutation = (*DeploymentLeaseMutation)(nil)
+
+// deploymentleaseOption allows management of the mutation configuration using functional options.
+type deploymentleaseOption func(*DeploymentLeaseMutation)
+
+// newDeploymentLeaseMutation creates new mutation for the DeploymentLease entity.
+func newDeploymentLeaseMutation(c config, op Op, opts ...deploymentleaseOption) *DeploymentLeaseMutation {
+	m := &DeploymentLeaseMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeDeploymentLease,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withDeploymentLeaseID sets the ID field of the mutation.
+func withDeploymentLeaseID(id string) deploymentleaseOption {
+	return func(m *DeploymentLeaseMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *DeploymentLease
+		)
+		m.oldValue = func(ctx context.Context) (*DeploymentLease, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().DeploymentLease.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withDeploymentLease sets the old DeploymentLease of the mutation.
+func withDeploymentLease(node *DeploymentLease) deploymentleaseOption {
+	return func(m *DeploymentLeaseMutation) {
+		m.oldValue = func(context.Context) (*DeploymentLease, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m DeploymentLeaseMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m DeploymentLeaseMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of DeploymentLease entities.
+func (m *DeploymentLeaseMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *DeploymentLeaseMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *DeploymentLeaseMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().DeploymentLease.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetRegion sets the "region" field.
+func (m *DeploymentLeaseMutation) SetRegion(s string) {
+	m.region = &s
+}
+
+// Region returns the value of the "region" field in the mutation.
+func (m *DeploymentLeaseMutation) Region() (r string, exists bool) {
+	v := m.region
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRegion returns the old "region" field's value of the DeploymentLease entity.
+// If the DeploymentLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentLeaseMutation) OldRegion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRegion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRegion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRegion: %w", err)
+	}
+	return oldValue.Region, nil
+}
+
+// ResetRegion resets all changes to the "region" field.
+func (m *DeploymentLeaseMutation) ResetRegion() {
+	m.region = nil
+}
+
+// SetWorkerID sets the "worker_id" field.
+func (m *DeploymentLeaseMutation) SetWorkerID(s string) {
+	m.worker_id = &s
+}
+
+// WorkerID returns the value of the "worker_id" field in the mutation.
+func (m *DeploymentLeaseMutation) WorkerID() (r string, exists bool) {
+	v := m.worker_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkerID returns the old "worker_id" field's value of the DeploymentLease entity.
+// If the DeploymentLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentLeaseMutation) OldWorkerID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkerID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkerID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkerID: %w", err)
+	}
+	return oldValue.WorkerID, nil
+}
+
+// ResetWorkerID resets all changes to the "worker_id" field.
+func (m *DeploymentLeaseMutation) ResetWorkerID() {
+	m.worker_id = nil
+}
+
+// SetOperationID sets the "operation_id" field.
+func (m *DeploymentLeaseMutation) SetOperationID(s string) {
+	m.operation_id = &s
+}
+
+// OperationID returns the value of the "operation_id" field in the mutation.
+func (m *DeploymentLeaseMutation) OperationID() (r string, exists bool) {
+	v := m.operation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOperationID returns the old "operation_id" field's value of the DeploymentLease entity.
+// If the DeploymentLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentLeaseMutation) OldOperationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOperationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOperationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOperationID: %w", err)
+	}
+	return oldValue.OperationID, nil
+}
+
+// ResetOperationID resets all changes to the "operation_id" field.
+func (m *DeploymentLeaseMutation) ResetOperationID() {
+	m.operation_id = nil
+}
+
+// SetOwner sets the "owner" field.
+func (m *DeploymentLeaseMutation) SetOwner(s string) {
+	m.owner = &s
+}
+
+// Owner returns the value of the "owner" field in the mutation.
+func (m *DeploymentLeaseMutation) Owner() (r string, exists bool) {
+	v := m.owner
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOwner returns the old "owner" field's value of the DeploymentLease entity.
+// If the DeploymentLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentLeaseMutation) OldOwner(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOwner is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOwner requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOwner: %w", err)
+	}
+	return oldValue.Owner, nil
+}
+
+// ResetOwner resets all changes to the "owner" field.
+func (m *DeploymentLeaseMutation) ResetOwner() {
+	m.owner = nil
+}
+
+// SetEpoch sets the "epoch" field.
+func (m *DeploymentLeaseMutation) SetEpoch(i int64) {
+	m.epoch = &i
+	m.addepoch = nil
+}
+
+// Epoch returns the value of the "epoch" field in the mutation.
+func (m *DeploymentLeaseMutation) Epoch() (r int64, exists bool) {
+	v := m.epoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEpoch returns the old "epoch" field's value of the DeploymentLease entity.
+// If the DeploymentLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentLeaseMutation) OldEpoch(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEpoch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEpoch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEpoch: %w", err)
+	}
+	return oldValue.Epoch, nil
+}
+
+// AddEpoch adds i to the "epoch" field.
+func (m *DeploymentLeaseMutation) AddEpoch(i int64) {
+	if m.addepoch != nil {
+		*m.addepoch += i
+	} else {
+		m.addepoch = &i
+	}
+}
+
+// AddedEpoch returns the value that was added to the "epoch" field in this mutation.
+func (m *DeploymentLeaseMutation) AddedEpoch() (r int64, exists bool) {
+	v := m.addepoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetEpoch resets all changes to the "epoch" field.
+func (m *DeploymentLeaseMutation) ResetEpoch() {
+	m.epoch = nil
+	m.addepoch = nil
+}
+
+// SetLeaseUntil sets the "lease_until" field.
+func (m *DeploymentLeaseMutation) SetLeaseUntil(t time.Time) {
+	m.lease_until = &t
+}
+
+// LeaseUntil returns the value of the "lease_until" field in the mutation.
+func (m *DeploymentLeaseMutation) LeaseUntil() (r time.Time, exists bool) {
+	v := m.lease_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseUntil returns the old "lease_until" field's value of the DeploymentLease entity.
+// If the DeploymentLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentLeaseMutation) OldLeaseUntil(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseUntil: %w", err)
+	}
+	return oldValue.LeaseUntil, nil
+}
+
+// ResetLeaseUntil resets all changes to the "lease_until" field.
+func (m *DeploymentLeaseMutation) ResetLeaseUntil() {
+	m.lease_until = nil
+}
+
+// Where appends a list predicates to the DeploymentLeaseMutation builder.
+func (m *DeploymentLeaseMutation) Where(ps ...predicate.DeploymentLease) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the DeploymentLeaseMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *DeploymentLeaseMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.DeploymentLease, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *DeploymentLeaseMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *DeploymentLeaseMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (DeploymentLease).
+func (m *DeploymentLeaseMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *DeploymentLeaseMutation) Fields() []string {
+	fields := make([]string, 0, 6)
+	if m.region != nil {
+		fields = append(fields, deploymentlease.FieldRegion)
+	}
+	if m.worker_id != nil {
+		fields = append(fields, deploymentlease.FieldWorkerID)
+	}
+	if m.operation_id != nil {
+		fields = append(fields, deploymentlease.FieldOperationID)
+	}
+	if m.owner != nil {
+		fields = append(fields, deploymentlease.FieldOwner)
+	}
+	if m.epoch != nil {
+		fields = append(fields, deploymentlease.FieldEpoch)
+	}
+	if m.lease_until != nil {
+		fields = append(fields, deploymentlease.FieldLeaseUntil)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *DeploymentLeaseMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case deploymentlease.FieldRegion:
+		return m.Region()
+	case deploymentlease.FieldWorkerID:
+		return m.WorkerID()
+	case deploymentlease.FieldOperationID:
+		return m.OperationID()
+	case deploymentlease.FieldOwner:
+		return m.Owner()
+	case deploymentlease.FieldEpoch:
+		return m.Epoch()
+	case deploymentlease.FieldLeaseUntil:
+		return m.LeaseUntil()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *DeploymentLeaseMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case deploymentlease.FieldRegion:
+		return m.OldRegion(ctx)
+	case deploymentlease.FieldWorkerID:
+		return m.OldWorkerID(ctx)
+	case deploymentlease.FieldOperationID:
+		return m.OldOperationID(ctx)
+	case deploymentlease.FieldOwner:
+		return m.OldOwner(ctx)
+	case deploymentlease.FieldEpoch:
+		return m.OldEpoch(ctx)
+	case deploymentlease.FieldLeaseUntil:
+		return m.OldLeaseUntil(ctx)
+	}
+	return nil, fmt.Errorf("unknown DeploymentLease field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DeploymentLeaseMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case deploymentlease.FieldRegion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRegion(v)
+		return nil
+	case deploymentlease.FieldWorkerID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkerID(v)
+		return nil
+	case deploymentlease.FieldOperationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOperationID(v)
+		return nil
+	case deploymentlease.FieldOwner:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOwner(v)
+		return nil
+	case deploymentlease.FieldEpoch:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEpoch(v)
+		return nil
+	case deploymentlease.FieldLeaseUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseUntil(v)
+		return nil
+	}
+	return fmt.Errorf("unknown DeploymentLease field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *DeploymentLeaseMutation) AddedFields() []string {
+	var fields []string
+	if m.addepoch != nil {
+		fields = append(fields, deploymentlease.FieldEpoch)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *DeploymentLeaseMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case deploymentlease.FieldEpoch:
+		return m.AddedEpoch()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DeploymentLeaseMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case deploymentlease.FieldEpoch:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEpoch(v)
+		return nil
+	}
+	return fmt.Errorf("unknown DeploymentLease numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *DeploymentLeaseMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *DeploymentLeaseMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *DeploymentLeaseMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown DeploymentLease nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *DeploymentLeaseMutation) ResetField(name string) error {
+	switch name {
+	case deploymentlease.FieldRegion:
+		m.ResetRegion()
+		return nil
+	case deploymentlease.FieldWorkerID:
+		m.ResetWorkerID()
+		return nil
+	case deploymentlease.FieldOperationID:
+		m.ResetOperationID()
+		return nil
+	case deploymentlease.FieldOwner:
+		m.ResetOwner()
+		return nil
+	case deploymentlease.FieldEpoch:
+		m.ResetEpoch()
+		return nil
+	case deploymentlease.FieldLeaseUntil:
+		m.ResetLeaseUntil()
+		return nil
+	}
+	return fmt.Errorf("unknown DeploymentLease field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *DeploymentLeaseMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *DeploymentLeaseMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *DeploymentLeaseMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *DeploymentLeaseMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *DeploymentLeaseMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *DeploymentLeaseMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *DeploymentLeaseMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown DeploymentLease unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *DeploymentLeaseMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown DeploymentLease edge %s", name)
+}
 
 // ModelInstanceMutation represents an operation that mutates the ModelInstance nodes in the graph.
 type ModelInstanceMutation struct {
@@ -43,6 +1017,7 @@ type ModelInstanceMutation struct {
 	endpoint                *string
 	health_url              *string
 	artifact_digest         *string
+	deployment_id           *string
 	resource_group          *string
 	group_capacity_units    *int
 	addgroup_capacity_units *int
@@ -345,6 +1320,42 @@ func (m *ModelInstanceMutation) OldArtifactDigest(ctx context.Context) (v string
 // ResetArtifactDigest resets all changes to the "artifact_digest" field.
 func (m *ModelInstanceMutation) ResetArtifactDigest() {
 	m.artifact_digest = nil
+}
+
+// SetDeploymentID sets the "deployment_id" field.
+func (m *ModelInstanceMutation) SetDeploymentID(s string) {
+	m.deployment_id = &s
+}
+
+// DeploymentID returns the value of the "deployment_id" field in the mutation.
+func (m *ModelInstanceMutation) DeploymentID() (r string, exists bool) {
+	v := m.deployment_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeploymentID returns the old "deployment_id" field's value of the ModelInstance entity.
+// If the ModelInstance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelInstanceMutation) OldDeploymentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeploymentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeploymentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeploymentID: %w", err)
+	}
+	return oldValue.DeploymentID, nil
+}
+
+// ResetDeploymentID resets all changes to the "deployment_id" field.
+func (m *ModelInstanceMutation) ResetDeploymentID() {
+	m.deployment_id = nil
 }
 
 // SetResourceGroup sets the "resource_group" field.
@@ -859,7 +1870,7 @@ func (m *ModelInstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelInstanceMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.model_key != nil {
 		fields = append(fields, modelinstance.FieldModelKey)
 	}
@@ -874,6 +1885,9 @@ func (m *ModelInstanceMutation) Fields() []string {
 	}
 	if m.artifact_digest != nil {
 		fields = append(fields, modelinstance.FieldArtifactDigest)
+	}
+	if m.deployment_id != nil {
+		fields = append(fields, modelinstance.FieldDeploymentID)
 	}
 	if m.resource_group != nil {
 		fields = append(fields, modelinstance.FieldResourceGroup)
@@ -926,6 +1940,8 @@ func (m *ModelInstanceMutation) Field(name string) (ent.Value, bool) {
 		return m.HealthURL()
 	case modelinstance.FieldArtifactDigest:
 		return m.ArtifactDigest()
+	case modelinstance.FieldDeploymentID:
+		return m.DeploymentID()
 	case modelinstance.FieldResourceGroup:
 		return m.ResourceGroup()
 	case modelinstance.FieldGroupCapacityUnits:
@@ -967,6 +1983,8 @@ func (m *ModelInstanceMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldHealthURL(ctx)
 	case modelinstance.FieldArtifactDigest:
 		return m.OldArtifactDigest(ctx)
+	case modelinstance.FieldDeploymentID:
+		return m.OldDeploymentID(ctx)
 	case modelinstance.FieldResourceGroup:
 		return m.OldResourceGroup(ctx)
 	case modelinstance.FieldGroupCapacityUnits:
@@ -1032,6 +2050,13 @@ func (m *ModelInstanceMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetArtifactDigest(v)
+		return nil
+	case modelinstance.FieldDeploymentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeploymentID(v)
 		return nil
 	case modelinstance.FieldResourceGroup:
 		v, ok := value.(string)
@@ -1216,6 +2241,9 @@ func (m *ModelInstanceMutation) ResetField(name string) error {
 	case modelinstance.FieldArtifactDigest:
 		m.ResetArtifactDigest()
 		return nil
+	case modelinstance.FieldDeploymentID:
+		m.ResetDeploymentID()
+		return nil
 	case modelinstance.FieldResourceGroup:
 		m.ResetResourceGroup()
 		return nil
@@ -1325,6 +2353,7 @@ type RequestMutation struct {
 	appendresource_groups []string
 	endpoint              *string
 	artifact_digest       *string
+	deployment_id         *string
 	backend_task_id       *string
 	dispatch_attempts     *int
 	adddispatch_attempts  *int
@@ -2039,6 +3068,42 @@ func (m *RequestMutation) ResetArtifactDigest() {
 	m.artifact_digest = nil
 }
 
+// SetDeploymentID sets the "deployment_id" field.
+func (m *RequestMutation) SetDeploymentID(s string) {
+	m.deployment_id = &s
+}
+
+// DeploymentID returns the value of the "deployment_id" field in the mutation.
+func (m *RequestMutation) DeploymentID() (r string, exists bool) {
+	v := m.deployment_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeploymentID returns the old "deployment_id" field's value of the Request entity.
+// If the Request object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestMutation) OldDeploymentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeploymentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeploymentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeploymentID: %w", err)
+	}
+	return oldValue.DeploymentID, nil
+}
+
+// ResetDeploymentID resets all changes to the "deployment_id" field.
+func (m *RequestMutation) ResetDeploymentID() {
+	m.deployment_id = nil
+}
+
 // SetBackendTaskID sets the "backend_task_id" field.
 func (m *RequestMutation) SetBackendTaskID(s string) {
 	m.backend_task_id = &s
@@ -2685,7 +3750,7 @@ func (m *RequestMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RequestMutation) Fields() []string {
-	fields := make([]string, 0, 28)
+	fields := make([]string, 0, 29)
 	if m.model_key != nil {
 		fields = append(fields, request.FieldModelKey)
 	}
@@ -2727,6 +3792,9 @@ func (m *RequestMutation) Fields() []string {
 	}
 	if m.artifact_digest != nil {
 		fields = append(fields, request.FieldArtifactDigest)
+	}
+	if m.deployment_id != nil {
+		fields = append(fields, request.FieldDeploymentID)
 	}
 	if m.backend_task_id != nil {
 		fields = append(fields, request.FieldBackendTaskID)
@@ -2806,6 +3874,8 @@ func (m *RequestMutation) Field(name string) (ent.Value, bool) {
 		return m.Endpoint()
 	case request.FieldArtifactDigest:
 		return m.ArtifactDigest()
+	case request.FieldDeploymentID:
+		return m.DeploymentID()
 	case request.FieldBackendTaskID:
 		return m.BackendTaskID()
 	case request.FieldDispatchAttempts:
@@ -2871,6 +3941,8 @@ func (m *RequestMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldEndpoint(ctx)
 	case request.FieldArtifactDigest:
 		return m.OldArtifactDigest(ctx)
+	case request.FieldDeploymentID:
+		return m.OldDeploymentID(ctx)
 	case request.FieldBackendTaskID:
 		return m.OldBackendTaskID(ctx)
 	case request.FieldDispatchAttempts:
@@ -3005,6 +4077,13 @@ func (m *RequestMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetArtifactDigest(v)
+		return nil
+	case request.FieldDeploymentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeploymentID(v)
 		return nil
 	case request.FieldBackendTaskID:
 		v, ok := value.(string)
@@ -3278,6 +4357,9 @@ func (m *RequestMutation) ResetField(name string) error {
 		return nil
 	case request.FieldArtifactDigest:
 		m.ResetArtifactDigest()
+		return nil
+	case request.FieldDeploymentID:
+		m.ResetDeploymentID()
 		return nil
 	case request.FieldBackendTaskID:
 		m.ResetBackendTaskID()

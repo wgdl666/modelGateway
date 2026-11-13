@@ -212,3 +212,7 @@ python -m unittest discover -s worker_adapter
 - **美东路演** 使用俄亥俄 ECR 和 CloudFormation 栈 `tomirro-model-gateway`，更新 `ppe_exhibition` 的 ECS 服务。由 AWS 管理员在 `us-east-2` 用 [发布角色模板](deploy/aws-exhibition-release-role.yaml) 创建独立的 IAM 角色栈。GitHub Actions 通过 OIDC 获取短期权限，信任范围绑定本仓 `dev` 分支。
 
 作业只更新 Go 网关镜像。需要迁移数据库或变更配置的版本，先在目标环境完成相应准备。网关退出时，正在发出的原生调用可能中断。需要保护这些请求时，在发布窗口暂停相关实例接单并等首次调用结束。
+
+## 模型发布生命周期
+
+区域内多副本控制器、发布账本、按物理 worker 排空、部署身份校验和上下线命令见 [部署生命周期](docs/DEPLOYMENT_LIFECYCLE.md)。迁移数据库后分区域启用，历史登记保持兼容。

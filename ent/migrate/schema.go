@@ -9,6 +9,33 @@ import (
 )
 
 var (
+	// DeploymentDomainColumns holds the columns for the "deployment_domain" table.
+	DeploymentDomainColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "region", Type: field.TypeString, Unique: true},
+	}
+	// DeploymentDomainTable holds the schema information for the "deployment_domain" table.
+	DeploymentDomainTable = &schema.Table{
+		Name:       "deployment_domain",
+		Columns:    DeploymentDomainColumns,
+		PrimaryKey: []*schema.Column{DeploymentDomainColumns[0]},
+	}
+	// DeploymentLeasesColumns holds the columns for the "deployment_leases" table.
+	DeploymentLeasesColumns = []*schema.Column{
+		{Name: "resource_group", Type: field.TypeString},
+		{Name: "region", Type: field.TypeString},
+		{Name: "worker_id", Type: field.TypeString},
+		{Name: "operation_id", Type: field.TypeString, Default: ""},
+		{Name: "owner", Type: field.TypeString, Default: ""},
+		{Name: "epoch", Type: field.TypeInt64, Default: 0},
+		{Name: "lease_until", Type: field.TypeTime},
+	}
+	// DeploymentLeasesTable holds the schema information for the "deployment_leases" table.
+	DeploymentLeasesTable = &schema.Table{
+		Name:       "deployment_leases",
+		Columns:    DeploymentLeasesColumns,
+		PrimaryKey: []*schema.Column{DeploymentLeasesColumns[0]},
+	}
 	// ModelInstancesColumns holds the columns for the "model_instances" table.
 	ModelInstancesColumns = []*schema.Column{
 		{Name: "instance_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
@@ -17,6 +44,7 @@ var (
 		{Name: "endpoint", Type: field.TypeString, Size: 2147483647},
 		{Name: "health_url", Type: field.TypeString, Size: 2147483647},
 		{Name: "artifact_digest", Type: field.TypeString, Size: 2147483647},
+		{Name: "deployment_id", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "resource_group", Type: field.TypeString, Size: 2147483647},
 		{Name: "group_capacity_units", Type: field.TypeInt},
 		{Name: "capacity_units", Type: field.TypeInt},
@@ -43,7 +71,7 @@ var (
 			{
 				Name:    "modelinstance_resource_group",
 				Unique:  false,
-				Columns: []*schema.Column{ModelInstancesColumns[6]},
+				Columns: []*schema.Column{ModelInstancesColumns[7]},
 			},
 		},
 	}
@@ -64,6 +92,7 @@ var (
 		{Name: "resource_groups", Type: field.TypeJSON},
 		{Name: "endpoint", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "artifact_digest", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "deployment_id", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "backend_task_id", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "dispatch_attempts", Type: field.TypeInt, Default: 0},
 		{Name: "dispatch_retry_reason", Type: field.TypeString, Size: 2147483647, Default: ""},
@@ -88,7 +117,7 @@ var (
 			{
 				Name:    "request_model_key_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[27], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[28], RequestsColumns[0]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -104,7 +133,7 @@ var (
 			{
 				Name:    "request_deadline_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[18]},
+				Columns: []*schema.Column{RequestsColumns[19]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -120,7 +149,7 @@ var (
 			{
 				Name:    "request_next_poll_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[21]},
+				Columns: []*schema.Column{RequestsColumns[22]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "slot_reserved",
 				},
@@ -128,7 +157,7 @@ var (
 			{
 				Name:    "request_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[27], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[28], RequestsColumns[0]},
 			},
 			{
 				Name:    "request_trace_id",
@@ -162,6 +191,8 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		DeploymentDomainTable,
+		DeploymentLeasesTable,
 		ModelInstancesTable,
 		RequestsTable,
 		ResourceGroupsTable,
@@ -169,6 +200,15 @@ var (
 )
 
 func init() {
+	DeploymentDomainTable.Annotation = &entsql.Annotation{
+		Table: "deployment_domain",
+	}
+	DeploymentDomainTable.Annotation.Checks = map[string]string{
+		"deployment_domain_singleton": "id = 1",
+	}
+	DeploymentLeasesTable.Annotation = &entsql.Annotation{
+		Table: "deployment_leases",
+	}
 	ModelInstancesTable.Annotation = &entsql.Annotation{
 		Table: "model_instances",
 	}

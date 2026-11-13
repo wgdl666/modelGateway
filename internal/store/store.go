@@ -29,6 +29,9 @@ func New(db *ent.Client) *Store {
 }
 
 func (s *Store) CheckReady(ctx context.Context) error {
+	if _, err := s.db.DeploymentLease.Query().Limit(1).All(ctx); err != nil {
+		return err
+	}
 	// 组表先迁移，网关才能按统一容量接单。
 	if _, err := s.db.ResourceGroup.Query().Select(resourcegroup.FieldCapacityUnits).Limit(1).All(ctx); err != nil {
 		telemetry.LogError(ctx, "gateway readiness failed", err, "check", "resource_groups.capacity_units")

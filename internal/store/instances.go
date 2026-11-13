@@ -35,6 +35,9 @@ func (s *Store) ProbeInstances(ctx context.Context) ([]*ent.ModelInstance, error
 
 func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedArtifact string) error {
 	return s.serialize(ctx, func(tx *ent.Tx) error {
+		if err := deploymentFence(ctx, tx, spec.ResourceGroup); err != nil {
+			return err
+		}
 		// 同一 key 的协议跨副本及历史登记保持一致，避免新实例接到旧契约请求。
 		conflict, err := tx.ModelInstance.Query().Where(modelinstance.ModelKeyEQ(spec.ModelKey), modelinstance.ProtocolNEQ(spec.Protocol)).Exist(ctx)
 		if err != nil {
@@ -81,7 +84,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 				return ErrConflict
 			}
 			// 自动获取摘要的登记重试沿用首次写入的身份，探针变化不能改写历史。
-			if old.ModelKey == spec.ModelKey && old.Protocol == spec.Protocol && old.Endpoint == spec.Endpoint &&
+			if old.ModelKey == spec.ModelKey && old.DeploymentID == spec.DeploymentID && old.Protocol == spec.Protocol && old.Endpoint == spec.Endpoint &&
 				old.HealthURL == spec.HealthURL && (spec.Artifact == "" || old.ArtifactDigest == spec.Artifact) &&
 				old.ResourceGroup == spec.ResourceGroup &&
 				old.CapacityUnits == spec.Capacity &&
@@ -124,9 +127,9 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 		}
 		return tx.ModelInstance.Create().
 			SetID(spec.ID).SetModelKey(spec.ModelKey).SetProtocol(spec.Protocol).
-			SetEndpoint(spec.Endpoint).SetHealthURL(spec.HealthURL).SetArtifactDigest(artifact).
+			SetEndpoint(spec.Endpoint).SetHealthURL(spec.HealthURL).SetArtifactDigest(artifact).SetDeploymentID(spec.DeploymentID).
 			SetResourceGroup(spec.ResourceGroup).SetGroupCapacityUnits(group.CapacityUnits).
-			SetCapacityUnits(spec.Capacity).SetMachineID(spec.MachineID).SetGpuDevices(spec.GPUDevices).Exec(ctx)
+			SetCapacityUnits(spec.Capacity).SetMachineID(spec.MachineID).SetGpuDevices(spec.GPUDevices).SetDraining(spec.InitiallyDraining).Exec(ctx)
 	})
 }
 
@@ -134,6 +137,9 @@ func (s *Store) Drain(ctx context.Context, id string, draining bool) error {
 	return s.serialize(ctx, func(tx *ent.Tx) error {
 		instance, err := tx.ModelInstance.Query().Where(modelinstance.IDEQ(id), modelinstance.DeletedAtIsNil()).Only(ctx)
 		if err != nil {
+			return err
+		}
+		if err := deploymentFence(ctx, tx, instance.ResourceGroup); err != nil {
 			return err
 		}
 		if !draining {
@@ -159,6 +165,9 @@ func (s *Store) ClearInstance(ctx context.Context, id string) error {
 		// 与派单争用同一实例行锁，在同一事务确认排空和槽位后才标记删除。
 		row, err := tx.ModelInstance.Query().Where(modelinstance.IDEQ(id)).ForUpdate().Only(ctx)
 		if err != nil {
+			return err
+		}
+		if err := deploymentFence(ctx, tx, row.ResourceGroup); err != nil {
 			return err
 		}
 		if row.DeletedAt != nil {

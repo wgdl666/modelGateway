@@ -146,6 +146,20 @@ func (_u *RequestUpdate) SetNillableArtifactDigest(v *string) *RequestUpdate {
 	return _u
 }
 
+// SetDeploymentID sets the "deployment_id" field.
+func (_u *RequestUpdate) SetDeploymentID(v string) *RequestUpdate {
+	_u.mutation.SetDeploymentID(v)
+	return _u
+}
+
+// SetNillableDeploymentID sets the "deployment_id" field if the given value is not nil.
+func (_u *RequestUpdate) SetNillableDeploymentID(v *string) *RequestUpdate {
+	if v != nil {
+		_u.SetDeploymentID(*v)
+	}
+	return _u
+}
+
 // SetBackendTaskID sets the "backend_task_id" field.
 func (_u *RequestUpdate) SetBackendTaskID(v string) *RequestUpdate {
 	_u.mutation.SetBackendTaskID(v)
@@ -442,6 +456,9 @@ func (_u *RequestUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.ArtifactDigest(); ok {
 		_spec.SetField(request.FieldArtifactDigest, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.DeploymentID(); ok {
+		_spec.SetField(request.FieldDeploymentID, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.BackendTaskID(); ok {
 		_spec.SetField(request.FieldBackendTaskID, field.TypeString, value)
 	}
@@ -633,6 +650,20 @@ func (_u *RequestUpdateOne) SetArtifactDigest(v string) *RequestUpdateOne {
 func (_u *RequestUpdateOne) SetNillableArtifactDigest(v *string) *RequestUpdateOne {
 	if v != nil {
 		_u.SetArtifactDigest(*v)
+	}
+	return _u
+}
+
+// SetDeploymentID sets the "deployment_id" field.
+func (_u *RequestUpdateOne) SetDeploymentID(v string) *RequestUpdateOne {
+	_u.mutation.SetDeploymentID(v)
+	return _u
+}
+
+// SetNillableDeploymentID sets the "deployment_id" field if the given value is not nil.
+func (_u *RequestUpdateOne) SetNillableDeploymentID(v *string) *RequestUpdateOne {
+	if v != nil {
+		_u.SetDeploymentID(*v)
 	}
 	return _u
 }
@@ -962,6 +993,9 @@ func (_u *RequestUpdateOne) sqlSave(ctx context.Context) (_node *Request, err er
 	}
 	if value, ok := _u.mutation.ArtifactDigest(); ok {
 		_spec.SetField(request.FieldArtifactDigest, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DeploymentID(); ok {
+		_spec.SetField(request.FieldDeploymentID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.BackendTaskID(); ok {
 		_spec.SetField(request.FieldBackendTaskID, field.TypeString, value)

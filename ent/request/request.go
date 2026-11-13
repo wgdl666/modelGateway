@@ -42,6 +42,8 @@ const (
 	FieldEndpoint = "endpoint"
 	// FieldArtifactDigest holds the string denoting the artifact_digest field in the database.
 	FieldArtifactDigest = "artifact_digest"
+	// FieldDeploymentID holds the string denoting the deployment_id field in the database.
+	FieldDeploymentID = "deployment_id"
 	// FieldBackendTaskID holds the string denoting the backend_task_id field in the database.
 	FieldBackendTaskID = "backend_task_id"
 	// FieldDispatchAttempts holds the string denoting the dispatch_attempts field in the database.
@@ -91,6 +93,7 @@ var Columns = []string{
 	FieldResourceGroups,
 	FieldEndpoint,
 	FieldArtifactDigest,
+	FieldDeploymentID,
 	FieldBackendTaskID,
 	FieldDispatchAttempts,
 	FieldDispatchRetryReason,
@@ -136,6 +139,8 @@ var (
 	DefaultEndpoint string
 	// DefaultArtifactDigest holds the default value on creation for the "artifact_digest" field.
 	DefaultArtifactDigest string
+	// DefaultDeploymentID holds the default value on creation for the "deployment_id" field.
+	DefaultDeploymentID string
 	// DefaultBackendTaskID holds the default value on creation for the "backend_task_id" field.
 	DefaultBackendTaskID string
 	// DefaultDispatchAttempts holds the default value on creation for the "dispatch_attempts" field.
@@ -254,6 +259,11 @@ func ByEndpoint(opts ...sql.OrderTermOption) OrderOption {
 // ByArtifactDigest orders the results by the artifact_digest field.
 func ByArtifactDigest(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldArtifactDigest, opts...).ToFunc()
+}
+
+// ByDeploymentID orders the results by the deployment_id field.
+func ByDeploymentID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeploymentID, opts...).ToFunc()
 }
 
 // ByBackendTaskID orders the results by the backend_task_id field.

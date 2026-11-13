@@ -89,6 +89,11 @@ func ArtifactDigest(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldArtifactDigest, v))
 }
 
+// DeploymentID applies equality check predicate on the "deployment_id" field. It's identical to DeploymentIDEQ.
+func DeploymentID(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldDeploymentID, v))
+}
+
 // ResourceGroup applies equality check predicate on the "resource_group" field. It's identical to ResourceGroupEQ.
 func ResourceGroup(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldResourceGroup, v))
@@ -462,6 +467,71 @@ func ArtifactDigestEqualFold(v string) predicate.ModelInstance {
 // ArtifactDigestContainsFold applies the ContainsFold predicate on the "artifact_digest" field.
 func ArtifactDigestContainsFold(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldContainsFold(FieldArtifactDigest, v))
+}
+
+// DeploymentIDEQ applies the EQ predicate on the "deployment_id" field.
+func DeploymentIDEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEQ(FieldDeploymentID, v))
+}
+
+// DeploymentIDNEQ applies the NEQ predicate on the "deployment_id" field.
+func DeploymentIDNEQ(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNEQ(FieldDeploymentID, v))
+}
+
+// DeploymentIDIn applies the In predicate on the "deployment_id" field.
+func DeploymentIDIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIn(FieldDeploymentID, vs...))
+}
+
+// DeploymentIDNotIn applies the NotIn predicate on the "deployment_id" field.
+func DeploymentIDNotIn(vs ...string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotIn(FieldDeploymentID, vs...))
+}
+
+// DeploymentIDGT applies the GT predicate on the "deployment_id" field.
+func DeploymentIDGT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGT(FieldDeploymentID, v))
+}
+
+// DeploymentIDGTE applies the GTE predicate on the "deployment_id" field.
+func DeploymentIDGTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldGTE(FieldDeploymentID, v))
+}
+
+// DeploymentIDLT applies the LT predicate on the "deployment_id" field.
+func DeploymentIDLT(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLT(FieldDeploymentID, v))
+}
+
+// DeploymentIDLTE applies the LTE predicate on the "deployment_id" field.
+func DeploymentIDLTE(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldLTE(FieldDeploymentID, v))
+}
+
+// DeploymentIDContains applies the Contains predicate on the "deployment_id" field.
+func DeploymentIDContains(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContains(FieldDeploymentID, v))
+}
+
+// DeploymentIDHasPrefix applies the HasPrefix predicate on the "deployment_id" field.
+func DeploymentIDHasPrefix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasPrefix(FieldDeploymentID, v))
+}
+
+// DeploymentIDHasSuffix applies the HasSuffix predicate on the "deployment_id" field.
+func DeploymentIDHasSuffix(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldHasSuffix(FieldDeploymentID, v))
+}
+
+// DeploymentIDEqualFold applies the EqualFold predicate on the "deployment_id" field.
+func DeploymentIDEqualFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldEqualFold(FieldDeploymentID, v))
+}
+
+// DeploymentIDContainsFold applies the ContainsFold predicate on the "deployment_id" field.
+func DeploymentIDContainsFold(v string) predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldContainsFold(FieldDeploymentID, v))
 }
 
 // ResourceGroupEQ applies the EQ predicate on the "resource_group" field.

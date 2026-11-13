@@ -61,6 +61,7 @@ func (w *Reconciler) executeGeneration(ctx context.Context, cfg *config.Snapshot
 	// reconnects after a generation completed but its response was lost.
 	headers.Set("Idempotency-Key", task.ID)
 	headers.Set("X-Gateway-Request-ID", task.ID)
+	setDeploymentHeaders(headers, task)
 	headers.Set("X-Gateway-Dispatch", "immediate")
 	if input.Metadata.TraceID != "" {
 		headers.Set("X-Trace-ID", input.Metadata.TraceID)
@@ -92,6 +93,9 @@ func (w *Reconciler) executeGeneration(ctx context.Context, cfg *config.Snapshot
 	// a different model as the requested one, even when its HTTP status is 200.
 	if !generationModelMatches(raw, task.ModelKey) {
 		return w.failDispatch(task, 502, "model_identity_mismatch", "generation response did not identify the requested model", false)
+	}
+	if !deploymentResponseMatches(raw, task) {
+		return w.failDispatch(task, 502, "deployment_identity_mismatch", "worker response did not match the assigned deployment", false)
 	}
 	if task.Protocol == protocol.VideoGenerationProtocol {
 		var job generationVideoJob

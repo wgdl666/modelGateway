@@ -6,6 +6,12 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// DeploymentDomain is the predicate function for deploymentdomain builders.
+type DeploymentDomain func(*sql.Selector)
+
+// DeploymentLease is the predicate function for deploymentlease builders.
+type DeploymentLease func(*sql.Selector)
+
 // ModelInstance is the predicate function for modelinstance builders.
 type ModelInstance func(*sql.Selector)
 

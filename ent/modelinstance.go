@@ -28,6 +28,8 @@ type ModelInstance struct {
 	HealthURL string `json:"health_url,omitempty"`
 	// ArtifactDigest holds the value of the "artifact_digest" field.
 	ArtifactDigest string `json:"artifact_digest,omitempty"`
+	// DeploymentID holds the value of the "deployment_id" field.
+	DeploymentID string `json:"deployment_id,omitempty"`
 	// ResourceGroup holds the value of the "resource_group" field.
 	ResourceGroup string `json:"resource_group,omitempty"`
 	// GroupCapacityUnits holds the value of the "group_capacity_units" field.
@@ -64,7 +66,7 @@ func (*ModelInstance) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case modelinstance.FieldGroupCapacityUnits, modelinstance.FieldCapacityUnits:
 			values[i] = new(sql.NullInt64)
-		case modelinstance.FieldID, modelinstance.FieldModelKey, modelinstance.FieldProtocol, modelinstance.FieldEndpoint, modelinstance.FieldHealthURL, modelinstance.FieldArtifactDigest, modelinstance.FieldResourceGroup, modelinstance.FieldMachineID:
+		case modelinstance.FieldID, modelinstance.FieldModelKey, modelinstance.FieldProtocol, modelinstance.FieldEndpoint, modelinstance.FieldHealthURL, modelinstance.FieldArtifactDigest, modelinstance.FieldDeploymentID, modelinstance.FieldResourceGroup, modelinstance.FieldMachineID:
 			values[i] = new(sql.NullString)
 		case modelinstance.FieldHealthCheckedAt, modelinstance.FieldDeletedAt, modelinstance.FieldCreatedAt, modelinstance.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -118,6 +120,12 @@ func (_m *ModelInstance) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field artifact_digest", values[i])
 			} else if value.Valid {
 				_m.ArtifactDigest = value.String
+			}
+		case modelinstance.FieldDeploymentID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field deployment_id", values[i])
+			} else if value.Valid {
+				_m.DeploymentID = value.String
 			}
 		case modelinstance.FieldResourceGroup:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -238,6 +246,9 @@ func (_m *ModelInstance) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("artifact_digest=")
 	builder.WriteString(_m.ArtifactDigest)
+	builder.WriteString(", ")
+	builder.WriteString("deployment_id=")
+	builder.WriteString(_m.DeploymentID)
 	builder.WriteString(", ")
 	builder.WriteString("resource_group=")
 	builder.WriteString(_m.ResourceGroup)

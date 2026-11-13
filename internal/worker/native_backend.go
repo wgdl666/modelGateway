@@ -106,6 +106,7 @@ func nativeMultipart(task *ent.Request, input protocol.Submission, backend confi
 	}
 	headers := make(http.Header)
 	headers.Set("X-Gateway-Request-ID", task.ID)
+	setDeploymentHeaders(headers, task)
 	headers.Set("X-Gateway-Dispatch", "immediate")
 	if trace := input.Metadata.TraceID; trace != "" {
 		headers.Set("X-Trace-ID", trace)
@@ -285,6 +286,9 @@ func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, ta
 	if err != nil {
 		return w.dispatchError(task, err)
 	}
+	if !deploymentResponseMatches(raw, task) {
+		return w.failDispatch(task, 502, "deployment_identity_mismatch", "worker response did not match the assigned deployment", false)
+	}
 	if task.Protocol == protocol.VideoProtocol {
 		var job nativeJob
 		if json.Unmarshal(raw, &job) != nil || !nativeJobID.MatchString(job.ID) {
@@ -337,6 +341,9 @@ func (u *resultUploader) publishImages(ctx context.Context, id string, raw []byt
 }
 
 func (w *Reconciler) pollNative(cfg *config.Snapshot, task *ent.Request, backend config.NativeBackend) error {
+	if task.DeploymentID != "" && task.ErrorCode == "deployment_execution_unknown" {
+		return w.pollUnavailable(cfg, task)
+	}
 	if !backend.Matches(task.Protocol) {
 		return w.pollUnavailable(cfg, task)
 	}

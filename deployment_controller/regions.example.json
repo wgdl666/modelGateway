@@ -1,0 +1,24 @@
+{
+  "regions": {
+    "cn-shenzhen/dev": {
+      "gateway_url": "http://model-gateway.default.svc.cluster.local:18580",
+      "admin_token_env": "CN_MODEL_GATEWAY_ADMIN_TOKEN",
+      "database_url_env": "CN_MODEL_DEPLOYMENT_DATABASE_URL",
+      "workers": {
+        "5090-2-gpu1": {
+          "agent_argv": ["ssh", "autodl-5090-2", "/opt/model-deployment/bin/python", "-m", "deployment_controller.agent", "--config", "/etc/model-deployment/gpu1.json", "--state", "/var/lib/model-deployment/gpu1"]
+        }
+      }
+    },
+    "us-east/exhibition": {
+      "gateway_url": "http://model-gateway.internal:18580",
+      "admin_token_env": "US_MODEL_GATEWAY_ADMIN_TOKEN",
+      "database_url_env": "US_MODEL_DEPLOYMENT_DATABASE_URL",
+      "workers": {
+        "g7e-gpu0": {
+          "agent_argv": ["ssh", "aws-g7e", "/opt/model-deployment/bin/python", "-m", "deployment_controller.agent", "--config", "/etc/model-deployment/gpu0.json", "--state", "/var/lib/model-deployment/gpu0"]
+        }
+      }
+    }
+  }
+}

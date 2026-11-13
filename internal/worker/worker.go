@@ -179,7 +179,7 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 	var raw []byte
 	if !direct && !generic {
 		var err error
-		raw, err = json.Marshal(protocol.ModelRequest{RequestID: task.ID, ModelKey: task.ModelKey, Submission: payload})
+		raw, err = json.Marshal(protocol.ModelRequest{RequestID: task.ID, ModelKey: task.ModelKey, Submission: payload, DeploymentID: task.DeploymentID, ArtifactDigest: task.ArtifactDigest})
 		if err != nil {
 			return w.failDispatch(task, 500, "invalid_saved_request", "saved request is invalid", false)
 		}
@@ -207,6 +207,9 @@ func (w *Reconciler) execute(cfg *config.Snapshot, task *ent.Request) error {
 	if err != nil {
 		return w.dispatchError(task, err)
 	}
+	if !deploymentResponseMatches(response, task) {
+		return w.failDispatch(task, 502, "deployment_identity_mismatch", "worker response did not match assigned deployment", false)
+	}
 	return w.recordModelResponse(cfg, task, response, false)
 }
 
@@ -227,7 +230,12 @@ func (w *Reconciler) dispatchError(task *ent.Request, err error) error {
 			return w.failDispatch(task, 502, "model_rejected", "model rejected the request", false)
 		}
 	}
-	// 网络错误、执行超时和 5xx 都归还网关名额后回 MQ；Worker 负责实际 GPU 并发。
+	// Managed native business APIs cannot prove idempotence or query a lost
+	// execution by request ID. Preserve the reservation until it is reconciled.
+	if task.DeploymentID != "" && !protocol.GenerationProtocol(task.Protocol) {
+		return w.failDispatch(task, 502, "deployment_execution_unknown", "backend execution outcome is unknown; reconcile before retiring the deployment", true)
+	}
+	// Legacy behavior and durable generic backends retain their retry contract.
 	return w.requeueDispatch(task)
 }
 
@@ -302,7 +310,7 @@ func (w *Reconciler) probe(cfg *config.Snapshot) error {
 		probes.Go(func() {
 			var ready bool
 			if cfg.AcceptsInstanceAddress(row.ModelKey, row.Protocol, row.Endpoint, row.HealthURL) {
-				target := protocol.InstanceTarget{ModelKey: row.ModelKey, Protocol: row.Protocol, Endpoint: row.Endpoint, HealthURL: row.HealthURL, GPUDevices: row.GpuDevices}
+				target := protocol.InstanceTarget{ModelKey: row.ModelKey, Protocol: row.Protocol, Endpoint: row.Endpoint, HealthURL: row.HealthURL, GPUDevices: row.GpuDevices, DeploymentID: row.DeploymentID, ArtifactDigest: row.ArtifactDigest}
 				result, err := w.ProbeInstance(w.ctx, cfg, target)
 				ready = err == nil && result.Ready
 			}

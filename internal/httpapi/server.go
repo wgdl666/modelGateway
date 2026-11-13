@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -76,6 +77,7 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.GET("/_gateway/ready", s.ready)
 	// 实例登记决定网关可以向哪些执行地址派单，因此使用管理凭据。
 	h.GET("/v1/models/:model_key", s.auth("api", s.modelProtocol))
+	h.GET("/v1/deployments/domain", s.auth("admin", s.deploymentDomain))
 	h.POST("/v1/instances/register", s.auth("admin", s.register))
 	h.POST("/v1/instances/probe", s.auth("admin", s.probeInstance))
 	h.POST("/v1/instances/:id/drain", s.auth("admin", s.drain))
@@ -133,6 +135,17 @@ func (s *Server) auth(role string, next app.HandlerFunc) app.HandlerFunc {
 			writeError(c, 401, "unauthorized", "invalid gateway credential", "")
 			return
 		}
+		if role == "admin" {
+			op, owner, epoch := string(c.GetHeader("X-Deployment-Operation")), string(c.GetHeader("X-Deployment-Owner")), string(c.GetHeader("X-Deployment-Epoch"))
+			if op != "" || owner != "" || epoch != "" {
+				n, err := strconv.ParseInt(epoch, 10, 64)
+				if err != nil || n < 1 || !protocol.ValidInstanceID(op) || !protocol.ValidInstanceID(owner) {
+					writeError(c, 400, "invalid_deployment_fence", "invalid deployment fence", "")
+					return
+				}
+				ctx = store.WithDeploymentFence(ctx, store.DeploymentFence{Operation: op, Owner: owner, Epoch: n})
+			}
+		}
 		next(ctx, c)
 	}
 }
@@ -174,6 +187,8 @@ func storeError(c *app.RequestContext, err error, id string) {
 		writeError(c, 409, "legacy_resource_group", err.Error(), id)
 	case ent.IsNotFound(err):
 		writeError(c, 404, "not_found", "record does not exist", id)
+	case errors.Is(err, store.ErrDeploymentFenced):
+		writeError(c, 409, "deployment_fenced", err.Error(), id)
 	case errors.Is(err, store.ErrConflict):
 		writeError(c, 409, "conflict", "request or instance conflicts with an existing record", id)
 	case errors.Is(err, store.ErrInstanceNotClearable):
@@ -238,7 +253,7 @@ func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_instance", "invalid model instance specification", "")
 		return
 	}
-	target := protocol.InstanceTarget{ModelKey: spec.ModelKey, Protocol: spec.Protocol, Endpoint: spec.Endpoint, HealthURL: spec.HealthURL, GPUDevices: spec.GPUDevices}
+	target := protocol.InstanceTarget{ModelKey: spec.ModelKey, Protocol: spec.Protocol, Endpoint: spec.Endpoint, HealthURL: spec.HealthURL, GPUDevices: spec.GPUDevices, DeploymentID: spec.DeploymentID, ArtifactDigest: spec.Artifact}
 	if err := cfg.ValidateInstanceTarget(target); err != nil {
 		writeError(c, 400, "invalid_instance", err.Error(), "")
 		return

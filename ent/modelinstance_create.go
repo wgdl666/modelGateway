@@ -50,6 +50,20 @@ func (_c *ModelInstanceCreate) SetArtifactDigest(v string) *ModelInstanceCreate 
 	return _c
 }
 
+// SetDeploymentID sets the "deployment_id" field.
+func (_c *ModelInstanceCreate) SetDeploymentID(v string) *ModelInstanceCreate {
+	_c.mutation.SetDeploymentID(v)
+	return _c
+}
+
+// SetNillableDeploymentID sets the "deployment_id" field if the given value is not nil.
+func (_c *ModelInstanceCreate) SetNillableDeploymentID(v *string) *ModelInstanceCreate {
+	if v != nil {
+		_c.SetDeploymentID(*v)
+	}
+	return _c
+}
+
 // SetResourceGroup sets the "resource_group" field.
 func (_c *ModelInstanceCreate) SetResourceGroup(v string) *ModelInstanceCreate {
 	_c.mutation.SetResourceGroup(v)
@@ -213,6 +227,10 @@ func (_c *ModelInstanceCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *ModelInstanceCreate) defaults() {
+	if _, ok := _c.mutation.DeploymentID(); !ok {
+		v := modelinstance.DefaultDeploymentID
+		_c.mutation.SetDeploymentID(v)
+	}
 	if _, ok := _c.mutation.MachineID(); !ok {
 		v := modelinstance.DefaultMachineID
 		_c.mutation.SetMachineID(v)
@@ -255,6 +273,9 @@ func (_c *ModelInstanceCreate) check() error {
 	}
 	if _, ok := _c.mutation.ArtifactDigest(); !ok {
 		return &ValidationError{Name: "artifact_digest", err: errors.New(`ent: missing required field "ModelInstance.artifact_digest"`)}
+	}
+	if _, ok := _c.mutation.DeploymentID(); !ok {
+		return &ValidationError{Name: "deployment_id", err: errors.New(`ent: missing required field "ModelInstance.deployment_id"`)}
 	}
 	if _, ok := _c.mutation.ResourceGroup(); !ok {
 		return &ValidationError{Name: "resource_group", err: errors.New(`ent: missing required field "ModelInstance.resource_group"`)}
@@ -347,6 +368,10 @@ func (_c *ModelInstanceCreate) createSpec() (*ModelInstance, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.ArtifactDigest(); ok {
 		_spec.SetField(modelinstance.FieldArtifactDigest, field.TypeString, value)
 		_node.ArtifactDigest = value
+	}
+	if value, ok := _c.mutation.DeploymentID(); ok {
+		_spec.SetField(modelinstance.FieldDeploymentID, field.TypeString, value)
+		_node.DeploymentID = value
 	}
 	if value, ok := _c.mutation.ResourceGroup(); ok {
 		_spec.SetField(modelinstance.FieldResourceGroup, field.TypeString, value)
