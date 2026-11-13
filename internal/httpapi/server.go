@@ -92,10 +92,10 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.POST("/v1/admin/api-tokens", s.auth("admin", s.apiTokens))
 	h.GET("/v1/admin/api-tokens/:id", s.auth("admin", s.apiToken))
 	h.DELETE("/v1/admin/api-tokens/:id", s.auth("admin", s.apiToken))
-	h.GET("/v1/admin/requests", s.auth("admin", s.listRequests))
+	h.GET("/v1/admin/requests", s.auth("request_read", s.listRequests))
 	h.GET("/v1/admin/request-stats", s.auth("admin", s.requestStats))
-	h.GET("/v1/admin/requests/:id/media", s.auth("admin", s.requestMedia))
-	h.GET("/v1/admin/requests/:id", s.auth("admin", s.requestDetail))
+	h.GET("/v1/admin/requests/:id/media", s.auth("request_read", s.requestMedia))
+	h.GET("/v1/admin/requests/:id", s.auth("request_read", s.requestDetail))
 	h.POST("/v1/gateway/requests/cancel", s.auth("api", s.cancelRequest))
 	h.POST("/v1/gateway/requests/:model_key", s.auth("api", s.submit))
 	h.GET("/v1/gateway/requests", s.auth("api", s.get))
@@ -122,8 +122,9 @@ func (s *Server) auth(role string, next app.HandlerFunc) app.HandlerFunc {
 		switch role {
 		case "admin":
 			allowed = match(cfg.AdminToken)
-		case "api":
-			allowed = match(cfg.APIToken)
+		case "api", "request_read":
+			// 历史输入输出允许 API 凭据读取，同时保留 Ops 的管理凭据访问。
+			allowed = match(cfg.APIToken) || (role == "request_read" && match(cfg.AdminToken))
 			if !allowed && cfg.ExperimentalToken != "" && match(cfg.ExperimentalToken) {
 				allowed = true
 				c.Set(experimentalCredential, true)

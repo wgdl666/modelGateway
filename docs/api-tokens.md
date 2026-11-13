@@ -8,7 +8,7 @@ Token 默认显示为 `***`，可以反复查看、隐藏或复制。页面刷�
 
 modelGateway 在 `model_gateway.api_tokens` 保存 AES-256-GCM 密文。每次加密使用随机 nonce，并绑定 Token ID。服务端可恢复完整凭据，不采用一次性展示方式。列表明确包含已撤销记录供审计；查看和鉴权只接受未软删除记录。
 
-调用方使用 `Authorization: Bearer <token>`。独立 Token 具有普通模型 API 权限，不能访问管理接口，也不能启用实验参数。现有共享 `api_token`、实验凭据和管理凭据保持各自用途。独立 Token 不增加模型级授权、配额或任务租户隔离。
+调用方使用 `Authorization: Bearer <token>`。独立 Token 具有普通模型 API 权限，也可读取当前环境全部历史请求的列表、详情及输入输出媒体（`GET /v1/admin/requests`、`GET /v1/admin/requests/:id`、`GET /v1/admin/requests/:id/media`），不按调用方归属隔离。其他管理接口仍只接受管理凭据，独立 Token 不能启用实验参数。现有共享 `api_token`、实验凭据和管理凭据保持各自用途。独立 Token 不增加模型级授权、配额或任务租户隔离。
 
 每次请求查询持久状态，不缓存鉴权结果。撤销生效后，新到达的鉴权请求返回 401；已经通过鉴权或受理的请求继续执行。重复撤销不改变第一次撤销时间。
 

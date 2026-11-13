@@ -115,7 +115,7 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 		}
 		return raw
 	}
-	get("/v1/admin/requests", apiToken, 401)
+	get("/v1/admin/requests", apiToken, 200)
 	list := get("/v1/admin/requests?trace_id=trace-for-ops&state=processing&model="+spec.ModelKey, adminToken, 200)
 	type requestView struct {
 		protocol.Response
@@ -133,7 +133,7 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 		!strings.Contains(string(list), `"inputs":[{"index":0,"role":"image","mime_type":"image/png"}],"outputs":[]`) {
 		t.Fatalf("invalid list %s, error %v", list, err)
 	}
-	media := get("/v1/admin/requests/"+id+"/media?kind=input&index=0", adminToken, 200)
+	media := get("/v1/admin/requests/"+id+"/media?kind=input&index=0", apiToken, 200)
 	if string(media) != "x" {
 		t.Fatalf("input media = %q", media)
 	}
@@ -154,7 +154,7 @@ func TestAdminViewsReadSharedRequestWithoutInput(t *testing.T) {
 		strings.Contains(string(finished), `"files"`) || strings.Contains(string(finished), "vmind-results") {
 		t.Fatalf("invalid finished list %s", finished)
 	}
-	detail := get("/v1/admin/requests/"+id, adminToken, 200)
+	detail := get("/v1/admin/requests/"+id, apiToken, 200)
 	var task requestView
 	if err := json.Unmarshal(detail, &task); err != nil || task.TraceID != "trace-for-ops" ||
 		task.State != "succeeded" || task.Result == nil || len(task.Result.Files) != 1 || task.SlotReserved ||
