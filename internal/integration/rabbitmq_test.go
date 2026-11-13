@@ -154,10 +154,11 @@ func TestRabbitMQDispatchRetriesUnavailableModelAndDeduplicates(t *testing.T) {
 
 	waitingID, readyID := uuid.NewString(), uuid.NewString()
 	var waitingCalls, readyCalls atomic.Int32
+	var waitingHealthy atomic.Bool
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/health":
-			_ = json.NewEncoder(w).Encode(map[string]bool{"ready": true})
+		case r.Method == http.MethodGet && (r.URL.Path == "/health" || r.URL.Path == "/waiting-health"):
+			_ = json.NewEncoder(w).Encode(map[string]bool{"ready": r.URL.Path == "/health" || waitingHealthy.Load()})
 		case r.Method == http.MethodPost && r.URL.Path == "/requests":
 			var body protocol.ModelRequest
 			decoder := json.NewDecoder(r.Body)
@@ -190,6 +191,7 @@ func TestRabbitMQDispatchRetriesUnavailableModelAndDeduplicates(t *testing.T) {
 	endpoint, _ := url.Parse(model.URL)
 	cfg.AllowedPorts = append(cfg.AllowedPorts, endpoint.Port())
 	waiting := testInstance(protocol.VideoModel, model.URL, 1)
+	waiting.HealthURL = model.URL + "/waiting-health"
 	ready := testInstance(protocol.OutfitModel, model.URL, 1)
 	registerReady(t, ledger, ready)
 	// 未登记的模型不能受理。实例已登记但探针未通过时可以排队，且不能挡住另一个模型。
@@ -235,6 +237,7 @@ func TestRabbitMQDispatchRetriesUnavailableModelAndDeduplicates(t *testing.T) {
 	if err := ch.PublishWithContext(t.Context(), "", cfg.RabbitMQQueue, true, false, amqp091.Publishing{Body: []byte(readyID)}); err != nil {
 		t.Fatal(err)
 	}
+	waitingHealthy.Store(true)
 	registerReady(t, ledger, waiting)
 	waitSucceeded(waitingID)
 	queue, err := ch.QueueInspect(cfg.RabbitMQQueue)

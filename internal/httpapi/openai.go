@@ -214,7 +214,7 @@ func (s *Server) writeOpenAIImage(ctx context.Context, c *app.RequestContext, id
 		}
 		data = append(data, map[string]string{"b64_json": base64.StdEncoding.EncodeToString(raw)})
 	}
-	writeJSON(c, 200, map[string]any{"created": task.CreatedAt.Unix(), "data": data})
+	writeJSON(c, 200, map[string]any{"model": task.ModelKey, "created": task.CreatedAt.Unix(), "data": data})
 }
 
 func (s *Server) writeStoredObject(ctx context.Context, c *app.RequestContext, id string, index int, file protocol.Object) {

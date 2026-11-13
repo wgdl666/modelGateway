@@ -88,6 +88,11 @@ func (w *Reconciler) executeGeneration(ctx context.Context, cfg *config.Snapshot
 	if err != nil {
 		return w.dispatchError(task, err)
 	}
+	// A reachable legacy worker may ignore model. Never publish a result from
+	// a different model as the requested one, even when its HTTP status is 200.
+	if !generationModelMatches(raw, task.ModelKey) {
+		return w.failDispatch(task, 502, "model_identity_mismatch", "generation response did not identify the requested model", false)
+	}
 	if task.Protocol == protocol.VideoGenerationProtocol {
 		var job generationVideoJob
 		if json.Unmarshal(raw, &job) != nil || !nativeJobID.MatchString(job.ID) || !job.validStatus() {
@@ -110,6 +115,7 @@ func (w *Reconciler) executeGeneration(ctx context.Context, cfg *config.Snapshot
 }
 
 type generationVideoJob struct {
+	Model      string               `json:"model"`
 	ID         string               `json:"id"`
 	Status     string               `json:"status"`
 	Generation *protocol.Generation `json:"generation,omitempty"`
@@ -140,7 +146,7 @@ func (w *Reconciler) pollGeneration(cfg *config.Snapshot, task *ent.Request) err
 	var job generationVideoJob
 	err := w.nativeJSON(ctx, auth, jobURL, &job)
 	cancel()
-	if err != nil || job.ID != task.BackendTaskID || !job.validStatus() {
+	if err != nil || job.ID != task.BackendTaskID || job.Model != task.ModelKey || !job.validStatus() {
 		return w.pollUnavailable(cfg, task)
 	}
 	switch job.Status {
@@ -154,4 +160,11 @@ func (w *Reconciler) pollGeneration(cfg *config.Snapshot, task *ent.Request) err
 		return w.saveModelResponse(cfg, task, nativeFailure(task.ID, "model_failed", "video generation failed"), true)
 	}
 	return w.saveModelResponse(cfg, task, protocol.ModelResponse{Response: protocol.Response{RequestID: task.ID, State: "processing"}}, true)
+}
+
+func generationModelMatches(raw []byte, model string) bool {
+	var identity struct {
+		Model string `json:"model"`
+	}
+	return json.Unmarshal(raw, &identity) == nil && identity.Model == model
 }

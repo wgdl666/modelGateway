@@ -37,3 +37,14 @@ func TestGenerationDispatchUsesRegisteredModelAndSeparateContracts(t *testing.T)
 		}
 	}
 }
+
+func TestGenerationResponseMustIdentifyRequestedModel(t *testing.T) {
+	for _, raw := range []string{`{"data":[]}`, `{"model":"different","data":[]}`, `{"model":null}`, `invalid`} {
+		if generationModelMatches([]byte(raw), "selected") {
+			t.Fatalf("accepted missing/wrong model: %s", raw)
+		}
+	}
+	if !generationModelMatches([]byte(`{"model":"selected","data":[]}`), "selected") {
+		t.Fatal("rejected matching model")
+	}
+}

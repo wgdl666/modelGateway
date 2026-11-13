@@ -199,7 +199,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		now := time.Now().UTC()
 		// 同一消息可能重投。按 ID 等待行锁，锁竞争不能被误当成已处理而确认消息。
 		next, err := tx.Request.Query().Where(request.IDEQ(id), request.StateEQ(request.StateQueued), request.DeadlineAtGT(now)).
-			Select(request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldUnits, request.FieldDeadlineAt, request.FieldQueuePublishAt).
+			Select(request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldUnits, request.FieldDeadlineAt, request.FieldQueuePublishAt, request.FieldEndpoint, request.FieldInstanceID, request.FieldArtifactDigest).
 			ForUpdate().Only(ctx)
 		if ent.IsNotFound(err) {
 			return nil
@@ -212,10 +212,16 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 			return deferPublication(ctx, tx, next)
 		}
 		// 同键不同业务的旧登记在迁移时已归档，派发直接按请求的模型键选实例。
-		instances, err := tx.ModelInstance.Query().Where(
+		candidates := tx.ModelInstance.Query().Where(
 			modelinstance.DeletedAtIsNil(), modelinstance.ModelKeyEQ(next.ModelKey),
 			modelinstance.ReadyEQ(true), modelinstance.DrainingEQ(false),
-		).Order(ent.Asc(modelinstance.FieldID)).All(ctx)
+		).Order(ent.Asc(modelinstance.FieldID))
+		if protocol.GenerationProtocol(next.Protocol) && next.Endpoint != "" {
+			// Worker replay state is local to the selected instance. An ambiguous
+			// dispatch must never fail over to a different worker and generate twice.
+			candidates.Where(modelinstance.IDEQ(next.InstanceID), modelinstance.EndpointEQ(next.Endpoint), modelinstance.ArtifactDigestEQ(next.ArtifactDigest))
+		}
+		instances, err := candidates.All(ctx)
 		if err != nil {
 			return err
 		}
@@ -307,11 +313,22 @@ func (s *Store) RequeueDispatch(ctx context.Context, id string, startedAt time.T
 	}
 	// 忙、断线和调用超时统一延期回队。只撤销本轮领取，不重置总截止时间或重派已登记的异步任务。
 	due := time.Now().UTC().Add(time.Second).Truncate(time.Microsecond)
-	_, err := s.db.Request.Update().Where(request.IDEQ(id), request.StateEQ(request.StateProcessing),
-		request.SlotReservedEQ(true), request.StartedAtEQ(startedAt), request.PollClaimEQ(claim), request.BackendTaskIDEQ("")).
-		SetState(request.StateQueued).SetSlotReserved(false).SetQueuePublishAt(due).SetDispatchRetryReason(reason).
-		SetInstanceID("").SetResourceGroup("").SetResourceGroups([]string{}).SetEndpoint("").SetArtifactDigest("").
-		ClearStartedAt().ClearNextPollAt().SetPollClaim("").Save(ctx)
+	update := func() *ent.RequestUpdate {
+		return s.db.Request.Update().Where(request.IDEQ(id), request.StateEQ(request.StateProcessing),
+			request.SlotReservedEQ(true), request.StartedAtEQ(startedAt), request.PollClaimEQ(claim), request.BackendTaskIDEQ("")).
+			SetState(request.StateQueued).SetSlotReserved(false).SetQueuePublishAt(due).SetDispatchRetryReason(reason).
+			ClearStartedAt().ClearNextPollAt().SetPollClaim("")
+	}
+	if reason != "worker_busy_before_execution" {
+		if _, err := update().Where(request.ProtocolIn(protocol.ImageGenerationProtocol, protocol.VideoGenerationProtocol)).Save(ctx); err != nil {
+			return err
+		}
+	}
+	remaining := update()
+	if reason != "worker_busy_before_execution" {
+		remaining.Where(request.ProtocolNotIn(protocol.ImageGenerationProtocol, protocol.VideoGenerationProtocol))
+	}
+	_, err := remaining.SetInstanceID("").SetResourceGroup("").SetResourceGroups([]string{}).SetEndpoint("").SetArtifactDigest("").Save(ctx)
 	return err
 }
 

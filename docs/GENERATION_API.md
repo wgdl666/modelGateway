@@ -35,7 +35,7 @@
 图片完成后返回 HTTP 200：
 
 ```json
-{"created":1794484800,"data":[{"b64_json":"<image-1-base64>"},{"b64_json":"<image-2-base64>"}]}
+{"model":"my-image-model-v2","created":1794484800,"data":[{"b64_json":"<image-1-base64>"},{"b64_json":"<image-2-base64>"}]}
 ```
 
 `POST /v1/images/edits` 是同一图像协议的 multipart 上传入口：文本字段为 `model`、`prompt`、`n`、`size`、`response_format`、`user`、`parameters`；参考图使用重复的 `image` 或 `image[]` 文件字段，至少一张。`parameters` 表单值为 JSON 对象字符串。网关将其转换为上述 JSON 协议调用模型。
@@ -77,9 +77,9 @@
 
 | 协议 | 模型服务接口 | 返回值 |
 |---|---|---|
-| `image_generation` | `POST /v1/images/generations` | 同步 JSON `data[].b64_json` |
-| `video_generation` | `POST /v1/videos` | JSON `id`、`status` |
-| `video_generation` | `GET /v1/videos/{id}` | JSON `id`、`status`，状态同上 |
+| `image_generation` | `POST /v1/images/generations` | 同步 JSON `model`、`data[].b64_json` |
+| `video_generation` | `POST /v1/videos` | JSON `model`、`id`、`status` |
+| `video_generation` | `GET /v1/videos/{id}` | JSON `model`、`id`、`status`，状态同上 |
 | `video_generation` | `GET /v1/videos/{id}/content` | MP4 字节 |
 
 POST 请求使用相同的 JSON 输入契约，`model` 保持登记键。模型服务负责将通用输入转换为自己的推理调用，并校验实际支持的参数、尺寸、参考图数量。网关不会生成业务提示词或选择权重。未知参数应由模型返回 400/422，避免静默忽略。
@@ -88,7 +88,7 @@ POST 请求使用相同的 JSON 输入契约，`model` 保持登记键。模型�
 
 模型端返回的图像 JSON，以及视频完成查询的 JSON，可额外携带现有 `generation` 回执，网关继续保存。模型视频 ID 允许 1–128 位字母、数字、下划线和连字符，首位为字母或数字。
 
-`health_url` 必须属于同一登记地址，返回 `{"ready":true}`，可携带 `artifact_digest`。通用模型的探活、提交、查询及下载使用 `MODEL_GATEWAY_BACKEND_TOKEN`（配置后发送 Bearer 凭据），与旧原生业务接口的认证配置分开。
+`health_url` 必须属于同一登记地址，返回 `{"ready":true,"models":["登记的模型键"]}`，可携带 `artifact_digest`。通用模型的探活、提交、查询及下载使用 `MODEL_GATEWAY_BACKEND_TOKEN`（配置后发送 Bearer 凭据），与旧原生业务接口的认证配置分开。
 
 ## 登记与运行配置
 
@@ -115,3 +115,12 @@ POST 请求使用相同的 JSON 输入契约，`model` 保持登记键。模型�
 现有大小限制继续生效：默认请求体 64 MiB、图像模型响应 64 MiB、图像下载响应解码后的总量不超过 64 MiB、视频成品 200 MiB。multipart 最多 16 个字段，各文本字段最多 4096 字节；较大的提示词或参数对象可使用 JSON 入口。
 
 现有 `/v1/gateway/requests/{model_key}` 及旧业务协议保留兼容，也可提交通用协议的 `input`，继续返回原任务/对象引用格式。新通用接口不提供 `expert`、业务字段或生产/实验凭据间的生成参数差异。现有模型服务需要实现以上契约并用通用协议登记，不能只更改登记标签而继续提供旧业务接口。没有数据库结构变更；旧网关版本不认识新协议，滚动升级时应先升级全部网关/Worker，再登记通用模型。
+
+
+## 与 VMind-Image 对接
+
+VMind-Image 通过 Worker 的 `VMIND_IMAGE_MODELS` 绑定模型键到驻留权重，并通过共享入口的 `IMAGE_MODEL_ROUTES` 选择实际 Worker。`health_url` 使用 `<endpoint>/v1/images/models/<model_key>/health`；网关要求 ready 且 models 列表包含登记键。生成结果中的 model 必须与任务模型一致，缺失或不匹配返回 `model_identity_mismatch`，避免旧服务忽略 model 后返回其他权重的结果。
+
+断连、超时等未知结果的通用请求重试保留最初实例、执行地址和制品身份，不会切到另一个 Worker 绕过其幂等状态。只有明确 `worker_busy` 且 `execution_started=false` 才允许重新选择实例。Worker 的持久幂等目录必须随部署保留。
+
+现有业务模型键的协议固定在历史登记中；兼容接入应使用新的通用模型键和 instance_id，共享原 resource_group。不能直接将相同 model_key 重新登记为另一协议。VMind-Image 的 `docs/generic-image-generation.md` 和 `deploy/unified/generic-models.env.example` 提供完整配置与 CPU 契约测试说明。

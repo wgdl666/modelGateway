@@ -78,7 +78,7 @@ func TestGenericGenerationEndToEnd(t *testing.T) {
 		}
 		switch r.Method + " " + r.URL.Path {
 		case "GET /pool/health":
-			_, _ = io.WriteString(w, `{"ready":true}`)
+			_, _ = io.WriteString(w, `{"ready":true,"models":["new-image-A","new-image-B","new-video"]}`)
 		case "POST /pool/v1/images/generations":
 			imageCalls.Add(1)
 			var body protocol.ImageGenerationRequest
@@ -106,7 +106,7 @@ func TestGenericGenerationEndToEnd(t *testing.T) {
 			if body.User != "caller" || r.Header.Get("X-Trace-ID") != "generation-test" {
 				t.Error("lost metadata")
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string][]byte{{"b64_json": png}, {"b64_json": png}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"model": body.Model, "data": []map[string][]byte{{"b64_json": png}, {"b64_json": png}}})
 		case "POST /pool/v1/videos":
 			videoCalls.Add(1)
 			var body protocol.VideoGenerationRequest
@@ -125,15 +125,15 @@ func TestGenericGenerationEndToEnd(t *testing.T) {
 			if body.Prompt == "fail" {
 				job = "job-failed"
 			}
-			_ = json.NewEncoder(w).Encode(map[string]string{"id": job, "status": "queued"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"model": "new-video", "id": job, "status": "queued"})
 		case "GET /pool/v1/videos/job-ok":
 			status := "in_progress"
 			if finishVideo.Load() {
 				status = "completed"
 			}
-			_ = json.NewEncoder(w).Encode(map[string]string{"id": "job-ok", "status": status})
+			_ = json.NewEncoder(w).Encode(map[string]string{"model": "new-video", "id": "job-ok", "status": status})
 		case "GET /pool/v1/videos/job-failed":
-			_, _ = io.WriteString(w, `{"id":"job-failed","status":"failed"}`)
+			_, _ = io.WriteString(w, `{"model":"new-video","id":"job-failed","status":"failed"}`)
 		case "GET /pool/v1/videos/job-ok/content":
 			w.Header().Set("Content-Type", "video/mp4")
 			_, _ = w.Write(video)
