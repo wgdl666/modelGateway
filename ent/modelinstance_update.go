@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -26,6 +27,24 @@ type ModelInstanceUpdate struct {
 // Where appends a list predicates to the ModelInstanceUpdate builder.
 func (_u *ModelInstanceUpdate) Where(ps ...predicate.ModelInstance) *ModelInstanceUpdate {
 	_u.mutation.Where(ps...)
+	return _u
+}
+
+// SetInputSchema sets the "input_schema" field.
+func (_u *ModelInstanceUpdate) SetInputSchema(v json.RawMessage) *ModelInstanceUpdate {
+	_u.mutation.SetInputSchema(v)
+	return _u
+}
+
+// AppendInputSchema appends value to the "input_schema" field.
+func (_u *ModelInstanceUpdate) AppendInputSchema(v json.RawMessage) *ModelInstanceUpdate {
+	_u.mutation.AppendInputSchema(v)
+	return _u
+}
+
+// ClearInputSchema clears the value of the "input_schema" field.
+func (_u *ModelInstanceUpdate) ClearInputSchema() *ModelInstanceUpdate {
+	_u.mutation.ClearInputSchema()
 	return _u
 }
 
@@ -281,6 +300,17 @@ func (_u *ModelInstanceUpdate) sqlSave(ctx context.Context) (_node int, err erro
 			}
 		}
 	}
+	if value, ok := _u.mutation.InputSchema(); ok {
+		_spec.SetField(modelinstance.FieldInputSchema, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedInputSchema(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, modelinstance.FieldInputSchema, value)
+		})
+	}
+	if _u.mutation.InputSchemaCleared() {
+		_spec.ClearField(modelinstance.FieldInputSchema, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.Endpoint(); ok {
 		_spec.SetField(modelinstance.FieldEndpoint, field.TypeString, value)
 	}
@@ -352,6 +382,24 @@ type ModelInstanceUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *ModelInstanceMutation
+}
+
+// SetInputSchema sets the "input_schema" field.
+func (_u *ModelInstanceUpdateOne) SetInputSchema(v json.RawMessage) *ModelInstanceUpdateOne {
+	_u.mutation.SetInputSchema(v)
+	return _u
+}
+
+// AppendInputSchema appends value to the "input_schema" field.
+func (_u *ModelInstanceUpdateOne) AppendInputSchema(v json.RawMessage) *ModelInstanceUpdateOne {
+	_u.mutation.AppendInputSchema(v)
+	return _u
+}
+
+// ClearInputSchema clears the value of the "input_schema" field.
+func (_u *ModelInstanceUpdateOne) ClearInputSchema() *ModelInstanceUpdateOne {
+	_u.mutation.ClearInputSchema()
+	return _u
 }
 
 // SetEndpoint sets the "endpoint" field.
@@ -635,6 +683,17 @@ func (_u *ModelInstanceUpdateOne) sqlSave(ctx context.Context) (_node *ModelInst
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.InputSchema(); ok {
+		_spec.SetField(modelinstance.FieldInputSchema, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedInputSchema(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, modelinstance.FieldInputSchema, value)
+		})
+	}
+	if _u.mutation.InputSchemaCleared() {
+		_spec.ClearField(modelinstance.FieldInputSchema, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.Endpoint(); ok {
 		_spec.SetField(modelinstance.FieldEndpoint, field.TypeString, value)

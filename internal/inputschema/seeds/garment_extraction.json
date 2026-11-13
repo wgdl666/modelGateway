@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "garment_extraction",
+  "description": "人物拆衣：第一张人物图，第二张可选的人体解析 mask",
+  "x-category": "image_generation",
+  "type": "object",
+  "properties": {
+    "images": {
+      "type": "array",
+      "description": "人物拆衣：第一张人物图，第二张可选的人体解析 mask",
+      "items": {
+        "type": "object",
+        "required": [
+          "mime_type",
+          "data"
+        ],
+        "properties": {
+          "mime_type": {
+            "type": "string",
+            "description": "图片 MIME",
+            "pattern": "^image/[A-Za-z0-9.+-]+$"
+          },
+          "data": {
+            "type": "string",
+            "description": "图片原始字节的 Base64，不含 data URL 前缀",
+            "minLength": 1,
+            "contentEncoding": "base64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 2
+    },
+    "garment_name": {
+      "type": "string",
+      "description": "衣物名称"
+    },
+    "garment_role": {
+      "type": "string",
+      "description": "衣物角色"
+    },
+    "bbox": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "bbox_format": {
+      "type": "string",
+      "description": "bbox 坐标格式"
+    },
+    "parse_labels": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "images"
+  ],
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "properties": {
+        "images": {
+          "minItems": 2
+        }
+      }
+    },
+    {
+      "required": [
+        "bbox"
+      ]
+    },
+    {
+      "required": [
+        "parse_labels"
+      ]
+    }
+  ],
+  "x-experimental-properties": {
+    "prompt": {
+      "type": "string",
+      "description": "仅实验凭据可覆盖的生成参数"
+    },
+    "use_pe": {
+      "type": "string",
+      "description": "仅实验凭据可覆盖的生成参数"
+    }
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "chat_completions",
+  "description": "对话和图片理解，保留 OpenAI-compatible 扩展参数",
+  "x-category": "chat",
+  "type": "object",
+  "properties": {
+    "messages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "消息角色"
+          },
+          "content": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            ]
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "stream": {
+      "type": "boolean"
+    },
+    "max_tokens": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "temperature": {
+      "type": "number"
+    },
+    "model_traits": {
+      "type": "object"
+    },
+    "reasoning_effort": {
+      "type": "string",
+      "description": "OpenAI-compatible 思考预算，原样转发；具体取值由本模型部署定义"
+    },
+    "chat_template_kwargs": {
+      "type": "object",
+      "description": "vLLM 模板参数，例如 enable_thinking；以模型部署定义为准"
+    },
+    "max_completion_tokens": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "response_format": {
+      "type": "object",
+      "description": "OpenAI-compatible 输出格式，包含 type 及可选 json_schema"
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "tool_choice": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "required": [
+    "messages"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "segment_subject",
+  "description": "主体抠图",
+  "x-category": "segment",
+  "type": "object",
+  "properties": {
+    "image": {
+      "type": "string",
+      "description": "图片 Base64，不含 data URL 前缀",
+      "minLength": 1,
+      "contentEncoding": "base64"
+    },
+    "file": {
+      "type": "string",
+      "description": "图片 Base64，不含 data URL 前缀",
+      "minLength": 1,
+      "contentEncoding": "base64"
+    },
+    "method": {
+      "type": "string",
+      "description": "抠图方法",
+      "minLength": 1,
+      "default": "person-bria-rmbg"
+    },
+    "person_method": {
+      "type": "string",
+      "description": "人物抠图方法"
+    },
+    "subject_method": {
+      "type": "string",
+      "description": "主体抠图方法"
+    },
+    "preprocess": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    },
+    "output": {
+      "type": "string",
+      "description": "结果格式，推荐 b64",
+      "default": "b64"
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "链路编号"
+    }
+  },
+  "required": [],
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "required": [
+        "image"
+      ]
+    },
+    {
+      "required": [
+        "file"
+      ]
+    }
+  ]
+}

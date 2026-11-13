@@ -30,6 +30,7 @@ var (
 		{Name: "instance_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "model_key", Type: field.TypeString, Size: 2147483647},
 		{Name: "protocol", Type: field.TypeString, Size: 2147483647},
+		{Name: "input_schema", Type: field.TypeJSON, Nullable: true},
 		{Name: "endpoint", Type: field.TypeString, Size: 2147483647},
 		{Name: "health_url", Type: field.TypeString, Size: 2147483647},
 		{Name: "artifact_digest", Type: field.TypeString, Size: 2147483647},
@@ -59,7 +60,7 @@ var (
 			{
 				Name:    "modelinstance_resource_group",
 				Unique:  false,
-				Columns: []*schema.Column{ModelInstancesColumns[6]},
+				Columns: []*schema.Column{ModelInstancesColumns[7]},
 			},
 		},
 	}

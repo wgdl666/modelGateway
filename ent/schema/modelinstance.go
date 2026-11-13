@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"time"
 
 	"entgo.io/ent"
@@ -21,6 +22,8 @@ func (ModelInstance) Fields() []ent.Field {
 		field.Text("model_key").Immutable(),
 		// 协议随身份固定，已有请求不随登记变化改用另一种执行方式。
 		field.Text("protocol").Immutable(),
+		// 同一模型的契约随登记复制，按模型统一维护；运行时以数据库定义为准。
+		field.JSON("input_schema", json.RawMessage{}).Optional(),
 		// 排空后可迁移执行地址，已有请求仍使用派发时写入的地址。
 		field.Text("endpoint"),
 		field.Text("health_url"),

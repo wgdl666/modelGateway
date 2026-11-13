@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "lens_correction",
+  "description": "镜头畸变校正",
+  "x-category": "image_processing",
+  "type": "object",
+  "properties": {
+    "base64": {
+      "type": "string",
+      "description": "图片 Base64，不含 data URL 前缀",
+      "minLength": 1,
+      "contentEncoding": "base64"
+    },
+    "mirror_lens": {
+      "type": "boolean"
+    },
+    "crop": {
+      "type": "boolean"
+    },
+    "sampler": {
+      "type": "string",
+      "description": "采样方式"
+    },
+    "preset": {
+      "type": "string",
+      "description": "校正预设"
+    }
+  },
+  "required": [
+    "base64"
+  ],
+  "additionalProperties": false
+}

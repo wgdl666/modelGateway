@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vton",
+  "description": "试衣：images[0] 是人物图，images[1] 是服装图",
+  "x-category": "image_generation",
+  "type": "object",
+  "properties": {
+    "images": {
+      "type": "array",
+      "description": "试衣：images[0] 是人物图，images[1] 是服装图",
+      "items": {
+        "type": "object",
+        "required": [
+          "mime_type",
+          "data"
+        ],
+        "properties": {
+          "mime_type": {
+            "type": "string",
+            "description": "图片 MIME",
+            "pattern": "^image/[A-Za-z0-9.+-]+$"
+          },
+          "data": {
+            "type": "string",
+            "description": "图片原始字节的 Base64，不含 data URL 前缀",
+            "minLength": 1,
+            "contentEncoding": "base64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "prompt": {
+      "type": "string",
+      "description": "试衣提示词"
+    }
+  },
+  "required": [
+    "images"
+  ],
+  "additionalProperties": false,
+  "x-experimental-properties": {
+    "use_pe": {
+      "type": "string",
+      "description": "仅实验凭据可覆盖的生成参数"
+    }
+  }
+}

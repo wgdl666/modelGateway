@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -29,6 +30,12 @@ func (_c *ModelInstanceCreate) SetModelKey(v string) *ModelInstanceCreate {
 // SetProtocol sets the "protocol" field.
 func (_c *ModelInstanceCreate) SetProtocol(v string) *ModelInstanceCreate {
 	_c.mutation.SetProtocol(v)
+	return _c
+}
+
+// SetInputSchema sets the "input_schema" field.
+func (_c *ModelInstanceCreate) SetInputSchema(v json.RawMessage) *ModelInstanceCreate {
+	_c.mutation.SetInputSchema(v)
 	return _c
 }
 
@@ -335,6 +342,10 @@ func (_c *ModelInstanceCreate) createSpec() (*ModelInstance, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.Protocol(); ok {
 		_spec.SetField(modelinstance.FieldProtocol, field.TypeString, value)
 		_node.Protocol = value
+	}
+	if value, ok := _c.mutation.InputSchema(); ok {
+		_spec.SetField(modelinstance.FieldInputSchema, field.TypeJSON, value)
+		_node.InputSchema = value
 	}
 	if value, ok := _c.mutation.Endpoint(); ok {
 		_spec.SetField(modelinstance.FieldEndpoint, field.TypeString, value)

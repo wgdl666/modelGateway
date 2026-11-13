@@ -26,6 +26,8 @@ import (
 	"github.com/wgdl666/modelGateway/internal/telemetry"
 )
 
+const submissionMetadataKey = "gateway_submission_metadata"
+
 // 同步协议仍由原连接返回；受理、暂停与容量和异步任务使用同一份持久账本。
 func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, client *http.Client, model, kind, path, contentType string, body []byte) {
 	cfg := requestConfig(ctx)
@@ -39,7 +41,11 @@ func (s *Server) forwardSynchronous(ctx context.Context, c *app.RequestContext, 
 	// 原图/文本只由当前连接持有，不在只用于追溯的同步记录里再存一份敏感正文。
 	digest := sha256.Sum256(body)
 	input, _ := json.Marshal(map[string]any{"content_type": contentType, "body_bytes": len(body), "body_sha256": hex.EncodeToString(digest[:])})
-	metadata, err := freezeMetadata(ctx, c, protocol.Metadata{TraceID: synchronousTraceID(c)})
+	metadata := protocol.Metadata{TraceID: synchronousTraceID(c)}
+	if value, ok := c.Get(submissionMetadataKey); ok {
+		metadata = value.(protocol.Metadata)
+	}
+	metadata, err := freezeMetadata(ctx, c, metadata)
 	if err != nil {
 		writeError(c, 400, "invalid_metadata", err.Error(), id)
 		return

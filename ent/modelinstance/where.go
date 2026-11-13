@@ -269,6 +269,16 @@ func ProtocolContainsFold(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldContainsFold(FieldProtocol, v))
 }
 
+// InputSchemaIsNil applies the IsNil predicate on the "input_schema" field.
+func InputSchemaIsNil() predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldIsNull(FieldInputSchema))
+}
+
+// InputSchemaNotNil applies the NotNil predicate on the "input_schema" field.
+func InputSchemaNotNil() predicate.ModelInstance {
+	return predicate.ModelInstance(sql.FieldNotNull(FieldInputSchema))
+}
+
 // EndpointEQ applies the EQ predicate on the "endpoint" field.
 func EndpointEQ(v string) predicate.ModelInstance {
 	return predicate.ModelInstance(sql.FieldEQ(FieldEndpoint, v))

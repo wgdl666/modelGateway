@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "human_yolo",
+  "description": "人体检测",
+  "x-category": "person_detect",
+  "type": "object",
+  "properties": {
+    "image": {
+      "type": "string",
+      "description": "图片 Base64，不含 data URL 前缀",
+      "minLength": 1,
+      "contentEncoding": "base64"
+    },
+    "file": {
+      "type": "string",
+      "description": "图片 Base64，不含 data URL 前缀",
+      "minLength": 1,
+      "contentEncoding": "base64"
+    },
+    "conf": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ]
+    },
+    "iou": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ]
+    }
+  },
+  "required": [],
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "required": [
+        "image"
+      ]
+    },
+    {
+      "required": [
+        "file"
+      ]
+    }
+  ]
+}

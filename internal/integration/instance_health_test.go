@@ -101,6 +101,9 @@ func TestInstanceHealthProbeAndAutomaticArtifact(t *testing.T) {
 	digest = strings.Repeat("b", 64)
 	report.Store(fmt.Sprintf(`{"ready":true,"artifact_digest":"sha256:%s"}`, digest))
 	post(register, adminToken, instance, 200)
+	invalidSchema := instance
+	invalidSchema.InputSchema = json.RawMessage(`{"type":"not-a-json-schema-type"}`)
+	post(register, adminToken, invalidSchema, 400)
 	// ModelHub 查询的类型直接来自这条登记，不要求探针先把实例标记为可派。
 	metadataRequest, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/v1/models/"+instance.ModelKey, nil)
 	if err != nil {
@@ -111,7 +114,7 @@ func TestInstanceHealthProbeAndAutomaticArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var metadata map[string]string
+	var metadata map[string]any
 	err = json.NewDecoder(metadataResponse.Body).Decode(&metadata)
 	metadataResponse.Body.Close()
 	if err != nil || metadataResponse.StatusCode != http.StatusOK || metadata["model_key"] != instance.ModelKey || metadata["protocol"] != instance.Protocol {

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -36,11 +35,12 @@ type Instance struct {
 	ID                string `json:"instance_id"`
 	ModelKey          string `json:"model_key"`
 	// 协议由登记显式指定，模型名称只作为身份与路由标识。
-	Protocol      string `json:"protocol"`
-	Endpoint      string `json:"endpoint"`
-	HealthURL     string `json:"health_url"`
-	Artifact      string `json:"artifact_digest"`
-	ResourceGroup string `json:"resource_group"`
+	Protocol      string          `json:"protocol"`
+	InputSchema   json.RawMessage `json:"input_schema,omitempty"`
+	Endpoint      string          `json:"endpoint"`
+	HealthURL     string          `json:"health_url"`
+	Artifact      string          `json:"artifact_digest"`
+	ResourceGroup string          `json:"resource_group"`
 	// 现有部署程序可能仍传旧字段，只有资源组管理接口可以设置组上限。
 	GroupCapacity int    `json:"group_capacity_units,omitempty"`
 	Capacity      int    `json:"capacity_units"`
@@ -218,81 +218,4 @@ func DecodeInput(input json.RawMessage) (map[string]json.RawMessage, []InputImag
 	}
 	delete(fields, "images")
 	return fields, images, nil
-}
-
-// 实验凭据在业务字段之外可覆盖的生成参数，原样转发给模型服务。
-// 生产凭据不能覆盖服务端默认的文案、提示词增强和视频规格。
-var experimentalFields = map[string][]string{
-	WardrobeProtocol: {"prompt", "use_pe"},
-	BodyProtocol:     {"prompt"},
-	OutfitProtocol:   {"use_pe"},
-	VideoProtocol:    {"model", "duration", "resolution", "fps", "audio"},
-}
-
-// ValidateInput 按登记协议校验业务字段，返回已解码图片供受理阶段生成清单，避免重复解码。
-// 缺少拆衣输入时不能转成商品图请求。
-func ValidateInput(kind string, input json.RawMessage) ([]InputImage, error) {
-	return validateInput(kind, input, false)
-}
-
-// ValidateExperimentalInput 在业务字段之外放行该协议的实验参数，仅用于实验凭据。
-func ValidateExperimentalInput(kind string, input json.RawMessage) ([]InputImage, error) {
-	return validateInput(kind, input, true)
-}
-
-func validateInput(kind string, input json.RawMessage, experimental bool) ([]InputImage, error) {
-	if !MediaProtocol(kind) {
-		return nil, errors.New("unsupported media protocol")
-	}
-	fields, images, err := DecodeInput(input)
-	if err != nil {
-		return nil, err
-	}
-	minImages, maxImages := 1, 1
-	var allowed []string
-	switch kind {
-	case ClothGenProtocol:
-		allowed = []string{"garment_name", "garment_role"}
-	case WardrobeProtocol:
-		if len(images) == 1 && fields["bbox"] == nil && fields["parse_labels"] == nil {
-			return nil, errors.New("garment extraction requires bbox or parser input")
-		}
-		maxImages = 2
-		allowed = []string{"garment_name", "garment_role", "bbox", "bbox_format", "parse_labels"}
-	case OutfitProtocol:
-		minImages, maxImages = 2, 2
-		allowed = []string{"prompt"}
-	case BodyProtocol:
-		allowed = []string{"gender"}
-	case VideoProtocol:
-		allowed = []string{"prompt", "motion_tips"}
-	}
-	if experimental {
-		allowed = append(allowed, experimentalFields[kind]...)
-	}
-	if len(images) < minImages || len(images) > maxImages {
-		return nil, errors.New("wrong number of input images")
-	}
-	for key, raw := range fields {
-		if !slices.Contains(allowed, key) || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-			return nil, errors.New("unsupported business field")
-		}
-		var target any
-		switch key {
-		case "bbox":
-			var coordinates []float64
-			if json.Unmarshal(raw, &coordinates) != nil || len(coordinates) != 4 {
-				return nil, errors.New("bbox must contain four coordinates")
-			}
-			continue
-		case "parse_labels":
-			target = new(map[string]string)
-		default:
-			target = new(string)
-		}
-		if json.Unmarshal(raw, target) != nil {
-			return nil, errors.New("invalid business field")
-		}
-	}
-	return images, nil
 }

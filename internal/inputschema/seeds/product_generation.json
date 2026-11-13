@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "product_generation",
+  "description": "商品图生成：一张服装原图",
+  "x-category": "image_generation",
+  "type": "object",
+  "properties": {
+    "images": {
+      "type": "array",
+      "description": "商品图生成：一张服装原图",
+      "items": {
+        "type": "object",
+        "required": [
+          "mime_type",
+          "data"
+        ],
+        "properties": {
+          "mime_type": {
+            "type": "string",
+            "description": "图片 MIME",
+            "pattern": "^image/[A-Za-z0-9.+-]+$"
+          },
+          "data": {
+            "type": "string",
+            "description": "图片原始字节的 Base64，不含 data URL 前缀",
+            "minLength": 1,
+            "contentEncoding": "base64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "garment_name": {
+      "type": "string",
+      "description": "衣物名称"
+    },
+    "garment_role": {
+      "type": "string",
+      "description": "衣物角色"
+    }
+  },
+  "required": [
+    "images"
+  ],
+  "additionalProperties": false
+}

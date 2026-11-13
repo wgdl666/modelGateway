@@ -22,6 +22,8 @@ type ModelInstance struct {
 	ModelKey string `json:"model_key,omitempty"`
 	// Protocol holds the value of the "protocol" field.
 	Protocol string `json:"protocol,omitempty"`
+	// InputSchema holds the value of the "input_schema" field.
+	InputSchema json.RawMessage `json:"input_schema,omitempty"`
 	// Endpoint holds the value of the "endpoint" field.
 	Endpoint string `json:"endpoint,omitempty"`
 	// HealthURL holds the value of the "health_url" field.
@@ -58,7 +60,7 @@ func (*ModelInstance) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case modelinstance.FieldGpuDevices:
+		case modelinstance.FieldInputSchema, modelinstance.FieldGpuDevices:
 			values[i] = new([]byte)
 		case modelinstance.FieldReady, modelinstance.FieldDraining:
 			values[i] = new(sql.NullBool)
@@ -100,6 +102,14 @@ func (_m *ModelInstance) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field protocol", values[i])
 			} else if value.Valid {
 				_m.Protocol = value.String
+			}
+		case modelinstance.FieldInputSchema:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field input_schema", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.InputSchema); err != nil {
+					return fmt.Errorf("unmarshal field input_schema: %w", err)
+				}
 			}
 		case modelinstance.FieldEndpoint:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -229,6 +239,9 @@ func (_m *ModelInstance) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("protocol=")
 	builder.WriteString(_m.Protocol)
+	builder.WriteString(", ")
+	builder.WriteString("input_schema=")
+	builder.WriteString(fmt.Sprintf("%v", _m.InputSchema))
 	builder.WriteString(", ")
 	builder.WriteString("endpoint=")
 	builder.WriteString(_m.Endpoint)
