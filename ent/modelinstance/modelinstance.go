@@ -23,6 +23,16 @@ const (
 	FieldHealthURL = "health_url"
 	// FieldArtifactDigest holds the string denoting the artifact_digest field in the database.
 	FieldArtifactDigest = "artifact_digest"
+	// FieldDeploymentID holds the string denoting the deployment_id field in the database.
+	FieldDeploymentID = "deployment_id"
+	// FieldWorkerID holds the string denoting the worker_id field in the database.
+	FieldWorkerID = "worker_id"
+	// FieldBootID holds the string denoting the boot_id field in the database.
+	FieldBootID = "boot_id"
+	// FieldLeaseExpiresAt holds the string denoting the lease_expires_at field in the database.
+	FieldLeaseExpiresAt = "lease_expires_at"
+	// FieldLifecycleDraining holds the string denoting the lifecycle_draining field in the database.
+	FieldLifecycleDraining = "lifecycle_draining"
 	// FieldResourceGroup holds the string denoting the resource_group field in the database.
 	FieldResourceGroup = "resource_group"
 	// FieldGroupCapacityUnits holds the string denoting the group_capacity_units field in the database.
@@ -57,6 +67,11 @@ var Columns = []string{
 	FieldEndpoint,
 	FieldHealthURL,
 	FieldArtifactDigest,
+	FieldDeploymentID,
+	FieldWorkerID,
+	FieldBootID,
+	FieldLeaseExpiresAt,
+	FieldLifecycleDraining,
 	FieldResourceGroup,
 	FieldGroupCapacityUnits,
 	FieldCapacityUnits,
@@ -81,6 +96,14 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultDeploymentID holds the default value on creation for the "deployment_id" field.
+	DefaultDeploymentID string
+	// DefaultWorkerID holds the default value on creation for the "worker_id" field.
+	DefaultWorkerID string
+	// DefaultBootID holds the default value on creation for the "boot_id" field.
+	DefaultBootID string
+	// DefaultLifecycleDraining holds the default value on creation for the "lifecycle_draining" field.
+	DefaultLifecycleDraining bool
 	// GroupCapacityUnitsValidator is a validator for the "group_capacity_units" field. It is called by the builders before save.
 	GroupCapacityUnitsValidator func(int) error
 	// CapacityUnitsValidator is a validator for the "capacity_units" field. It is called by the builders before save.
@@ -132,6 +155,31 @@ func ByHealthURL(opts ...sql.OrderTermOption) OrderOption {
 // ByArtifactDigest orders the results by the artifact_digest field.
 func ByArtifactDigest(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldArtifactDigest, opts...).ToFunc()
+}
+
+// ByDeploymentID orders the results by the deployment_id field.
+func ByDeploymentID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeploymentID, opts...).ToFunc()
+}
+
+// ByWorkerID orders the results by the worker_id field.
+func ByWorkerID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkerID, opts...).ToFunc()
+}
+
+// ByBootID orders the results by the boot_id field.
+func ByBootID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBootID, opts...).ToFunc()
+}
+
+// ByLeaseExpiresAt orders the results by the lease_expires_at field.
+func ByLeaseExpiresAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLeaseExpiresAt, opts...).ToFunc()
+}
+
+// ByLifecycleDraining orders the results by the lifecycle_draining field.
+func ByLifecycleDraining(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLifecycleDraining, opts...).ToFunc()
 }
 
 // ByResourceGroup orders the results by the resource_group field.

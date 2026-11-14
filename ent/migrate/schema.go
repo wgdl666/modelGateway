@@ -25,6 +25,17 @@ var (
 		Columns:    APITokensColumns,
 		PrimaryKey: []*schema.Column{APITokensColumns[0]},
 	}
+	// DeploymentDomainColumns holds the columns for the "deployment_domain" table.
+	DeploymentDomainColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "region", Type: field.TypeString, Unique: true},
+	}
+	// DeploymentDomainTable holds the schema information for the "deployment_domain" table.
+	DeploymentDomainTable = &schema.Table{
+		Name:       "deployment_domain",
+		Columns:    DeploymentDomainColumns,
+		PrimaryKey: []*schema.Column{DeploymentDomainColumns[0]},
+	}
 	// ModelInstancesColumns holds the columns for the "model_instances" table.
 	ModelInstancesColumns = []*schema.Column{
 		{Name: "instance_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
@@ -33,6 +44,11 @@ var (
 		{Name: "endpoint", Type: field.TypeString, Size: 2147483647},
 		{Name: "health_url", Type: field.TypeString, Size: 2147483647},
 		{Name: "artifact_digest", Type: field.TypeString, Size: 2147483647},
+		{Name: "deployment_id", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "worker_id", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "boot_id", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "lease_expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "lifecycle_draining", Type: field.TypeBool, Default: false},
 		{Name: "resource_group", Type: field.TypeString, Size: 2147483647},
 		{Name: "group_capacity_units", Type: field.TypeInt},
 		{Name: "capacity_units", Type: field.TypeInt},
@@ -59,7 +75,7 @@ var (
 			{
 				Name:    "modelinstance_resource_group",
 				Unique:  false,
-				Columns: []*schema.Column{ModelInstancesColumns[6]},
+				Columns: []*schema.Column{ModelInstancesColumns[11]},
 			},
 		},
 	}
@@ -82,6 +98,8 @@ var (
 		{Name: "resource_groups", Type: field.TypeJSON},
 		{Name: "endpoint", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "artifact_digest", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "deployment_id", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "boot_id", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "backend_task_id", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "dispatch_attempts", Type: field.TypeInt, Default: 0},
 		{Name: "dispatch_retry_reason", Type: field.TypeString, Size: 2147483647, Default: ""},
@@ -106,7 +124,7 @@ var (
 			{
 				Name:    "request_model_key_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[29], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[1], RequestsColumns[31], RequestsColumns[0]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -122,7 +140,7 @@ var (
 			{
 				Name:    "request_deadline_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[20]},
+				Columns: []*schema.Column{RequestsColumns[22]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "state = 'queued'",
 				},
@@ -138,7 +156,7 @@ var (
 			{
 				Name:    "request_next_poll_at",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[23]},
+				Columns: []*schema.Column{RequestsColumns[25]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "slot_reserved",
 				},
@@ -146,7 +164,7 @@ var (
 			{
 				Name:    "request_created_at_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestsColumns[29], RequestsColumns[0]},
+				Columns: []*schema.Column{RequestsColumns[31], RequestsColumns[0]},
 			},
 			{
 				Name:    "request_trace_id",
@@ -181,6 +199,7 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		APITokensTable,
+		DeploymentDomainTable,
 		ModelInstancesTable,
 		RequestsTable,
 		ResourceGroupsTable,
@@ -190,6 +209,12 @@ var (
 func init() {
 	APITokensTable.Annotation = &entsql.Annotation{
 		Table: "api_tokens",
+	}
+	DeploymentDomainTable.Annotation = &entsql.Annotation{
+		Table: "deployment_domain",
+	}
+	DeploymentDomainTable.Annotation.Checks = map[string]string{
+		"deployment_domain_singleton": "id = 1",
 	}
 	ModelInstancesTable.Annotation = &entsql.Annotation{
 		Table: "model_instances",

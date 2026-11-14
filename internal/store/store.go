@@ -34,6 +34,9 @@ func New(db *ent.Client) *Store {
 }
 
 func (s *Store) CheckReady(ctx context.Context) error {
+	if _, err := s.db.ModelInstance.Query().Select(modelinstance.FieldWorkerID, modelinstance.FieldBootID, modelinstance.FieldLeaseExpiresAt, modelinstance.FieldLifecycleDraining).Limit(1).All(ctx); err != nil {
+		return err
+	}
 	// 管理表和归属列必须先迁移，避免就绪后才发现凭据无法持久化。
 	if _, err := s.db.APIToken.Query().Select(apitoken.FieldID).Limit(1).All(ctx); err != nil {
 		telemetry.LogError(ctx, "gateway readiness failed", err, "check", "api_tokens.id")

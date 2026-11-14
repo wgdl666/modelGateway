@@ -14,6 +14,8 @@ type Tx struct {
 	config
 	// APIToken is the client for interacting with the APIToken builders.
 	APIToken *APITokenClient
+	// DeploymentDomain is the client for interacting with the DeploymentDomain builders.
+	DeploymentDomain *DeploymentDomainClient
 	// ModelInstance is the client for interacting with the ModelInstance builders.
 	ModelInstance *ModelInstanceClient
 	// Request is the client for interacting with the Request builders.
@@ -152,6 +154,7 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.APIToken = NewAPITokenClient(tx.config)
+	tx.DeploymentDomain = NewDeploymentDomainClient(tx.config)
 	tx.ModelInstance = NewModelInstanceClient(tx.config)
 	tx.Request = NewRequestClient(tx.config)
 	tx.ResourceGroup = NewResourceGroupClient(tx.config)

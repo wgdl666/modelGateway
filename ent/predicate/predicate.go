@@ -9,6 +9,9 @@ import (
 // APIToken is the predicate function for apitoken builders.
 type APIToken func(*sql.Selector)
 
+// DeploymentDomain is the predicate function for deploymentdomain builders.
+type DeploymentDomain func(*sql.Selector)
+
 // ModelInstance is the predicate function for modelinstance builders.
 type ModelInstance func(*sql.Selector)
 

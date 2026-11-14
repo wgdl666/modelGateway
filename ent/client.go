@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"github.com/wgdl666/modelGateway/ent/apitoken"
+	"github.com/wgdl666/modelGateway/ent/deploymentdomain"
 	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/ent/resourcegroup"
@@ -27,6 +28,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// APIToken is the client for interacting with the APIToken builders.
 	APIToken *APITokenClient
+	// DeploymentDomain is the client for interacting with the DeploymentDomain builders.
+	DeploymentDomain *DeploymentDomainClient
 	// ModelInstance is the client for interacting with the ModelInstance builders.
 	ModelInstance *ModelInstanceClient
 	// Request is the client for interacting with the Request builders.
@@ -45,6 +48,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.APIToken = NewAPITokenClient(c.config)
+	c.DeploymentDomain = NewDeploymentDomainClient(c.config)
 	c.ModelInstance = NewModelInstanceClient(c.config)
 	c.Request = NewRequestClient(c.config)
 	c.ResourceGroup = NewResourceGroupClient(c.config)
@@ -138,12 +142,13 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:           ctx,
-		config:        cfg,
-		APIToken:      NewAPITokenClient(cfg),
-		ModelInstance: NewModelInstanceClient(cfg),
-		Request:       NewRequestClient(cfg),
-		ResourceGroup: NewResourceGroupClient(cfg),
+		ctx:              ctx,
+		config:           cfg,
+		APIToken:         NewAPITokenClient(cfg),
+		DeploymentDomain: NewDeploymentDomainClient(cfg),
+		ModelInstance:    NewModelInstanceClient(cfg),
+		Request:          NewRequestClient(cfg),
+		ResourceGroup:    NewResourceGroupClient(cfg),
 	}, nil
 }
 
@@ -161,12 +166,13 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:           ctx,
-		config:        cfg,
-		APIToken:      NewAPITokenClient(cfg),
-		ModelInstance: NewModelInstanceClient(cfg),
-		Request:       NewRequestClient(cfg),
-		ResourceGroup: NewResourceGroupClient(cfg),
+		ctx:              ctx,
+		config:           cfg,
+		APIToken:         NewAPITokenClient(cfg),
+		DeploymentDomain: NewDeploymentDomainClient(cfg),
+		ModelInstance:    NewModelInstanceClient(cfg),
+		Request:          NewRequestClient(cfg),
+		ResourceGroup:    NewResourceGroupClient(cfg),
 	}, nil
 }
 
@@ -196,6 +202,7 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	c.APIToken.Use(hooks...)
+	c.DeploymentDomain.Use(hooks...)
 	c.ModelInstance.Use(hooks...)
 	c.Request.Use(hooks...)
 	c.ResourceGroup.Use(hooks...)
@@ -205,6 +212,7 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	c.APIToken.Intercept(interceptors...)
+	c.DeploymentDomain.Intercept(interceptors...)
 	c.ModelInstance.Intercept(interceptors...)
 	c.Request.Intercept(interceptors...)
 	c.ResourceGroup.Intercept(interceptors...)
@@ -215,6 +223,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *APITokenMutation:
 		return c.APIToken.mutate(ctx, m)
+	case *DeploymentDomainMutation:
+		return c.DeploymentDomain.mutate(ctx, m)
 	case *ModelInstanceMutation:
 		return c.ModelInstance.mutate(ctx, m)
 	case *RequestMutation:
@@ -356,6 +366,139 @@ func (c *APITokenClient) mutate(ctx context.Context, m *APITokenMutation) (Value
 		return (&APITokenDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown APIToken mutation op: %q", m.Op())
+	}
+}
+
+// DeploymentDomainClient is a client for the DeploymentDomain schema.
+type DeploymentDomainClient struct {
+	config
+}
+
+// NewDeploymentDomainClient returns a client for the DeploymentDomain from the given config.
+func NewDeploymentDomainClient(c config) *DeploymentDomainClient {
+	return &DeploymentDomainClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `deploymentdomain.Hooks(f(g(h())))`.
+func (c *DeploymentDomainClient) Use(hooks ...Hook) {
+	c.hooks.DeploymentDomain = append(c.hooks.DeploymentDomain, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `deploymentdomain.Intercept(f(g(h())))`.
+func (c *DeploymentDomainClient) Intercept(interceptors ...Interceptor) {
+	c.inters.DeploymentDomain = append(c.inters.DeploymentDomain, interceptors...)
+}
+
+// Create returns a builder for creating a DeploymentDomain entity.
+func (c *DeploymentDomainClient) Create() *DeploymentDomainCreate {
+	mutation := newDeploymentDomainMutation(c.config, OpCreate)
+	return &DeploymentDomainCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of DeploymentDomain entities.
+func (c *DeploymentDomainClient) CreateBulk(builders ...*DeploymentDomainCreate) *DeploymentDomainCreateBulk {
+	return &DeploymentDomainCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *DeploymentDomainClient) MapCreateBulk(slice any, setFunc func(*DeploymentDomainCreate, int)) *DeploymentDomainCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &DeploymentDomainCreateBulk{err: fmt.Errorf("calling to DeploymentDomainClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*DeploymentDomainCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &DeploymentDomainCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for DeploymentDomain.
+func (c *DeploymentDomainClient) Update() *DeploymentDomainUpdate {
+	mutation := newDeploymentDomainMutation(c.config, OpUpdate)
+	return &DeploymentDomainUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *DeploymentDomainClient) UpdateOne(_m *DeploymentDomain) *DeploymentDomainUpdateOne {
+	mutation := newDeploymentDomainMutation(c.config, OpUpdateOne, withDeploymentDomain(_m))
+	return &DeploymentDomainUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *DeploymentDomainClient) UpdateOneID(id int) *DeploymentDomainUpdateOne {
+	mutation := newDeploymentDomainMutation(c.config, OpUpdateOne, withDeploymentDomainID(id))
+	return &DeploymentDomainUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for DeploymentDomain.
+func (c *DeploymentDomainClient) Delete() *DeploymentDomainDelete {
+	mutation := newDeploymentDomainMutation(c.config, OpDelete)
+	return &DeploymentDomainDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *DeploymentDomainClient) DeleteOne(_m *DeploymentDomain) *DeploymentDomainDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *DeploymentDomainClient) DeleteOneID(id int) *DeploymentDomainDeleteOne {
+	builder := c.Delete().Where(deploymentdomain.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &DeploymentDomainDeleteOne{builder}
+}
+
+// Query returns a query builder for DeploymentDomain.
+func (c *DeploymentDomainClient) Query() *DeploymentDomainQuery {
+	return &DeploymentDomainQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeDeploymentDomain},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a DeploymentDomain entity by its id.
+func (c *DeploymentDomainClient) Get(ctx context.Context, id int) (*DeploymentDomain, error) {
+	return c.Query().Where(deploymentdomain.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *DeploymentDomainClient) GetX(ctx context.Context, id int) *DeploymentDomain {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *DeploymentDomainClient) Hooks() []Hook {
+	return c.hooks.DeploymentDomain
+}
+
+// Interceptors returns the client interceptors.
+func (c *DeploymentDomainClient) Interceptors() []Interceptor {
+	return c.inters.DeploymentDomain
+}
+
+func (c *DeploymentDomainClient) mutate(ctx context.Context, m *DeploymentDomainMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&DeploymentDomainCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&DeploymentDomainUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&DeploymentDomainUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&DeploymentDomainDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown DeploymentDomain mutation op: %q", m.Op())
 	}
 }
 
@@ -761,9 +904,10 @@ func (c *ResourceGroupClient) mutate(ctx context.Context, m *ResourceGroupMutati
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		APIToken, ModelInstance, Request, ResourceGroup []ent.Hook
+		APIToken, DeploymentDomain, ModelInstance, Request, ResourceGroup []ent.Hook
 	}
 	inters struct {
-		APIToken, ModelInstance, Request, ResourceGroup []ent.Interceptor
+		APIToken, DeploymentDomain, ModelInstance, Request,
+		ResourceGroup []ent.Interceptor
 	}
 )

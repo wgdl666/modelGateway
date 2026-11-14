@@ -50,6 +50,76 @@ func (_c *ModelInstanceCreate) SetArtifactDigest(v string) *ModelInstanceCreate 
 	return _c
 }
 
+// SetDeploymentID sets the "deployment_id" field.
+func (_c *ModelInstanceCreate) SetDeploymentID(v string) *ModelInstanceCreate {
+	_c.mutation.SetDeploymentID(v)
+	return _c
+}
+
+// SetNillableDeploymentID sets the "deployment_id" field if the given value is not nil.
+func (_c *ModelInstanceCreate) SetNillableDeploymentID(v *string) *ModelInstanceCreate {
+	if v != nil {
+		_c.SetDeploymentID(*v)
+	}
+	return _c
+}
+
+// SetWorkerID sets the "worker_id" field.
+func (_c *ModelInstanceCreate) SetWorkerID(v string) *ModelInstanceCreate {
+	_c.mutation.SetWorkerID(v)
+	return _c
+}
+
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_c *ModelInstanceCreate) SetNillableWorkerID(v *string) *ModelInstanceCreate {
+	if v != nil {
+		_c.SetWorkerID(*v)
+	}
+	return _c
+}
+
+// SetBootID sets the "boot_id" field.
+func (_c *ModelInstanceCreate) SetBootID(v string) *ModelInstanceCreate {
+	_c.mutation.SetBootID(v)
+	return _c
+}
+
+// SetNillableBootID sets the "boot_id" field if the given value is not nil.
+func (_c *ModelInstanceCreate) SetNillableBootID(v *string) *ModelInstanceCreate {
+	if v != nil {
+		_c.SetBootID(*v)
+	}
+	return _c
+}
+
+// SetLeaseExpiresAt sets the "lease_expires_at" field.
+func (_c *ModelInstanceCreate) SetLeaseExpiresAt(v time.Time) *ModelInstanceCreate {
+	_c.mutation.SetLeaseExpiresAt(v)
+	return _c
+}
+
+// SetNillableLeaseExpiresAt sets the "lease_expires_at" field if the given value is not nil.
+func (_c *ModelInstanceCreate) SetNillableLeaseExpiresAt(v *time.Time) *ModelInstanceCreate {
+	if v != nil {
+		_c.SetLeaseExpiresAt(*v)
+	}
+	return _c
+}
+
+// SetLifecycleDraining sets the "lifecycle_draining" field.
+func (_c *ModelInstanceCreate) SetLifecycleDraining(v bool) *ModelInstanceCreate {
+	_c.mutation.SetLifecycleDraining(v)
+	return _c
+}
+
+// SetNillableLifecycleDraining sets the "lifecycle_draining" field if the given value is not nil.
+func (_c *ModelInstanceCreate) SetNillableLifecycleDraining(v *bool) *ModelInstanceCreate {
+	if v != nil {
+		_c.SetLifecycleDraining(*v)
+	}
+	return _c
+}
+
 // SetResourceGroup sets the "resource_group" field.
 func (_c *ModelInstanceCreate) SetResourceGroup(v string) *ModelInstanceCreate {
 	_c.mutation.SetResourceGroup(v)
@@ -213,6 +283,22 @@ func (_c *ModelInstanceCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *ModelInstanceCreate) defaults() {
+	if _, ok := _c.mutation.DeploymentID(); !ok {
+		v := modelinstance.DefaultDeploymentID
+		_c.mutation.SetDeploymentID(v)
+	}
+	if _, ok := _c.mutation.WorkerID(); !ok {
+		v := modelinstance.DefaultWorkerID
+		_c.mutation.SetWorkerID(v)
+	}
+	if _, ok := _c.mutation.BootID(); !ok {
+		v := modelinstance.DefaultBootID
+		_c.mutation.SetBootID(v)
+	}
+	if _, ok := _c.mutation.LifecycleDraining(); !ok {
+		v := modelinstance.DefaultLifecycleDraining
+		_c.mutation.SetLifecycleDraining(v)
+	}
 	if _, ok := _c.mutation.MachineID(); !ok {
 		v := modelinstance.DefaultMachineID
 		_c.mutation.SetMachineID(v)
@@ -255,6 +341,18 @@ func (_c *ModelInstanceCreate) check() error {
 	}
 	if _, ok := _c.mutation.ArtifactDigest(); !ok {
 		return &ValidationError{Name: "artifact_digest", err: errors.New(`ent: missing required field "ModelInstance.artifact_digest"`)}
+	}
+	if _, ok := _c.mutation.DeploymentID(); !ok {
+		return &ValidationError{Name: "deployment_id", err: errors.New(`ent: missing required field "ModelInstance.deployment_id"`)}
+	}
+	if _, ok := _c.mutation.WorkerID(); !ok {
+		return &ValidationError{Name: "worker_id", err: errors.New(`ent: missing required field "ModelInstance.worker_id"`)}
+	}
+	if _, ok := _c.mutation.BootID(); !ok {
+		return &ValidationError{Name: "boot_id", err: errors.New(`ent: missing required field "ModelInstance.boot_id"`)}
+	}
+	if _, ok := _c.mutation.LifecycleDraining(); !ok {
+		return &ValidationError{Name: "lifecycle_draining", err: errors.New(`ent: missing required field "ModelInstance.lifecycle_draining"`)}
 	}
 	if _, ok := _c.mutation.ResourceGroup(); !ok {
 		return &ValidationError{Name: "resource_group", err: errors.New(`ent: missing required field "ModelInstance.resource_group"`)}
@@ -347,6 +445,26 @@ func (_c *ModelInstanceCreate) createSpec() (*ModelInstance, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.ArtifactDigest(); ok {
 		_spec.SetField(modelinstance.FieldArtifactDigest, field.TypeString, value)
 		_node.ArtifactDigest = value
+	}
+	if value, ok := _c.mutation.DeploymentID(); ok {
+		_spec.SetField(modelinstance.FieldDeploymentID, field.TypeString, value)
+		_node.DeploymentID = value
+	}
+	if value, ok := _c.mutation.WorkerID(); ok {
+		_spec.SetField(modelinstance.FieldWorkerID, field.TypeString, value)
+		_node.WorkerID = value
+	}
+	if value, ok := _c.mutation.BootID(); ok {
+		_spec.SetField(modelinstance.FieldBootID, field.TypeString, value)
+		_node.BootID = value
+	}
+	if value, ok := _c.mutation.LeaseExpiresAt(); ok {
+		_spec.SetField(modelinstance.FieldLeaseExpiresAt, field.TypeTime, value)
+		_node.LeaseExpiresAt = &value
+	}
+	if value, ok := _c.mutation.LifecycleDraining(); ok {
+		_spec.SetField(modelinstance.FieldLifecycleDraining, field.TypeBool, value)
+		_node.LifecycleDraining = value
 	}
 	if value, ok := _c.mutation.ResourceGroup(); ok {
 		_spec.SetField(modelinstance.FieldResourceGroup, field.TypeString, value)

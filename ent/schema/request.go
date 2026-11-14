@@ -42,6 +42,8 @@ func (Request) Fields() []ent.Field {
 		field.JSON("resource_groups", []string{}).Default([]string{}),
 		field.Text("endpoint").Default(""),
 		field.Text("artifact_digest").Default(""),
+		field.Text("deployment_id").Default(""),
+		field.Text("boot_id").Default(""),
 		field.Text("backend_task_id").Default(""),
 		// Counts committed dispatch reservations; legacy zero means unrecorded.
 		field.Int("dispatch_attempts").Default(0).NonNegative(),

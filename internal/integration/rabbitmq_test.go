@@ -154,10 +154,11 @@ func TestRabbitMQDispatchRetriesUnavailableModelAndDeduplicates(t *testing.T) {
 
 	waitingID, readyID := uuid.NewString(), uuid.NewString()
 	var waitingCalls, readyCalls atomic.Int32
+	var waitingHealthy atomic.Bool
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/health":
-			_ = json.NewEncoder(w).Encode(map[string]bool{"ready": true})
+		case r.Method == http.MethodGet && (r.URL.Path == "/health" || r.URL.Path == "/waiting-health"):
+			_ = json.NewEncoder(w).Encode(map[string]bool{"ready": r.URL.Path == "/health" || waitingHealthy.Load()})
 		case r.Method == http.MethodPost && r.URL.Path == "/requests":
 			var body protocol.ModelRequest
 			decoder := json.NewDecoder(r.Body)

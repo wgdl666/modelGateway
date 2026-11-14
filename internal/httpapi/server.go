@@ -16,6 +16,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/google/uuid"
 	"github.com/wgdl666/modelGateway/ent"
 	"github.com/wgdl666/modelGateway/ent/request"
 	"github.com/wgdl666/modelGateway/internal/config"
@@ -77,6 +78,8 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.GET("/_gateway/ready", s.ready)
 	// 实例登记决定网关可以向哪些执行地址派单，因此使用管理凭据。
 	h.GET("/v1/models/:model_key", s.auth("api", s.modelProtocol))
+	h.GET("/v1/deployments/domain", s.auth("admin", s.deploymentDomain))
+	h.POST("/v1/workers/:worker/:action", s.workerLifecycle)
 	h.POST("/v1/instances/register", s.auth("admin", s.register))
 	h.POST("/v1/instances/probe", s.auth("admin", s.probeInstance))
 	h.POST("/v1/instances/:id/drain", s.auth("admin", s.drain))
@@ -96,6 +99,11 @@ func (s *Server) HTTPServer(listener net.Listener) *server.Hertz {
 	h.GET("/v1/admin/request-stats", s.auth("admin", s.requestStats))
 	h.GET("/v1/admin/requests/:id/media", s.auth("request_read", s.requestMedia))
 	h.GET("/v1/admin/requests/:id", s.auth("request_read", s.requestDetail))
+	h.POST("/v1/images/generations", s.auth("api", s.openAIGenerations))
+	h.POST("/v1/images/edits", s.auth("api", s.openAIEdits))
+	h.POST("/v1/videos", s.auth("api", s.openAIVideos))
+	h.GET("/v1/videos/:id/content", s.auth("api", s.openAIVideoContent))
+	h.GET("/v1/videos/:id", s.auth("api", s.openAIVideo))
 	h.POST("/v1/gateway/requests/cancel", s.auth("api", s.cancelRequest))
 	h.POST("/v1/gateway/requests/:model_key", s.auth("api", s.submit))
 	h.GET("/v1/gateway/requests", s.auth("api", s.get))
@@ -190,6 +198,8 @@ func storeError(c *app.RequestContext, err error, id string) {
 		writeError(c, 409, "legacy_resource_group", err.Error(), id)
 	case ent.IsNotFound(err):
 		writeError(c, 404, "not_found", "record does not exist", id)
+	case errors.Is(err, store.ErrWorkerSession):
+		writeError(c, 409, "worker_session_invalid", err.Error(), id)
 	case errors.Is(err, store.ErrConflict):
 		writeError(c, 409, "conflict", "request or instance conflicts with an existing record", id)
 	case errors.Is(err, store.ErrInstanceNotClearable):
@@ -226,7 +236,7 @@ func readBody(c *app.RequestContext, limit int64, value any, id string) ([]byte,
 
 func readPayload(c *app.RequestContext, limit int64) ([]byte, error) {
 	reader := c.Request.BodyStream()
-	if reader == nil {
+	if !c.Request.IsBodyStream() {
 		reader = bytes.NewReader(c.Request.Body())
 	}
 	return io.ReadAll(io.LimitReader(reader, limit+1))
@@ -254,7 +264,7 @@ func (s *Server) register(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_instance", "invalid model instance specification", "")
 		return
 	}
-	target := protocol.InstanceTarget{ModelKey: spec.ModelKey, Protocol: spec.Protocol, Endpoint: spec.Endpoint, HealthURL: spec.HealthURL, GPUDevices: spec.GPUDevices}
+	target := protocol.InstanceTarget{ModelKey: spec.ModelKey, Protocol: spec.Protocol, Endpoint: spec.Endpoint, HealthURL: spec.HealthURL, GPUDevices: spec.GPUDevices, DeploymentID: spec.DeploymentID, ArtifactDigest: spec.Artifact}
 	if err := cfg.ValidateInstanceTarget(target); err != nil {
 		writeError(c, 400, "invalid_instance", err.Error(), "")
 		return
@@ -344,9 +354,25 @@ func (s *Server) instances(ctx context.Context, c *app.RequestContext) {
 }
 
 func requestID(c *app.RequestContext) (string, bool) {
+	return bindRequestID(c, true)
+}
+
+// OpenAI SDK 不默认发送 Idempotency-Key。缺省时生成一个新任务；调用方传入时重试仍落在同一次受理。
+func optionalRequestID(c *app.RequestContext) (string, bool) {
+	return bindRequestID(c, false)
+}
+
+func bindRequestID(c *app.RequestContext, required bool) (string, bool) {
+	if len(c.Request.URI().QueryString()) != 0 || len(c.GetHeader("X-Model-Version")) != 0 || len(c.GetHeader("X-Routing-Key")) != 0 {
+		writeError(c, 400, "invalid_request", "request cannot carry extra routing selectors", "")
+		return "", false
+	}
 	id := string(c.GetHeader("Idempotency-Key"))
-	if !protocol.ValidID(id) || len(c.Request.URI().QueryString()) != 0 || len(c.GetHeader("X-Model-Version")) != 0 || len(c.GetHeader("X-Routing-Key")) != 0 {
-		writeError(c, 400, "invalid_request", "supply a UUID Idempotency-Key without extra routing selectors", "")
+	if id == "" && !required {
+		id = uuid.NewString()
+	}
+	if !protocol.ValidID(id) {
+		writeError(c, 400, "invalid_request", "Idempotency-Key must be a UUID", "")
 		return "", false
 	}
 	c.Header("X-Gateway-Request-ID", id)
@@ -375,13 +401,12 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 	}
 	cfg := requestConfig(ctx)
 	var input protocol.Submission
-	raw, ok := readBody(c, cfg.MaxBodyBytes, &input, id)
-	if !ok {
+	if _, ok := readBody(c, cfg.MaxBodyBytes, &input, id); !ok {
 		<-s.uploads
 		return
 	}
 	// 模型存在性、输出能力和具体字段在同一次受理内校验，不依赖调用方预查询。
-	if input.Output != "" && ((input.Output != "image" && input.Output != "video") || (input.Output == "video") != (kind == protocol.VideoProtocol)) {
+	if input.Output != "" && ((input.Output != "image" && input.Output != "video") || (input.Output == "video") != protocol.VideoOutput(kind)) {
 		<-s.uploads
 		writeError(c, 400, "invalid_protocol", "model protocol does not match the requested output", id)
 		return
@@ -399,6 +424,9 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		if err == nil {
 			// 清单复用校验时的解码结果；图片字节只在该块内使用，不带入终态等待。
 			extra, err = protocol.InputMediaExtra(protocol.InputMedia(kind, images))
+			if err == nil {
+				input.Metadata, err = freezeMetadata(ctx, c, input.Metadata)
+			}
 		}
 	}
 	if err == nil {
@@ -409,12 +437,53 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		writeError(c, 400, "invalid_input", err.Error(), id)
 		return
 	}
-	raw, err = json.Marshal(input)
+	c.Set("admission_input_extra", json.RawMessage(extra))
+	s.finishAdmission(ctx, c, id, model, kind, input)
+}
+
+// finishAdmission 把已经校验过的输入放进现有队列。调用方持有上传名额，这里在等待生成之前释放。
+func (s *Server) finishAdmission(ctx context.Context, c *app.RequestContext, id, model, kind string, input protocol.Submission) {
+	task, ok := s.admitMedia(ctx, c, id, model, kind, input)
+	if !ok {
+		return
+	}
+	// 视频调用方通过查询接口取终态，提交请求无需保持连接。
+	if protocol.VideoOutput(kind) {
+		writeJSON(c, 202, protocol.Response{
+			RequestID: id, TraceID: task.TraceID, ModelKey: model,
+			State: string(task.State),
+		})
+		return
+	}
+	// 响应等待不持有原始上传，也不取消已经提交到 PG 的生成。
+	s.waitImage(ctx, c, id)
+}
+
+func (s *Server) admitMedia(ctx context.Context, c *app.RequestContext, id, model, kind string, input protocol.Submission) (*ent.Request, bool) {
+	value, found := c.Get("admission_input_extra")
+	extra, _ := value.(json.RawMessage)
+	if !found {
+		images, err := protocol.ValidateInput(kind, input.Input)
+		if err != nil {
+			<-s.uploads
+			writeError(c, 400, "invalid_input", err.Error(), id)
+			return nil, false
+		}
+		extra, err = protocol.InputMediaExtra(protocol.InputMedia(kind, images))
+		if err != nil {
+			<-s.uploads
+			writeError(c, 400, "invalid_input", err.Error(), id)
+			return nil, false
+		}
+	}
+
+	raw, err := json.Marshal(input)
 	if err != nil {
 		<-s.uploads
 		writeError(c, 400, "invalid_input", "could not encode normalized input", id)
-		return
+		return nil, false
 	}
+	cfg := requestConfig(ctx)
 	task, err := s.store.Admit(ctx, store.Admission{
 		ID: id, ModelKey: model, Protocol: kind, Payload: raw, Input: input.Input, Extra: extra,
 		// 占用单位随受理落库，后续配置更新不会改变已排队请求的重量。
@@ -424,19 +493,16 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 	<-s.uploads
 	if err != nil {
 		storeError(c, err, id)
-		return
+		return nil, false
 	}
-	// 视频调用方通过查询接口取终态，提交请求无需保持连接。
-	if kind == protocol.VideoProtocol {
-		writeJSON(c, 202, protocol.Response{RequestID: id, TraceID: task.TraceID, ModelKey: model, State: string(task.State)})
-		return
-	}
-	// 响应等待不持有原始上传，也不取消已经提交到 PG 的生成。
-	s.waitImage(ctx, c, id)
+	return task, true
 }
 
 func taskResponse(task *ent.Request) protocol.Response {
-	response := protocol.Response{RequestID: task.ID, TraceID: task.TraceID, ModelKey: task.ModelKey, State: string(task.State)}
+	response := protocol.Response{
+		RequestID: task.ID, TraceID: task.TraceID, ModelKey: task.ModelKey,
+		State: string(task.State),
+	}
 	if task.ErrorCode != "" {
 		response.Error = &protocol.RequestError{Code: task.ErrorCode, Message: task.ErrorMessage}
 		if task.DispatchAttempts > 0 {
@@ -455,7 +521,14 @@ func taskResponse(task *ent.Request) protocol.Response {
 }
 
 func (s *Server) waitImage(ctx context.Context, c *app.RequestContext, id string) {
-	// 图片生成耗时较长，每秒检查终态，减少等待期间的账本读取。
+	task, ok := s.awaitTask(ctx, c, id)
+	if !ok {
+		return
+	}
+	writeJSON(c, 200, taskResponse(task))
+}
+
+func (s *Server) awaitTask(ctx context.Context, c *app.RequestContext, id string) (*ent.Request, bool) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -464,7 +537,7 @@ func (s *Server) waitImage(ctx context.Context, c *app.RequestContext, id string
 			if ctx.Err() == nil {
 				storeError(c, err, id)
 			}
-			return
+			return nil, false
 		}
 		c.Header("X-Model-Key", task.ModelKey)
 		if task.InstanceID != "" {
@@ -472,19 +545,18 @@ func (s *Server) waitImage(ctx context.Context, c *app.RequestContext, id string
 		}
 		switch task.State {
 		case request.StateSucceeded:
-			writeJSON(c, 200, taskResponse(task))
-			return
+			return task, true
 		case request.StateFailed:
 			writeError(c, task.ErrorStatus, task.ErrorCode, task.ErrorMessage, id)
-			return
+			return nil, false
 		}
 		if !time.Now().Before(task.DeadlineAt) {
 			writeError(c, 504, "response_wait_timeout", "response wait timed out; query the same request ID", id)
-			return
+			return nil, false
 		}
 		select {
 		case <-ctx.Done():
-			return
+			return nil, false
 		case <-ticker.C:
 		}
 	}

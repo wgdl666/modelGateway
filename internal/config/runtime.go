@@ -20,6 +20,7 @@ import (
 )
 
 type Config struct {
+	WorkerRegistrations map[string]WorkerRegistration `json:"-"`
 	// 仅由 Secret 注入；留空时关闭独立 Token，不影响已有固定凭据。
 	TokenEncryptionKey string                 `json:"-"`
 	SubjectPools       map[string]SubjectPool `json:"subject_pools,omitempty"`
@@ -98,6 +99,11 @@ func Parse(raw []byte) (Config, error) {
 			*field = value
 		}
 	}
+	if raw := os.Getenv("MODEL_GATEWAY_WORKER_REGISTRATIONS"); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &c.WorkerRegistrations); err != nil {
+			return c, errors.New("invalid worker registration Secret")
+		}
+	}
 	for target, value := range map[*time.Duration]string{
 		&c.BackendTimeout: wire.BackendTimeout, &c.NativeExecutionTimeout: wire.NativeExecutionTimeout,
 		&c.PollInterval: wire.PollInterval,
@@ -173,6 +179,14 @@ func prepareConfig(c Config) (*Snapshot, error) {
 		}
 	}
 	c.SubjectPools = maps.Clone(c.SubjectPools)
+	c.WorkerRegistrations = maps.Clone(c.WorkerRegistrations)
+	for key, grant := range c.WorkerRegistrations {
+		grant.Bindings = append([]protocol.Instance(nil), grant.Bindings...)
+		for i := range grant.Bindings {
+			grant.Bindings[i].GPUDevices = append([]int(nil), grant.Bindings[i].GPUDevices...)
+		}
+		c.WorkerRegistrations[key] = grant
+	}
 	state := &Snapshot{Config: c, ports: map[string]bool{}}
 	for _, cidr := range c.AllowedNetworks {
 		_, network, err := net.ParseCIDR(cidr)
@@ -210,6 +224,9 @@ func prepareConfig(c Config) (*Snapshot, error) {
 		return nil, err
 	}
 	if err := state.validateNative(); err != nil {
+		return nil, err
+	}
+	if err := state.validateWorkerRegistrations(); err != nil {
 		return nil, err
 	}
 	return state, nil

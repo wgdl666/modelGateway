@@ -15,6 +15,9 @@ import (
 const probeMaxAge = 9 * time.Second
 
 func instanceHealthy(row *ent.ModelInstance, now time.Time) bool {
+	if row.WorkerID != "" && (row.LeaseExpiresAt == nil || !row.LeaseExpiresAt.After(now) || row.LifecycleDraining) {
+		return false
+	}
 	maxAge := probeMaxAge
 	if protocol.SynchronousKind(row.Protocol) != "" {
 		// G6 聚合探活在单个副本异常时会跨多批超时，使用同步探针的周期和超时预算。
@@ -25,16 +28,23 @@ func instanceHealthy(row *ent.ModelInstance, now time.Time) bool {
 
 // 未探测和未就绪是不同状态；暂停后过期的探活结果按未就绪处理。
 func instanceClearable(row *ent.ModelInstance, healthy bool) bool {
-	return row.Draining && row.HealthCheckedAt.Unix() > 0 && !healthy
+	return (row.Draining || row.LifecycleDraining || (row.WorkerID != "" && row.LeaseExpiresAt != nil && !row.LeaseExpiresAt.After(time.Now()))) && row.HealthCheckedAt.Unix() > 0 && !healthy
 }
 
 // 排空实例退出探活集合，已派发任务仍按账本中的地址回查。
 func (s *Store) ProbeInstances(ctx context.Context) ([]*ent.ModelInstance, error) {
-	return s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil(), modelinstance.DrainingEQ(false)).All(ctx)
+	return s.db.ModelInstance.Query().Where(modelinstance.DeletedAtIsNil(), modelinstance.DrainingEQ(false), modelinstance.LifecycleDrainingEQ(false)).All(ctx)
 }
 
 func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedArtifact string) error {
 	return s.serialize(ctx, func(tx *ent.Tx) error {
+		managed, err := tx.ModelInstance.Query().Where(modelinstance.ResourceGroupEQ(spec.ResourceGroup), modelinstance.WorkerIDNEQ(""), modelinstance.DeletedAtIsNil()).Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if managed {
+			return ErrConflict
+		}
 		// 同一 key 的协议跨副本及历史登记保持一致，避免新实例接到旧契约请求。
 		conflict, err := tx.ModelInstance.Query().Where(modelinstance.ModelKeyEQ(spec.ModelKey), modelinstance.ProtocolNEQ(spec.Protocol)).Exist(ctx)
 		if err != nil {
@@ -81,7 +91,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 				return ErrConflict
 			}
 			// 自动获取摘要的登记重试沿用首次写入的身份，探针变化不能改写历史。
-			if old.ModelKey == spec.ModelKey && old.Protocol == spec.Protocol && old.Endpoint == spec.Endpoint &&
+			if old.ModelKey == spec.ModelKey && old.DeploymentID == spec.DeploymentID && old.Protocol == spec.Protocol && old.Endpoint == spec.Endpoint &&
 				old.HealthURL == spec.HealthURL && (spec.Artifact == "" || old.ArtifactDigest == spec.Artifact) &&
 				old.ResourceGroup == spec.ResourceGroup &&
 				old.CapacityUnits == spec.Capacity &&
@@ -124,7 +134,7 @@ func (s *Store) Register(ctx context.Context, spec protocol.Instance, reportedAr
 		}
 		return tx.ModelInstance.Create().
 			SetID(spec.ID).SetModelKey(spec.ModelKey).SetProtocol(spec.Protocol).
-			SetEndpoint(spec.Endpoint).SetHealthURL(spec.HealthURL).SetArtifactDigest(artifact).
+			SetEndpoint(spec.Endpoint).SetHealthURL(spec.HealthURL).SetArtifactDigest(artifact).SetDeploymentID(spec.DeploymentID).
 			SetResourceGroup(spec.ResourceGroup).SetGroupCapacityUnits(group.CapacityUnits).
 			SetCapacityUnits(spec.Capacity).SetMachineID(spec.MachineID).SetGpuDevices(spec.GPUDevices).SetDraining(spec.InitiallyDraining).Exec(ctx)
 	})

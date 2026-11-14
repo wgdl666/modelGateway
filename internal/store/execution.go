@@ -110,7 +110,7 @@ func (s *Store) ClaimPoll(ctx context.Context) (*ent.Request, error) {
 	task, err := tx.Request.Query().Where(request.SlotReservedEQ(true), request.NextPollAtLTE(now),
 		request.ProtocolNotIn(protocol.SynchronousProtocols()...)).
 		Order(ent.Asc(request.FieldNextPollAt, request.FieldID)).ForUpdate(sql.WithLockAction(sql.SkipLocked)).
-		Select(request.FieldID, request.FieldEndpoint, request.FieldModelKey, request.FieldProtocol, request.FieldBackendTaskID, request.FieldStartedAt, request.FieldState).First(ctx)
+		Select(request.FieldID, request.FieldEndpoint, request.FieldModelKey, request.FieldProtocol, request.FieldBackendTaskID, request.FieldStartedAt, request.FieldState, request.FieldDeploymentID, request.FieldBootID, request.FieldArtifactDigest, request.FieldErrorCode).First(ctx)
 	if ent.IsNotFound(err) {
 		return nil, nil
 	}

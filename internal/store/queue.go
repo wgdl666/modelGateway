@@ -1,9 +1,12 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"reflect"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,9 +34,64 @@ type Admission struct {
 func sameInput(payload, input json.RawMessage) bool {
 	var stored protocol.Submission
 	var left, right any
-	return json.Unmarshal(payload, &stored) == nil &&
-		json.Unmarshal(stored.Input, &left) == nil &&
-		json.Unmarshal(input, &right) == nil && reflect.DeepEqual(left, right)
+	if json.Unmarshal(payload, &stored) != nil {
+		return false
+	}
+	// Model parameters may contain 64-bit seeds. float64 would conflate distinct
+	// requests above 2^53 and replay the wrong generated result.
+	decode := func(raw json.RawMessage, target *any) error {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		if err := decoder.Decode(target); err != nil {
+			return err
+		}
+		*target = canonicalJSONNumbers(*target)
+		return nil
+	}
+	return decode(stored.Input, &left) == nil && decode(input, &right) == nil && reflect.DeepEqual(left, right)
+}
+
+// PostgreSQL JSONB expands exponents. Compare decimal values without float64
+// rounding or allocating an integer proportional to an untrusted exponent.
+func canonicalJSONNumbers(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, item := range v {
+			v[key] = canonicalJSONNumbers(item)
+		}
+	case []any:
+		for i, item := range v {
+			v[i] = canonicalJSONNumbers(item)
+		}
+	case json.Number:
+		number := string(v)
+		mantissa, exponent := number, int64(0)
+		if i := strings.IndexAny(number, "eE"); i >= 0 {
+			parsed, err := strconv.ParseInt(number[i+1:], 10, 64)
+			// These are outside PostgreSQL's numeric range and cannot match stored data.
+			if err != nil || parsed > 1000000 || parsed < -1000000 {
+				return v
+			}
+			mantissa, exponent = number[:i], parsed
+		}
+		negative := strings.HasPrefix(mantissa, "-")
+		mantissa = strings.TrimPrefix(mantissa, "-")
+		if i := strings.IndexByte(mantissa, '.'); i >= 0 {
+			exponent -= int64(len(mantissa) - i - 1)
+			mantissa = mantissa[:i] + mantissa[i+1:]
+		}
+		mantissa = strings.TrimLeft(mantissa, "0")
+		if mantissa == "" {
+			return json.Number("0")
+		}
+		significant := strings.TrimRight(mantissa, "0")
+		exponent += int64(len(mantissa) - len(significant))
+		if negative {
+			significant = "-" + significant
+		}
+		return json.Number(significant + "e" + strconv.FormatInt(exponent, 10))
+	}
+	return value
 }
 
 func (s *Store) Admit(ctx context.Context, in Admission) (*ent.Request, error) {
@@ -161,7 +219,7 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 		now := time.Now().UTC()
 		// 同一消息可能重投。按 ID 等待行锁，锁竞争不能被误当成已处理而确认消息。
 		next, err := tx.Request.Query().Where(request.IDEQ(id), request.StateEQ(request.StateQueued), request.DeadlineAtGT(now)).
-			Select(request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldUnits, request.FieldDeadlineAt, request.FieldQueuePublishAt).
+			Select(request.FieldID, request.FieldModelKey, request.FieldProtocol, request.FieldUnits, request.FieldDeadlineAt, request.FieldQueuePublishAt, request.FieldEndpoint, request.FieldInstanceID, request.FieldArtifactDigest, request.FieldDeploymentID).
 			ForUpdate().Only(ctx)
 		if ent.IsNotFound(err) {
 			return nil
@@ -175,10 +233,17 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 			return deferPublication(ctx, tx, next)
 		}
 		// 同键不同业务的旧登记在迁移时已归档，派发直接按请求的模型键选实例。
-		instances, err := tx.ModelInstance.Query().Where(
+		candidates := tx.ModelInstance.Query().Where(
 			modelinstance.DeletedAtIsNil(), modelinstance.ModelKeyEQ(next.ModelKey),
 			modelinstance.ReadyEQ(true), modelinstance.DrainingEQ(false),
-		).Order(ent.Asc(modelinstance.FieldID)).All(ctx)
+			currentWorkerLease,
+		).Order(ent.Asc(modelinstance.FieldID))
+		if protocol.GenerationProtocol(next.Protocol) && next.Endpoint != "" {
+			// Worker replay state is local to the selected instance. An ambiguous
+			// dispatch must never fail over to a different worker and generate twice.
+			candidates.Where(modelinstance.IDEQ(next.InstanceID), modelinstance.EndpointEQ(next.Endpoint), modelinstance.ArtifactDigestEQ(next.ArtifactDigest))
+		}
+		instances, err := candidates.All(ctx)
 		if err != nil {
 			return err
 		}
@@ -231,17 +296,20 @@ func (s *Store) Claim(ctx context.Context, cfg config.Config, id string) (*ent.R
 				continue
 			}
 			// 与排空串行化，提交后请求身份和物理槽位才对其他副本可见。
-			if _, err := tx.ModelInstance.Query().Where(modelinstance.IDEQ(i.ID)).ForUpdate().Only(ctx); err != nil {
+			if _, err := tx.ModelInstance.Query().Where(modelinstance.IDEQ(i.ID), currentWorkerLease).ForUpdate().Only(ctx); err != nil {
+				if ent.IsNotFound(err) {
+					continue
+				}
 				return err
 			}
 			nextPoll := next.DeadlineAt.Add(2 * time.Second)
-			if _, direct := cfg.NativeBackendFor(next.ModelKey, i.Endpoint); direct || protocol.SynchronousKind(i.Protocol) != "" {
+			if _, direct := cfg.NativeBackendFor(next.ModelKey, i.Endpoint); direct || protocol.GenerationProtocol(i.Protocol) || protocol.SynchronousKind(i.Protocol) != "" {
 				// 原生调用可晚于上游返回，给原派发者留足执行和写终态的时间。
 				nextPoll = now.Add(cfg.NativeExecutionTimeout).Add(ExecutionWriteTimeout)
 			}
 			// 回队后会生成新的领取标识，旧一轮的响应不能写入后续重试。
 			task, err = tx.Request.UpdateOneID(id).SetState(request.StateProcessing).SetSlotReserved(true).ClearQueuePublishAt().
-				SetInstanceID(i.ID).SetResourceGroup(i.ResourceGroup).SetResourceGroups(memberships).SetEndpoint(i.Endpoint).SetArtifactDigest(i.ArtifactDigest).
+				SetInstanceID(i.ID).SetResourceGroup(i.ResourceGroup).SetResourceGroups(memberships).SetEndpoint(i.Endpoint).SetArtifactDigest(i.ArtifactDigest).SetDeploymentID(i.DeploymentID).SetBootID(i.BootID).
 				AddDispatchAttempts(1).SetStartedAt(now).SetNextPollAt(nextPoll).SetPollClaim(uuid.NewString()).Save(ctx)
 			return err
 		}
@@ -275,12 +343,23 @@ func (s *Store) RequeueDispatch(ctx context.Context, id string, startedAt time.T
 	}
 	// 忙、断线和调用超时统一延期回队。只撤销本轮领取，不重置总截止时间或重派已登记的异步任务。
 	due := time.Now().UTC().Add(time.Second).Truncate(time.Microsecond)
-	count, err := s.db.Request.Update().Where(request.IDEQ(id), request.StateEQ(request.StateProcessing),
-		request.SlotReservedEQ(true), request.StartedAtEQ(startedAt), request.PollClaimEQ(claim), request.BackendTaskIDEQ("")).
-		SetState(request.StateQueued).SetSlotReserved(false).SetQueuePublishAt(due).SetDispatchRetryReason(reason).
-		SetInstanceID("").SetResourceGroup("").SetResourceGroups([]string{}).SetEndpoint("").SetArtifactDigest("").
-		ClearStartedAt().ClearNextPollAt().SetPollClaim("").Save(ctx)
-	if err == nil && count > 0 {
+	update := func() *ent.RequestUpdate {
+		return s.db.Request.Update().Where(request.IDEQ(id), request.StateEQ(request.StateProcessing),
+			request.SlotReservedEQ(true), request.StartedAtEQ(startedAt), request.PollClaimEQ(claim), request.BackendTaskIDEQ("")).
+			SetState(request.StateQueued).SetSlotReserved(false).SetQueuePublishAt(due).SetDispatchRetryReason(reason).
+			ClearStartedAt().ClearNextPollAt().SetPollClaim("")
+	}
+	if reason != "worker_busy_before_execution" {
+		if _, err := update().Where(request.Or(request.ProtocolIn(protocol.ImageGenerationProtocol, protocol.VideoGenerationProtocol), request.DeploymentIDNEQ(""))).Save(ctx); err != nil {
+			return err
+		}
+	}
+	remaining := update()
+	if reason != "worker_busy_before_execution" {
+		remaining.Where(request.ProtocolNotIn(protocol.ImageGenerationProtocol, protocol.VideoGenerationProtocol), request.DeploymentIDEQ(""))
+	}
+	_, err := remaining.SetInstanceID("").SetResourceGroup("").SetResourceGroups([]string{}).SetEndpoint("").SetArtifactDigest("").SetDeploymentID("").SetBootID("").Save(ctx)
+	if err == nil {
 		s.notifyPublication()
 	}
 	return err

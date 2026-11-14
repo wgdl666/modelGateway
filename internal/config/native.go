@@ -49,7 +49,7 @@ func (c Config) NativeBackendFor(model, endpoint string) (NativeBackend, bool) {
 }
 
 func (b NativeBackend) Matches(kind string) bool {
-	return b.Video == (kind == protocol.VideoProtocol)
+	return !protocol.GenerationProtocol(kind) && b.Video == (kind == protocol.VideoProtocol)
 }
 
 func isGPUEndpoint(endpoint string) bool {
@@ -59,6 +59,9 @@ func isGPUEndpoint(endpoint string) bool {
 
 // 手动探活与实例登记使用同一出站规则，表单地址必须符合所选网关的配置。
 func (s *Snapshot) ValidateInstanceTarget(target protocol.InstanceTarget) error {
+	if protocol.GenerationProtocol(target.Protocol) && (s.NativeResults.Provider == "" || s.NativeResults.Region == "" || s.NativeResults.Bucket == "") {
+		return errors.New("generation protocols require native_results object storage")
+	}
 	if protocol.SynchronousKind(target.Protocol) != "" {
 		if p, ok := s.SubjectPoolFor(target.ModelKey, target.Protocol, target.Endpoint); ok && target.HealthURL == p.HealthURL {
 			if err := s.ValidateEndpoint(target.Endpoint, false); err != nil {
@@ -71,7 +74,7 @@ func (s *Snapshot) ValidateInstanceTarget(target protocol.InstanceTarget) error 
 		}
 		return errors.New("synchronous target must match its configured probe and execution address")
 	}
-	if err := s.ValidateEndpoint(target.Endpoint, false); err != nil {
+	if err := s.ValidateEndpoint(target.Endpoint, protocol.GenerationProtocol(target.Protocol)); err != nil {
 		return err
 	}
 	if err := s.ValidateEndpoint(target.HealthURL, true); err != nil {
@@ -85,6 +88,11 @@ func (s *Snapshot) ValidateInstanceTarget(target protocol.InstanceTarget) error 
 
 // 单卡地址使用原生视频协议，探活也须命中同一张卡，避免用其他 worker 的就绪状态派单。
 func (c Config) AcceptsInstanceAddress(model, kind, endpoint, healthURL string) bool {
+	if protocol.GenerationProtocol(kind) {
+		// Registration alone selects the generic wire protocol. Do not fall back to
+		// a legacy native_models binding or infer a business route from the name.
+		return !strings.HasSuffix(endpoint, "/") && (healthURL == endpoint || strings.HasPrefix(healthURL, endpoint+"/"))
+	}
 	if protocol.SynchronousKind(kind) != "" {
 		if p, ok := c.SubjectPoolFor(model, kind, endpoint); ok {
 			return p.HealthURL == healthURL

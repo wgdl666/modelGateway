@@ -28,6 +28,16 @@ type ModelInstance struct {
 	HealthURL string `json:"health_url,omitempty"`
 	// ArtifactDigest holds the value of the "artifact_digest" field.
 	ArtifactDigest string `json:"artifact_digest,omitempty"`
+	// DeploymentID holds the value of the "deployment_id" field.
+	DeploymentID string `json:"deployment_id,omitempty"`
+	// WorkerID holds the value of the "worker_id" field.
+	WorkerID string `json:"worker_id,omitempty"`
+	// BootID holds the value of the "boot_id" field.
+	BootID string `json:"boot_id,omitempty"`
+	// LeaseExpiresAt holds the value of the "lease_expires_at" field.
+	LeaseExpiresAt *time.Time `json:"lease_expires_at,omitempty"`
+	// LifecycleDraining holds the value of the "lifecycle_draining" field.
+	LifecycleDraining bool `json:"lifecycle_draining,omitempty"`
 	// ResourceGroup holds the value of the "resource_group" field.
 	ResourceGroup string `json:"resource_group,omitempty"`
 	// GroupCapacityUnits holds the value of the "group_capacity_units" field.
@@ -60,13 +70,13 @@ func (*ModelInstance) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case modelinstance.FieldGpuDevices:
 			values[i] = new([]byte)
-		case modelinstance.FieldReady, modelinstance.FieldDraining:
+		case modelinstance.FieldLifecycleDraining, modelinstance.FieldReady, modelinstance.FieldDraining:
 			values[i] = new(sql.NullBool)
 		case modelinstance.FieldGroupCapacityUnits, modelinstance.FieldCapacityUnits:
 			values[i] = new(sql.NullInt64)
-		case modelinstance.FieldID, modelinstance.FieldModelKey, modelinstance.FieldProtocol, modelinstance.FieldEndpoint, modelinstance.FieldHealthURL, modelinstance.FieldArtifactDigest, modelinstance.FieldResourceGroup, modelinstance.FieldMachineID:
+		case modelinstance.FieldID, modelinstance.FieldModelKey, modelinstance.FieldProtocol, modelinstance.FieldEndpoint, modelinstance.FieldHealthURL, modelinstance.FieldArtifactDigest, modelinstance.FieldDeploymentID, modelinstance.FieldWorkerID, modelinstance.FieldBootID, modelinstance.FieldResourceGroup, modelinstance.FieldMachineID:
 			values[i] = new(sql.NullString)
-		case modelinstance.FieldHealthCheckedAt, modelinstance.FieldDeletedAt, modelinstance.FieldCreatedAt, modelinstance.FieldUpdatedAt:
+		case modelinstance.FieldLeaseExpiresAt, modelinstance.FieldHealthCheckedAt, modelinstance.FieldDeletedAt, modelinstance.FieldCreatedAt, modelinstance.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -118,6 +128,37 @@ func (_m *ModelInstance) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field artifact_digest", values[i])
 			} else if value.Valid {
 				_m.ArtifactDigest = value.String
+			}
+		case modelinstance.FieldDeploymentID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field deployment_id", values[i])
+			} else if value.Valid {
+				_m.DeploymentID = value.String
+			}
+		case modelinstance.FieldWorkerID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field worker_id", values[i])
+			} else if value.Valid {
+				_m.WorkerID = value.String
+			}
+		case modelinstance.FieldBootID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field boot_id", values[i])
+			} else if value.Valid {
+				_m.BootID = value.String
+			}
+		case modelinstance.FieldLeaseExpiresAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field lease_expires_at", values[i])
+			} else if value.Valid {
+				_m.LeaseExpiresAt = new(time.Time)
+				*_m.LeaseExpiresAt = value.Time
+			}
+		case modelinstance.FieldLifecycleDraining:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field lifecycle_draining", values[i])
+			} else if value.Valid {
+				_m.LifecycleDraining = value.Bool
 			}
 		case modelinstance.FieldResourceGroup:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -238,6 +279,23 @@ func (_m *ModelInstance) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("artifact_digest=")
 	builder.WriteString(_m.ArtifactDigest)
+	builder.WriteString(", ")
+	builder.WriteString("deployment_id=")
+	builder.WriteString(_m.DeploymentID)
+	builder.WriteString(", ")
+	builder.WriteString("worker_id=")
+	builder.WriteString(_m.WorkerID)
+	builder.WriteString(", ")
+	builder.WriteString("boot_id=")
+	builder.WriteString(_m.BootID)
+	builder.WriteString(", ")
+	if v := _m.LeaseExpiresAt; v != nil {
+		builder.WriteString("lease_expires_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("lifecycle_draining=")
+	builder.WriteString(fmt.Sprintf("%v", _m.LifecycleDraining))
 	builder.WriteString(", ")
 	builder.WriteString("resource_group=")
 	builder.WriteString(_m.ResourceGroup)

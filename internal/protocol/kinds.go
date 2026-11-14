@@ -19,7 +19,7 @@ const (
 
 func MediaProtocol(kind string) bool {
 	switch kind {
-	case WardrobeProtocol, ClothGenProtocol, OutfitProtocol, BodyProtocol, VideoProtocol:
+	case ImageGenerationProtocol, VideoGenerationProtocol, WardrobeProtocol, ClothGenProtocol, OutfitProtocol, BodyProtocol, VideoProtocol:
 		return true
 	default:
 		return false

@@ -36,8 +36,12 @@ func (s *Store) CreateResourceGroup(ctx context.Context, id, machineID string, g
 }
 
 func (s *Store) UpdateResourceGroupCapacity(ctx context.Context, id string, capacity int) (*ent.ResourceGroup, error) {
-	// 更新只修改上限。派发事务锁同一组记录，在途槽位继续由请求账本持有。
-	group, err := s.db.ResourceGroup.UpdateOneID(id).SetCapacityUnits(capacity).Save(ctx)
+	var group *ent.ResourceGroup
+	err := s.serialize(ctx, func(tx *ent.Tx) error {
+		var err error
+		group, err = tx.ResourceGroup.UpdateOneID(id).SetCapacityUnits(capacity).Save(ctx)
+		return err
+	})
 	if ent.IsNotFound(err) {
 		return nil, ErrResourceGroupNotFound
 	}
