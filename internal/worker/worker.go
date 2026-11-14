@@ -141,6 +141,9 @@ func (w *Reconciler) modelHTTP(req *http.Request, nativeSubmission bool) (*http.
 		if req.Method == http.MethodPost && resp.StatusCode == http.StatusTooManyRequests && workerBusyBeforeExecution(resp.Body) {
 			return nil, errWorkerBusyBeforeExecution
 		}
+		if detail := readModelValidationError(resp); detail != nil {
+			return nil, detail
+		}
 		return nil, modelStatusError(resp.StatusCode)
 	}
 	return resp, nil
@@ -219,12 +222,12 @@ func (w *Reconciler) dispatchError(task *ent.Request, err error) error {
 		// 参数、鉴权和其他明确的 4xx 拒绝不靠重复派发恢复。
 		switch status {
 		case 400, 413, 415:
-			return w.failDispatch(task, 400, "model_rejected", "model rejected the request before admission", false)
+			return w.failDispatch(task, 400, "model_rejected", modelValidationMessage(err, "model rejected the request before admission"), false)
 		case 401, 403:
 			return w.failDispatch(task, 502, "model_authentication_failed", "model rejected the gateway credential", false)
 		}
 		if status >= 400 && status < 500 {
-			return w.failDispatch(task, 502, "model_rejected", "model rejected the request", false)
+			return w.failDispatch(task, 502, "model_rejected", modelValidationMessage(err, "model rejected the request"), false)
 		}
 	}
 	// 网络错误、执行超时和 5xx 都归还网关名额后回 MQ；Worker 负责实际 GPU 并发。

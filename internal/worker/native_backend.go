@@ -297,7 +297,7 @@ func (w *Reconciler) executeNative(ctx context.Context, cfg *config.Snapshot, ta
 		// 带明确未执行声明的忙响应交给通用派发逻辑，普通拒绝沿用原生接口的失败路径。
 		var status modelStatusError
 		if errors.As(err, &status) && (status == 422 || status == 429) {
-			return w.failDispatch(task, 502, "model_rejected", "native model rejected the request before execution", false)
+			return w.failDispatch(task, 502, "model_rejected", modelValidationMessage(err, "native model rejected the request before execution"), false)
 		}
 		return w.dispatchError(task, err)
 	}

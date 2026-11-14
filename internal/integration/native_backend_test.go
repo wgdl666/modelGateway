@@ -99,6 +99,11 @@ func testNativeBackendsThroughGateway(t *testing.T, byModel bool, kind string) {
 				case "POST /v2/images/" + route:
 					imageCalls.Add(1)
 					switch r.FormValue(triggerField) {
+					case "invalid-prompt":
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusBadRequest)
+						_, _ = io.WriteString(w, `{"error":{"code":"invalid_request","field":"prompt","message":"Must be at most 32000 characters (received 32001)"}}`)
+						return
 					case "reject":
 						w.WriteHeader(http.StatusUnprocessableEntity)
 						return
@@ -415,6 +420,22 @@ func testNativeBackendsThroughGateway(t *testing.T, byModel bool, kind string) {
 				t.Fatalf("busy GPU1 was dispatched %d times, want 2", video1Calls.Load())
 			}
 
+			if kind == protocol.OutfitProtocol {
+				id := uuid.NewString()
+				badBody := strings.Replace(imageBody, triggerValue, "invalid-prompt", 1)
+				callsBefore := imageCalls.Load()
+				for range 2 {
+					response := call(http.MethodPost, imagePath, apiToken, id, badBody, 400)
+					if response.Error == nil || response.Error.Message != "prompt: Must be at most 32000 characters (received 32001)" {
+						t.Fatalf("lost concrete validation error: %+v", response.Error)
+					}
+				}
+				row, err := db.Request.Get(t.Context(), id)
+				if err != nil || row.SlotReserved || row.ErrorCode != "model_rejected" ||
+					row.ErrorMessage != "prompt: Must be at most 32000 characters (received 32001)" || imageCalls.Load() != callsBefore+1 {
+					t.Fatalf("validation was lost, retried or leaked capacity: %v (%v)", row, err)
+				}
+			}
 			if provider == "oss" {
 				for _, rejection := range []struct{ prompt, code string }{
 					{"reject", "model_rejected"},
