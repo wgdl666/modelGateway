@@ -107,3 +107,65 @@ func TestRequestStatsSummarizesModelsAndFailures(t *testing.T) {
 		t.Fatalf("stats response %s err=%v", raw, err)
 	}
 }
+
+func TestRequestStatsRetirementRequiresExplicitCleanup(t *testing.T) {
+	s, _, db := stores(t)
+	ctx := t.Context()
+	now := time.Now().UTC()
+	from, to := now.Add(-time.Hour), now.Add(time.Minute)
+	names := []string{"retired", "paused", "unhealthy", "mixed", "unknown", "queued", "processing", "held"}
+	ids := map[string]string{}
+	for _, name := range names {
+		id := uuid.NewString()
+		ids[name] = id
+		if name != "unknown" {
+			row, err := db.ModelInstance.Create().SetID(id).SetModelKey(name).SetProtocol("image_generation").
+				SetEndpoint("http://127.0.0.1:8001").SetHealthURL("http://127.0.0.1:8001/health").
+				SetArtifactDigest("test-artifact").SetResourceGroup("host/gpu0").SetGroupCapacityUnits(1).SetCapacityUnits(1).
+				SetDraining(name != "unhealthy").SetReady(false).SetHealthCheckedAt(now.Add(-time.Minute)).Save(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if name != "paused" && name != "unhealthy" {
+				if err := s.ClearInstance(ctx, row.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if _, err := db.Request.Create().SetID(uuid.NewString()).SetModelKey(name).SetProtocol("image_generation").
+			SetRequestPayload(json.RawMessage(`{}`)).SetPayloadBytes(2).SetUnits(1).SetState(request.StateSucceeded).
+			SetCreatedAt(now).SetDeadlineAt(to).SetStartedAt(now).SetFinishedAt(now).SetInstanceID(id).Save(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 旧实例退役后存在新的未就绪登记，仍须作为正在服务的模型暴露异常。
+	if _, err := db.ModelInstance.Create().SetID(uuid.NewString()).SetModelKey("mixed").SetProtocol("image_generation").
+		SetEndpoint("http://127.0.0.1:8002").SetHealthURL("http://127.0.0.1:8002/health").
+		SetArtifactDigest("test-artifact").SetResourceGroup("host/gpu0").SetGroupCapacityUnits(1).SetCapacityUnits(1).Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// 窗口外积压和失败后仍占槽均阻止隐藏，不能仅看窗口内的成功率。
+	for name, state := range map[string]request.State{"queued": request.StateQueued, "processing": request.StateProcessing, "held": request.StateFailed} {
+		if _, err := db.Request.Create().SetID(uuid.NewString()).SetModelKey(name).SetProtocol("image_generation").
+			SetRequestPayload(json.RawMessage(`{}`)).SetPayloadBytes(2).SetUnits(1).SetState(state).
+			SetCreatedAt(from.Add(-time.Hour)).SetDeadlineAt(to).SetInstanceID(ids[name]).SetResourceGroup("host/gpu0").SetEndpoint("http://127.0.0.1:8001").SetSlotReserved(name == "held").Save(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stats, err := s.RequestStats(ctx, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats.Models) != len(names) {
+		t.Fatalf("history models lost: %+v", stats.Models)
+	}
+	for _, m := range stats.Models {
+		if m.Retired != (m.ModelKey == "retired") || m.Total != 1 || m.Succeeded != 1 {
+			t.Errorf("unexpected lifecycle or history: %+v", m)
+		}
+	}
+	rows, total, err := s.ListRequests(ctx, store.RequestFilter{Model: "retired", Limit: 100})
+	if err != nil || total != 1 || len(rows) != 1 || rows[0].InstanceID != ids["retired"] {
+		t.Fatalf("request history lost: %v %v %v", rows, total, err)
+	}
+}

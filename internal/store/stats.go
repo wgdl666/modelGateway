@@ -11,6 +11,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 
 	"github.com/wgdl666/modelGateway/ent"
+	"github.com/wgdl666/modelGateway/ent/modelinstance"
 	"github.com/wgdl666/modelGateway/ent/predicate"
 	"github.com/wgdl666/modelGateway/ent/request"
 )
@@ -23,6 +24,7 @@ const StatsFailureLimit = 20
 
 type ModelStats struct {
 	ModelKey     string   `json:"model_key"`
+	Retired      bool     `json:"retired"`
 	Total        int      `json:"total"`
 	Succeeded    int      `json:"succeeded"`
 	Failed       int      `json:"failed"`
@@ -140,6 +142,34 @@ func (s *Store) RequestStats(ctx context.Context, from, to time.Time) (*RequestS
 			item.Queued = row.Count
 		} else {
 			item.Processing = row.Count
+		}
+	}
+
+	// 仅全部登记已明确软删除的模型可退役；暂停、不健康或从未登记都不能推断为退役。
+	var registrations []struct {
+		ModelKey string `json:"model_key"`
+		Retired  bool   `json:"retired"`
+	}
+	if err := s.db.ModelInstance.Query().GroupBy(modelinstance.FieldModelKey).
+		Aggregate(ent.As(raw("bool_and(deleted_at IS NOT NULL)"), "retired")).Scan(ctx, &registrations); err != nil {
+		return nil, err
+	}
+	for _, row := range registrations {
+		if item := models[row.ModelKey]; item != nil {
+			item.Retired = row.Retired && item.Queued == 0 && item.Processing == 0
+		}
+	}
+	// 终态请求仍可能持有后端执行槽位，不能因前端已收到失败就隐藏这类异常。
+	var held []struct {
+		ModelKey string `json:"model_key"`
+	}
+	if err := s.db.Request.Query().Where(request.SlotReservedEQ(true)).
+		GroupBy(request.FieldModelKey).Scan(ctx, &held); err != nil {
+		return nil, err
+	}
+	for _, row := range held {
+		if item := models[row.ModelKey]; item != nil {
+			item.Retired = false
 		}
 	}
 
