@@ -215,7 +215,7 @@ func (s *Server) writeOpenAIImage(ctx context.Context, c *app.RequestContext, id
 	var total int64
 	for index, file := range view.Result.Files {
 		mimeType := protocol.OutputMIME(file.Key)
-		if mimeType == "" || mimeType == "video/mp4" || !protocol.MatchesOutputKey(id, index, file.Key) {
+		if !allowedInputMIME(mimeType) || !protocol.MatchesOutputKey(id, index, file.Key) {
 			writeError(c, 502, "result_unavailable", "cannot publish image result", id)
 			return
 		}

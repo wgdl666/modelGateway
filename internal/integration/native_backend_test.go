@@ -72,6 +72,7 @@ func testNativeBackendsThroughGateway(t *testing.T, byModel bool, kind string) {
 			png := []byte("\x89PNG\r\n\x1a\nimage")
 			videos := [2][]byte{[]byte("video from gpu0"), []byte("video from gpu1")}
 			imageID := uuid.NewString()
+			videoFormats := [2]string{"mp4", "webm"}
 			videoIDs := [2]string{uuid.NewString(), uuid.NewString()}
 			jobIDs := [2]string{"ltx-job-0", "ltx-job-1"}
 			imagePrefix := ""
@@ -166,7 +167,7 @@ func testNativeBackendsThroughGateway(t *testing.T, byModel bool, kind string) {
 					}
 					_, _ = fmt.Fprintf(w, `{"ready":true,"instances":[{"name":"ltx-gpu%d","gpus":[%d]}]}`, reportedGPU, reportedGPU)
 				case "POST /vton":
-					if r.FormValue("motion_tips") != "turn" || r.Header.Get("X-Gateway-Request-ID") != videoIDs[gpu] ||
+					if r.FormValue("transparent_background") != [2]string{"", "true"}[gpu] || r.FormValue("motion_tips") != "turn" || r.Header.Get("X-Gateway-Request-ID") != videoIDs[gpu] ||
 						r.Header.Get("X-Gateway-Dispatch") != "immediate" {
 						t.Errorf("video request was dispatched to the wrong GPU or lost its business fields: %s", r.URL.Path)
 					}
@@ -200,6 +201,7 @@ func testNativeBackendsThroughGateway(t *testing.T, byModel bool, kind string) {
 					}
 					_ = json.NewEncoder(w).Encode(map[string]any{"job_id": jobIDs[gpu], "status": status, "generation": json.RawMessage(strings.Replace(string(generation), `"output_format":"png"`, `"output_format":"mp4"`, 1))})
 				case "GET /jobs/" + jobIDs[gpu] + "/video":
+					w.Header().Set("Content-Type", "video/"+videoFormats[gpu])
 					_, _ = w.Write(videos[gpu])
 				default:
 					t.Errorf("unexpected video call %s %s", r.Method, r.URL.Path)
@@ -221,12 +223,12 @@ func testNativeBackendsThroughGateway(t *testing.T, byModel bool, kind string) {
 						t.Error("uploaded image did not match model output")
 					}
 				case "/" + bucket + "/outputs/" + videoIDs[0] + "/0.mp4",
-					"/" + bucket + "/outputs/" + videoIDs[1] + "/0.mp4":
+					"/" + bucket + "/outputs/" + videoIDs[1] + "/0.webm":
 					gpu := 0
 					if strings.Contains(r.URL.Path, videoIDs[1]) {
 						gpu = 1
 					}
-					if !bytes.Equal(body, videos[gpu]) || r.Header.Get("Content-Type") != "video/mp4" {
+					if !bytes.Equal(body, videos[gpu]) || r.Header.Get("Content-Type") != "video/"+videoFormats[gpu] {
 						t.Error("uploaded video did not come from the reserved GPU")
 					}
 				default:
@@ -395,14 +397,15 @@ func testNativeBackendsThroughGateway(t *testing.T, byModel bool, kind string) {
 				row, err := db.Request.Get(t.Context(), videoIDs[0])
 				return err == nil && row.InstanceID == videoSpecs[0].ID && row.BackendTaskID == jobIDs[0]
 			})
-			call(http.MethodPost, videoPath, apiToken, videoIDs[1], videoBody, 202)
+			transparentBody := strings.Replace(videoBody, `"motion_tips"`, `"transparent_background":true,"motion_tips"`, 1)
+			call(http.MethodPost, videoPath, apiToken, videoIDs[1], transparentBody, 202)
 			for gpu, id := range videoIDs {
 				var response protocol.Response
 				waitForNativeTest(t, "video terminal response", func() bool {
 					response = call(http.MethodGet, "/v1/gateway/requests", apiToken, id, "", 200)
 					return response.State == "succeeded" || response.State == "failed"
 				})
-				assertResult(response, id, "0.mp4")
+				assertResult(response, id, "0."+videoFormats[gpu])
 				assertReceipt(response)
 				if response.Result.Generation.Retries.GatewayDispatch.Count != gpu {
 					t.Fatalf("unexpected retry count for gpu%d: %+v", gpu, response.Result.Generation.Retries)

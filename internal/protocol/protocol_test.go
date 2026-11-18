@@ -30,8 +30,12 @@ func TestPreviewKeepsBusinessFieldsAndImageRoles(t *testing.T) {
 	if !MatchesOutputKey(id, 0, key) || OutputMIME(key) != "image/png" || MatchesOutputKey(id, 1, key) || MatchesOutputKey(id, 0, id+"/result") || MatchesOutputKey(id, 1, "outputs/"+id+"/10.png") {
 		t.Fatalf("output key check failed for %s", key)
 	}
-	files := OutputMedia([]Object{{Key: key}, {Key: id + "/result"}, {Key: "outputs/" + id + "/0.mp4"}})
-	if len(files) != 2 || files[0].Index != 0 || files[1].Index != 2 || files[1].MIMEType != "video/mp4" {
+	webm := "outputs/" + id + "/3.webm"
+	if !MatchesOutputKey(id, 3, webm) {
+		t.Fatal("transparent video key was rejected")
+	}
+	files := OutputMedia([]Object{{Key: key}, {Key: id + "/result"}, {Key: "outputs/" + id + "/0.mp4"}, {Key: webm}})
+	if len(files) != 3 || files[2].MIMEType != "video/webm" || files[2].Index != 3 || files[0].Index != 0 || files[1].Index != 2 || files[1].MIMEType != "video/mp4" {
 		t.Fatalf("output media = %+v", files)
 	}
 }

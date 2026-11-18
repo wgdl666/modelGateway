@@ -148,6 +148,8 @@ func OutputMIME(key string) string {
 		return "image/png"
 	case strings.HasSuffix(key, ".webp"):
 		return "image/webp"
+	case strings.HasSuffix(key, ".webm"):
+		return "video/webm"
 	case strings.HasSuffix(key, ".mp4"):
 		return "video/mp4"
 	default:

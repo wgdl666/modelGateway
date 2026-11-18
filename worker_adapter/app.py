@@ -345,8 +345,10 @@ class Adapter:
                 if not size:
                     raise ValueError("empty video result")
                 body.seek(0)
-                key = f"outputs/{row['request_id']}/0.mp4"
-                result = await asyncio.to_thread(self.objects.put, key, "video/mp4", body)
+                mime = response.headers.get("content-type", "").partition(";")[0].strip().lower()
+                suffix = "webm" if mime == "video/webm" else "mp4"
+                key = f"outputs/{row['request_id']}/0.{suffix}"
+                result = await asyncio.to_thread(self.objects.put, key, f"video/{suffix}", body)
             published = {"files": [result]}
             if generation := compact_generation(generation):
                 published["generation"] = generation

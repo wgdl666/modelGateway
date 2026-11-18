@@ -29,6 +29,8 @@
 
 同模型多个实例保留重复 schema。管理凭据调用 `PUT /v1/admin/models/{model_key}/schema`，请求 `{"input_schema":{...}}`，在一个事务里更新该模型全部登记；新副本继承已有定义，不按协议重置。业务协议首次登记可提交 input_schema，省略时使用协议种子；`image_generation` / `video_generation` 首次登记必须显式提交模型 Schema。定义只允许文档内部 `$ref`，不加载远程或本机文件。
 
+支持透明输出的环境应先更新网关和视频执行端，再执行 [穿搭视频字段迁移](deploy/migrations/outfit-video-transparent-background.sql)，为已有模型登记增加该字段。
+
 **发布前先执行 [input_schema 迁移](deploy/migrations/model-input-schema.sql)**，回填已有 13 种协议的初始契约；已有自定义定义不会被覆盖。种子用于迁移和首次登记，运行时缺少定义返回 503。`x-category` 提供目录类别；`x-experimental-properties` 只对实验凭据展开，对外 schema 与当前凭据实际校验规则一致。
 
 对话 input 使用 OpenAI-compatible JSON（模型由路径指定），响应仍是原生 JSON/SSE；视觉 input 使用 JSON 和 Base64 内联图片，由 Gateway 编码成上游 multipart/JSON，响应保持原生 JSON/图片。OpenAI-compatible 种子保留扩展字段，具体模型的参数支持范围可由管理员在模型定义中收紧；schema 通过不替代上游模型的语义校验。媒体生成仍使用下面的任务结果格式。生成整合阶段继续保留 `/v1/chat/completions`、`/v1/vision/...` 和 `/v1/decision/predict`，沿用原鉴权、上传限制、实例路由与账本。视觉/对话调用方的迁移及旧入口删除另行发布。
@@ -50,7 +52,7 @@
 | `Vmind_cloth_gen_v1.0` | 商品图 | 单件原图、衣物名称和可选角色。 |
 | `Vmind_outfit_v1.0` | 试衣 | 人物图、衣物图和提示词。 |
 | `Vmind_bodymodel_v1.0` | 体模 | 人物图与性别。 |
-| `Vmind_outfit_video_v1.0` | 试衣视频 | 首帧、提示词和可选动作参数。 |
+| `Vmind_outfit_video_v1.0` | 试衣视频 | 首帧、提示词和可选动作参数。可选布尔字段 `transparent_background` 为 true 时返回透明 WebM，省略或 false 返回 MP4。 |
 
 实验凭据 `MODEL_GATEWAY_EXPERIMENTAL_TOKEN` 可选，未设置时关闭。它具备 API 凭据的全部权限（含历史请求及输入输出读取），不能访问其他管理接口；受理时在上表业务字段之外，额外放行以下生成参数，原样转发给模型服务。生产凭据仍按服务端默认值执行，传入这些字段返回 400。
 

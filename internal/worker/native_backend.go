@@ -449,6 +449,11 @@ func (w *Reconciler) publishNativeVideo(ctx context.Context, results *resultUplo
 	if _, err := body.Seek(0, io.SeekStart); err != nil {
 		return protocol.Object{}, err
 	}
+	// Older video workers can omit Content-Type on MP4 downloads.
+	contentType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if contentType == "video/webm" {
+		return results.upload(ctx, "outputs/"+id+"/0.webm", contentType, body, size)
+	}
 	return results.upload(ctx, "outputs/"+id+"/0.mp4", "video/mp4", body, size)
 }
 

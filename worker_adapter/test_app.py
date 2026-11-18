@@ -123,6 +123,22 @@ class ModelKeyWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved["state"],"succeeded")
         self.assertEqual(saved["result"]["generation"]["parameters"]["stage_steps"],[8,3])
 
+    async def test_webm_publication_uses_response_type(self):
+        async def download(request):
+            return httpx.Response(200, content=b"webm", headers={"Content-Type": "video/webm"})
+
+        def upload(key, mime, stream):
+            self.assertTrue(key.endswith("/0.webm"))
+            self.assertEqual((mime, stream.read()), ("video/webm", b"webm"))
+            return {"key": key}
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(download)) as client:
+            self.worker.http = client
+            self.worker.objects = SimpleNamespace(put=upload)
+            row = {"request_id": str(uuid4()), "state": "processing", "sent": True}
+            await self.worker.publish_video(row, "transparent")
+            self.assertEqual(row["state"], "succeeded")
+
     async def test_ready_reports_the_running_worker_artifact(self):
         result = await self.client.get("/health/ready")
         self.assertEqual(result.status_code, 200)

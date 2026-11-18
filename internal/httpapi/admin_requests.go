@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -215,7 +216,7 @@ func (s *Server) objectReader(cfg *config.Snapshot) (objectReader, error) {
 }
 
 func mediaLimit(mime string) int64 {
-	if mime == "video/mp4" {
+	if strings.HasPrefix(mime, "video/") {
 		return maxVideoBytes
 	}
 	return maxImageBytes
