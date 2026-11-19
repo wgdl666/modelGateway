@@ -31,6 +31,8 @@
 
 支持透明输出的环境应先更新网关和视频执行端，再执行 [穿搭视频字段迁移](deploy/migrations/outfit-video-transparent-background.sql)，为已有模型登记增加该字段。
 
+在所有可调度的 Qwen 试衣和体模执行端都支持 RGBA 后，可在对应环境执行 [图片透明字段迁移](deploy/migrations/qwen-business-transparent-background.sql)。两种图片业务的 `input.transparent_background` 为 true 时返回透明背景 PNG，省略或为 false 时返回 RGB PNG。
+
 **发布前先执行 [input_schema 迁移](deploy/migrations/model-input-schema.sql)**，回填已有 13 种协议的初始契约；已有自定义定义不会被覆盖。种子用于迁移和首次登记，运行时缺少定义返回 503。`x-category` 提供目录类别；`x-experimental-properties` 只对实验凭据展开，对外 schema 与当前凭据实际校验规则一致。
 
 对话 input 使用 OpenAI-compatible JSON（模型由路径指定），响应仍是原生 JSON/SSE；视觉 input 使用 JSON 和 Base64 内联图片，由 Gateway 编码成上游 multipart/JSON，响应保持原生 JSON/图片。OpenAI-compatible 种子保留扩展字段，具体模型的参数支持范围可由管理员在模型定义中收紧；schema 通过不替代上游模型的语义校验。媒体生成仍使用下面的任务结果格式。生成整合阶段继续保留 `/v1/chat/completions`、`/v1/vision/...` 和 `/v1/decision/predict`，沿用原鉴权、上传限制、实例路由与账本。视觉/对话调用方的迁移及旧入口删除另行发布。
