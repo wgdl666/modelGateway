@@ -225,6 +225,18 @@ func storeError(c *app.RequestContext, err error, id string) {
 }
 
 func readBody(c *app.RequestContext, limit int64, value any, id string) ([]byte, bool) {
+	raw, ok := readJSONPayload(c, limit, id)
+	if !ok {
+		return nil, false
+	}
+	if protocol.DecodeJSON(raw, value) != nil {
+		writeError(c, 400, "invalid_json", "invalid JSON request body", id)
+		return nil, false
+	}
+	return raw, true
+}
+
+func readJSONPayload(c *app.RequestContext, limit int64, id string) ([]byte, bool) {
 	mimeType, _, _ := mime.ParseMediaType(string(c.GetHeader("Content-Type")))
 	if mimeType != "application/json" {
 		c.SetConnectionClose()
@@ -237,7 +249,7 @@ func readBody(c *app.RequestContext, limit int64, value any, id string) ([]byte,
 		writeError(c, 413, "request_too_large", "request exceeds its size limit", id)
 		return nil, false
 	}
-	if err != nil || protocol.DecodeJSON(raw, value) != nil {
+	if err != nil {
 		writeError(c, 400, "invalid_json", "invalid JSON request body", id)
 		return nil, false
 	}
@@ -417,13 +429,20 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	cfg := requestConfig(ctx)
+	if !protocol.MediaProtocol(kind) {
+		input, fields, ok := s.readSynchronousSubmission(ctx, c, definition, cfg.MaxBodyBytes, id)
+		if ok {
+			s.submitSynchronousInput(ctx, c, model, kind, input.Input, fields, input.Metadata)
+		}
+		return
+	}
 	var input protocol.Submission
 	if _, ok := readBody(c, cfg.MaxBodyBytes, &input, id); !ok {
 		<-s.uploads
 		return
 	}
 	// 模型存在性、输出能力和具体字段在同一次受理内校验，不依赖调用方预查询。
-	if input.Output != "" && (!protocol.MediaProtocol(kind) || ((input.Output != "image" && input.Output != "video") || (input.Output == "video") != protocol.VideoOutput(kind))) {
+	if input.Output != "" && ((input.Output != "image" && input.Output != "video") || (input.Output == "video") != protocol.VideoOutput(kind)) {
 		<-s.uploads
 		writeError(c, 400, "invalid_protocol", "model protocol does not match the requested output", id)
 		return
@@ -439,15 +458,10 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 		}
 		input.Input = normalized
 	}
-	fields, extra, err := validateAdmission(ctx, c, definition, &input)
+	_, extra, err := validateAdmission(ctx, c, definition, &input)
 	if err != nil {
 		<-s.uploads
 		writeError(c, 400, "invalid_input", err.Error(), id)
-		return
-	}
-	if !protocol.MediaProtocol(kind) {
-		<-s.uploads
-		s.submitSynchronousInput(ctx, c, model, kind, input.Input, fields, input.Metadata)
 		return
 	}
 	task, ok := s.admitMedia(ctx, c, id, model, kind, input, extra)
@@ -461,8 +475,7 @@ func (s *Server) submit(ctx context.Context, c *app.RequestContext) {
 	s.waitImage(ctx, c, id)
 }
 
-// validateAdmission is shared by the unified and OpenAI transports. Model schemas
-// govern both paths; protocol checks only enforce the executor's wire contract.
+// validateAdmission handles media requests from the unified and OpenAI transports.
 func validateAdmission(ctx context.Context, c *app.RequestContext, definition store.ModelDefinition, input *protocol.Submission) (map[string]any, []byte, error) {
 	fields, err := inputschema.Validate(definition.InputSchema, input.Input, c.GetBool(experimentalCredential))
 	if err != nil {

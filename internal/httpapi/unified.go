@@ -5,14 +5,99 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"strings"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/wgdl666/modelGateway/internal/inputschema"
 	"github.com/wgdl666/modelGateway/internal/protocol"
+	"github.com/wgdl666/modelGateway/internal/store"
 )
+
+func (s *Server) readSynchronousSubmission(ctx context.Context, c *app.RequestContext, definition store.ModelDefinition, limit int64, id string) (protocol.Submission, map[string]any, bool) {
+	defer func() { <-s.uploads }()
+	raw, ok := readJSONPayload(c, limit, id)
+	if !ok {
+		return protocol.Submission{}, nil, false
+	}
+	input, value, err := decodeSynchronousSubmission(raw)
+	if err != nil {
+		writeError(c, 400, "invalid_json", "invalid JSON request body", id)
+		return protocol.Submission{}, nil, false
+	}
+	if input.Output != "" {
+		writeError(c, 400, "invalid_protocol", "model protocol does not match the requested output", id)
+		return protocol.Submission{}, nil, false
+	}
+	fields, err := inputschema.ValidateValue(definition.InputSchema, value, c.GetBool(experimentalCredential))
+	if err == nil {
+		input.Metadata, err = freezeMetadata(ctx, c, input.Metadata)
+	}
+	if err != nil {
+		writeError(c, 400, "invalid_input", err.Error(), id)
+		return protocol.Submission{}, nil, false
+	}
+	return input, fields, true
+}
+
+// Decode the input once for schema validation. The original value is a slice of
+// the request bytes so JSON vision executors and their request digests stay identical.
+func decodeSynchronousSubmission(raw []byte) (protocol.Submission, any, error) {
+	var input protocol.Submission
+	var value any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	decoder.DisallowUnknownFields()
+	first, err := decoder.Token()
+	if err != nil {
+		return input, nil, err
+	}
+	switch first {
+	case json.Delim('{'):
+		for decoder.More() {
+			token, err := decoder.Token()
+			if err != nil {
+				return input, nil, err
+			}
+			key := token.(string)
+			switch {
+			case strings.EqualFold(key, "input"):
+				start := decoder.InputOffset()
+				if err := decoder.Decode(&value); err != nil {
+					return input, nil, err
+				}
+				// Decode has consumed the colon and checked the value's JSON syntax.
+				_, data, _ := bytes.Cut(raw[start:decoder.InputOffset()], []byte(":"))
+				input.Input = bytes.TrimSpace(data)
+			case strings.EqualFold(key, "output"):
+				if err := decoder.Decode(&input.Output); err != nil {
+					return input, nil, err
+				}
+			case strings.EqualFold(key, "metadata"):
+				if err := decoder.Decode(&input.Metadata); err != nil {
+					return input, nil, err
+				}
+			default:
+				return input, nil, fmt.Errorf("unknown request field %q", key)
+			}
+		}
+		if _, err := decoder.Token(); err != nil {
+			return input, nil, err
+		}
+	case nil:
+		// An absent input is rejected by the schema.
+	default:
+		return input, nil, errors.New("expected a JSON object")
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return input, nil, errors.New("expected one JSON value")
+	}
+	return input, value, nil
+}
 
 // 统一入口只做契约校验与编码分派，受理、占槽及终态仍由原执行路径处理。
 func (s *Server) submitSynchronousInput(ctx context.Context, c *app.RequestContext, model, kind string, raw json.RawMessage, fields map[string]any, metadata protocol.Metadata) {

@@ -96,15 +96,20 @@ func CheckDefinition(raw json.RawMessage) error {
 
 // Validate 返回已校验的对象，执行编码复用它，不再重新解析大图片 JSON。
 func Validate(raw, input json.RawMessage, experimental bool) (map[string]any, error) {
+	value, err := jsonschema.UnmarshalJSON(bytes.NewReader(input))
+	if err != nil {
+		return nil, err
+	}
+	return ValidateValue(raw, value, experimental)
+}
+
+// ValidateValue validates a decoded JSON value. Decode numbers as json.Number.
+func ValidateValue(raw json.RawMessage, value any, experimental bool) (map[string]any, error) {
 	effective, err := Effective(raw, experimental)
 	if err != nil {
 		return nil, err
 	}
 	schema, err := Compile(effective)
-	if err != nil {
-		return nil, err
-	}
-	value, err := jsonschema.UnmarshalJSON(bytes.NewReader(input))
 	if err != nil {
 		return nil, err
 	}
