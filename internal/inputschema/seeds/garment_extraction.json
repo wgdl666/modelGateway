@@ -80,6 +80,11 @@
         "normalized_xyxy"
       ]
     },
+    "bbox_only": {
+      "type": "boolean",
+      "default": true,
+      "description": "默认仅使用裁切图。false 时依次使用原图、裁切图。"
+    },
     "parse_labels": {
       "type": "object",
       "additionalProperties": {

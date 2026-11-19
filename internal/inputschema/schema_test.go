@@ -58,6 +58,8 @@ func TestMediaSchemasMatchNativeInputs(t *testing.T) {
 		{"cloth multiline name", "product_generation", oneImage, `,"garment_name":"shirt\ncoat"`, false, false},
 		{"cloth invalid role", "product_generation", oneImage, `,"garment_name":"shirt","garment_role":"feet"`, false, false},
 		{"wardrobe bbox", "garment_extraction", oneImage, `,"garment_name":"shirt","bbox":[0,0,1,1],"bbox_format":"normalized_xyxy"`, false, true},
+		{"wardrobe dual view", "garment_extraction", oneImage, `,"garment_name":"shirt","bbox":[0,0,1,1],"bbox_only":false`, false, true},
+		{"wardrobe invalid bbox_only", "garment_extraction", oneImage, `,"garment_name":"shirt","bbox":[0,0,1,1],"bbox_only":"false"`, false, false},
 		{"wardrobe bbox missing name", "garment_extraction", oneImage, `,"bbox":[0,0,1,1]`, false, false},
 		{"wardrobe invalid bbox format", "garment_extraction", oneImage, `,"garment_name":"shirt","bbox":[0,0,1,1],"bbox_format":"xywh"`, false, false},
 		{"wardrobe mask", "garment_extraction", twoImages, `,"garment_name":"shirt","garment_role":"clothing::top/full","parse_labels":{"3":"top"}`, false, true},

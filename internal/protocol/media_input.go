@@ -36,13 +36,14 @@ func NormalizeMediaInput(kind string, input json.RawMessage) (json.RawMessage, e
 			Role        string            `json:"garment_role,omitempty"`
 			BBox        []float64         `json:"bbox,omitempty"`
 			BBoxFormat  string            `json:"bbox_format,omitempty"`
+			BBoxOnly    json.RawMessage   `json:"bbox_only,omitempty"`
 			ParseLabels map[string]string `json:"parse_labels,omitempty"`
 		}
 		if json.Unmarshal([]byte(text), &garment) != nil {
 			return nil, errors.New("garment text must be JSON metadata")
 		}
 		if kind == ClothGenProtocol {
-			if garment.BBox != nil || garment.ParseLabels != nil || garment.BBoxFormat != "" {
+			if garment.BBox != nil || garment.ParseLabels != nil || garment.BBoxFormat != "" || garment.BBoxOnly != nil {
 				return nil, errors.New("product generation cannot accept garment extraction fields")
 			}
 		}
@@ -55,6 +56,9 @@ func NormalizeMediaInput(kind string, input json.RawMessage) (json.RawMessage, e
 			if garment.BBoxFormat != "" {
 				fields["bbox_format"], _ = json.Marshal(garment.BBoxFormat)
 			}
+		}
+		if garment.BBoxOnly != nil {
+			fields["bbox_only"] = garment.BBoxOnly
 		}
 		if garment.ParseLabels != nil {
 			fields["parse_labels"], _ = json.Marshal(garment.ParseLabels)
