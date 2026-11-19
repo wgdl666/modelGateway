@@ -81,6 +81,16 @@
 
 管理接口 `GET /v1/vision/health` 继续用于视觉服务探测。
 
+## Embedding
+
+`embedding` 协议使用统一入口 `POST /v1/gateway/requests/{model_key}`，将 `input` 原样发送到已领取实例的 `/v1/embed`。同步返回原生 `embeddings`、`dim`、`count`、`latency_ms`，复用同步账本、物理 GPU 占槽和终态释放。
+
+文本示例：`{"input":{"inputs":["蓝色衬衫"],"dim":1024,"normalize":true}}`。图片项使用 `{"image":"data:image/png;base64,..."}`，可同时附带 `text`；不接受文件路径或远端图片 URL。首次登记继承 `embedding` Schema，管理员按模型原生维度设置 `dim.maximum`。
+
+每条实例登记必须指向固定 GPU 副本，不能把负载均衡入口伪装成单卡实例。`health_url` 必须为 `endpoint + "/health"`，HTTP 200 且 JSON `status` 为 `ok` 才就绪；地址仍受网关出站白名单约束。相同物理卡上的不同 Embedding 模型复用已有资源组。
+
+2B 与 8B 使用不同模型键；即使都返回 1024 维，也必须分别维护索引。
+
 ## 实例管理
 
 先在 Ops 的“GPU 资源组”页面建组，或用管理凭据调用 `POST /v1/resource-groups`。请求体示例为 `{"id":"g7e/gpu0","machine_id":"g7e-a","gpu_device":0,"capacity_units":1}`。同一机器上的同一物理卡只能建一个组。

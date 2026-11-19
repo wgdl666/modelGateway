@@ -37,7 +37,11 @@ func (w *Reconciler) ProbeInstance(ctx context.Context, cfg *config.Snapshot, ta
 		return protocol.InstanceHealth{Ready: w.readSubjectPoolHealth(ctx, cfg, p)}, nil
 	}
 	if kind := protocol.SynchronousKind(target.Protocol); kind != "" {
-		health := w.readSynchronousHealth(ctx, kind, cfg.SynchronousHealthURL(target.Protocol))
+		probe := cfg.SynchronousHealthURL(target.Protocol)
+		if kind == protocol.SyncEmbedding {
+			probe = target.HealthURL
+		}
+		health := w.readSynchronousHealth(ctx, kind, probe)
 		return protocol.InstanceHealth{Ready: health.ready(target.Protocol, target.Endpoint, 1)}, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)

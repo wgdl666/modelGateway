@@ -13,9 +13,10 @@ const (
 )
 
 const (
-	SyncVision   = "vision"
-	SyncDream    = "dream"
-	SyncDecision = "decision"
+	SyncEmbedding = "embedding"
+	SyncVision    = "vision"
+	SyncDream     = "dream"
+	SyncDecision  = "decision"
 )
 
 // VisionService 对应 G6 聚合探活的服务名。分人和分主体共用同一组执行副本。
@@ -39,6 +40,8 @@ func VisionService(kind string) string {
 // SynchronousKind 选择响应协议；同步模型与生成任务共用登记和容量账本。
 func SynchronousKind(kind string) string {
 	switch kind {
+	case EmbeddingProtocol:
+		return SyncEmbedding
 	case ChatProtocol:
 		return SyncDream
 	case DecisionProtocol:
@@ -53,5 +56,5 @@ func SynchronousKind(kind string) string {
 // SynchronousProtocols 用于把连接内执行与 MQ 执行分开，避免同一请求被两个执行器重复派发。
 func SynchronousProtocols() []string {
 	return []string{HumanParseProtocol, HumanYOLOProtocol, SegmentPersonProtocol, SegmentSubjectProtocol,
-		LensCorrectionProtocol, ChatProtocol, DecisionProtocol, FaceSimProtocol}
+		LensCorrectionProtocol, ChatProtocol, DecisionProtocol, FaceSimProtocol, EmbeddingProtocol}
 }

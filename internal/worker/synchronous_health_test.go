@@ -38,3 +38,15 @@ func TestSynchronousHealthUsesExecutionReplica(t *testing.T) {
 		t.Fatal("a partial aggregate must not identify a healthy Decision worker")
 	}
 }
+
+func TestEmbeddingHealthRequiresModelReadiness(t *testing.T) {
+	for _, body := range []string{`{"status":"ok"}`, `{"status":"loading"}`, ``} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, body) }))
+		reconciler := &Reconciler{client: server.Client()}
+		health := reconciler.readSynchronousHealth(t.Context(), protocol.SyncEmbedding, server.URL)
+		server.Close()
+		if health.ready(protocol.EmbeddingProtocol, server.URL, 1) != (body == `{"status":"ok"}`) {
+			t.Fatalf("unexpected readiness for %q", body)
+		}
+	}
+}

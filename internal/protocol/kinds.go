@@ -12,6 +12,7 @@ const (
 	SegmentPersonProtocol  = "segment_person"
 	SegmentSubjectProtocol = "segment_subject"
 	LensCorrectionProtocol = "lens_correction"
+	EmbeddingProtocol      = "embedding"
 	ChatProtocol           = "chat_completions"
 	DecisionProtocol       = "decision"
 	FaceSimProtocol        = "face_compare"

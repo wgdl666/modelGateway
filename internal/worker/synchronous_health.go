@@ -21,6 +21,7 @@ import (
 type synchronousHealth struct {
 	vision           map[string]upstreamhealth.VisionService
 	dreamReady       bool
+	embeddingReady   bool
 	decisionReplicas map[string]bool
 }
 
@@ -42,6 +43,13 @@ func (w *Reconciler) readSynchronousHealth(ctx context.Context, kind, healthURL 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return synchronousHealth{}
+	}
+	if kind == protocol.SyncEmbedding {
+		var health struct {
+			Status string `json:"status"`
+		}
+		err := json.NewDecoder(io.LimitReader(resp.Body, 8<<10)).Decode(&health)
+		return synchronousHealth{embeddingReady: err == nil && health.Status == "ok"}
 	}
 	if kind == protocol.SyncDream {
 		return synchronousHealth{dreamReady: true}
@@ -66,6 +74,8 @@ func (w *Reconciler) readSynchronousHealth(ctx context.Context, kind, healthURL 
 
 func (h synchronousHealth) ready(kind, endpoint string, _ int) bool {
 	switch kind {
+	case protocol.EmbeddingProtocol:
+		return h.embeddingReady
 	case protocol.ChatProtocol:
 		return h.dreamReady
 	case protocol.DecisionProtocol:
@@ -110,6 +120,9 @@ func (w *Reconciler) probeSynchronous(cfg *config.Snapshot) error {
 	for _, row := range rows {
 		if kind := protocol.SynchronousKind(row.Protocol); kind != "" {
 			key := kind
+			if row.Protocol == protocol.EmbeddingProtocol {
+				key += ":" + row.HealthURL
+			}
 			if _, pool := cfg.SubjectPoolFor(row.ModelKey, row.Protocol, row.Endpoint); pool {
 				key = "subject_pool:" + row.Endpoint
 			}
@@ -118,15 +131,20 @@ func (w *Reconciler) probeSynchronous(cfg *config.Snapshot) error {
 	}
 	// 每轮每个上游只探一次，避免一张卡的多个模型登记重复触发整机探活。
 	var probes sync.WaitGroup
-	for kind, instances := range batches {
+	for _, instances := range batches {
 		probes.Go(func() {
 			var health synchronousHealth
+			kind := protocol.SynchronousKind(instances[0].Protocol)
 			p, pool := cfg.SubjectPoolFor(instances[0].ModelKey, instances[0].Protocol, instances[0].Endpoint)
 			poolReady := false
 			if pool {
 				poolReady = w.readSubjectPoolHealth(w.ctx, cfg, p)
 			}
-			if probe := cfg.SynchronousHealthURL(instances[0].Protocol); probe != "" && !pool {
+			probe := cfg.SynchronousHealthURL(instances[0].Protocol)
+			if kind == protocol.SyncEmbedding {
+				probe = instances[0].HealthURL
+			}
+			if probe != "" && !pool {
 				health = w.readSynchronousHealth(w.ctx, kind, probe)
 			}
 			for _, row := range instances {

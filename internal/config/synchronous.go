@@ -27,6 +27,10 @@ func (c Config) SynchronousHealthURL(kind string) string {
 }
 
 func (c Config) acceptsSynchronousTarget(kind, endpoint, healthURL string) bool {
+	// Embedding 直接登记独立副本；探活必须与执行入口一致。
+	if kind == protocol.EmbeddingProtocol {
+		return !strings.HasSuffix(endpoint, "/") && healthURL == endpoint+"/health"
+	}
 	if want := c.SynchronousHealthURL(kind); want == "" || healthURL != want {
 		return false
 	}

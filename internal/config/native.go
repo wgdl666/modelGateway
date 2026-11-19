@@ -62,6 +62,14 @@ func (s *Snapshot) ValidateInstanceTarget(target protocol.InstanceTarget) error 
 	if protocol.GenerationProtocol(target.Protocol) && (s.NativeResults.Provider == "" || s.NativeResults.Region == "" || s.NativeResults.Bucket == "") {
 		return errors.New("generation protocols require native_results object storage")
 	}
+	if target.Protocol == protocol.EmbeddingProtocol {
+		if err := s.ValidateEndpoint(target.Endpoint, true); err != nil {
+			return err
+		}
+		if err := s.ValidateEndpoint(target.HealthURL, true); err != nil {
+			return err
+		}
+	}
 	if protocol.SynchronousKind(target.Protocol) != "" {
 		if p, ok := s.SubjectPoolFor(target.ModelKey, target.Protocol, target.Endpoint); ok && target.HealthURL == p.HealthURL {
 			if err := s.ValidateEndpoint(target.Endpoint, false); err != nil {

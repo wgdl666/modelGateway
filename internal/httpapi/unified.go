@@ -17,6 +17,11 @@ import (
 // 统一入口只做契约校验与编码分派，受理、占槽及终态仍由原执行路径处理。
 func (s *Server) submitSynchronousInput(ctx context.Context, c *app.RequestContext, model, kind string, raw json.RawMessage, fields map[string]any, metadata protocol.Metadata) {
 	cfg := requestConfig(ctx)
+	// Embedding 原样转发到已占槽的副本，维度和归一化参数由模型契约约束。
+	if kind == protocol.EmbeddingProtocol {
+		s.forwardSynchronous(ctx, c, s.direct, model, kind, "/v1/embed", "application/json", raw, metadata)
+		return
+	}
 	if kind == protocol.ChatProtocol || kind == protocol.DecisionProtocol {
 		if kind == protocol.DecisionProtocol {
 			if cfg.DecisionAddr == "" {
